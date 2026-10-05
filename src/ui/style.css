@@ -409,3 +409,12 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .radio-set { margin-top: 8px; padding: 6px 8px; border: 1px dashed currentColor; }
 .radio-set.hf { color: #c9a35a; }
 .radio-set.vhf { color: #8fbf7a; }
+
+/* Research: one panel per branch, later tiers indented under the project they build on. */
+.tech-tree { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.tech-branch .research-list { display: flex; flex-direction: column; gap: 6px; }
+.tech-branch .research { padding: 6px 8px; }
+.research.tier1 { margin-left: 12px; }
+.research.tier2 { margin-left: 24px; }
+.research.tier3 { margin-left: 36px; }
+@media (max-width: 1100px) { .tech-tree { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

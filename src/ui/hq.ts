@@ -10,6 +10,7 @@ import {
   APPROACH_LABEL,
   ARCHETYPE_INFO,
   MAX_ARMOR_PER_ZONE,
+  BRANCHES,
   RESEARCH,
   TARGETS,
   ZONE_LABEL,
@@ -544,19 +545,39 @@ function training(app: App, side: SideState): HTMLElement {
 
 /* ---------------- Research ---------------- */
 function research(app: App, side: SideState): HTMLElement {
-  return panel('Ministry of Aircraft Production — Development Projects',
-    side.researching ? h('p', null, `In development: ${RESEARCH.find((r) => r.id === side.researching)?.name} (${side.researchProgress}/${researchTurns(RESEARCH.find((r) => r.id === side.researching)!.cost)} weeks)`) : h('p', { class: 'muted' }, 'Engineers are idle.'),
-    h('div', { class: 'research-list' }, RESEARCH.map((r) => {
-      const done = side.research.includes(r.id);
-      const locked = r.requires && !side.research.includes(r.requires);
-      const active = side.researching === r.id;
-      return h('div', { class: `research ${done ? 'done' : ''} ${locked ? 'locked' : ''} ${active ? 'active' : ''}` },
-        h('div', { class: 'r-head' }, h('b', null, r.name), done ? h('span', { class: 'stamp notice' }, 'IN SERVICE') : active ? h('span', { class: 'stamp order' }, 'IN HAND') : null),
-        h('div', { class: 'small' }, r.desc),
-        locked ? h('div', { class: 'muted small' }, `Requires ${RESEARCH.find((x) => x.id === r.requires)?.name}`) : null,
-        !done && !active ? h('button', { class: 'btn small', disabled: !!locked || !!side.researching, onclick: () => app.cmd(side.id, { k: 'research', id: r.id }) }, `Fund (${r.cost} supplies, ${researchTurns(r.cost)}w)`) : null,
-      );
-    })),
+  const current = RESEARCH.find((r) => r.id === side.researching);
+  const doneCount = RESEARCH.filter((r) => side.research.includes(r.id)).length;
+  // Within a branch, each project is followed by the ones that build on it.
+  const ordered = (branch: string) => {
+    const items = RESEARCH.filter((r) => r.branch === branch);
+    const out: { r: (typeof RESEARCH)[number]; depth: number }[] = [];
+    const visit = (r: (typeof RESEARCH)[number], depth: number) => {
+      out.push({ r, depth });
+      for (const c of items.filter((x) => x.requires === r.id)) visit(c, depth + 1);
+    };
+    for (const r of items.filter((x) => !x.requires || !items.some((y) => y.id === x.requires))) visit(r, 0);
+    return out;
+  };
+  const card = (r: (typeof RESEARCH)[number], depth: number) => {
+    const done = side.research.includes(r.id);
+    const locked = !!r.requires && !side.research.includes(r.requires);
+    const active = side.researching === r.id;
+    return h('div', { class: `research tier${Math.min(depth, 3)} ${done ? 'done' : ''} ${locked ? 'locked' : ''} ${active ? 'active' : ''}` },
+      h('div', { class: 'r-head' }, h('b', null, `${depth ? '↳ ' : ''}${r.name}`), done ? h('span', { class: 'stamp notice' }, 'IN SERVICE') : active ? h('span', { class: 'stamp order' }, 'IN HAND') : null),
+      h('div', { class: 'small' }, r.desc),
+      locked ? h('div', { class: 'muted small' }, `Requires ${RESEARCH.find((x) => x.id === r.requires)?.name}`) : null,
+      !done && !active ? h('button', { class: 'btn small', disabled: locked || !!side.researching || side.resources.supplies < r.cost, onclick: () => app.cmd(side.id, { k: 'research', id: r.id }) }, `Fund (${r.cost} supplies, ${researchTurns(r.cost)}w)`) : null,
+    );
+  };
+  return h('div', { class: 'col' },
+    panel('Ministry of Aircraft Production — Development Projects',
+      current ? h('p', null, `In development: ${current.name} (${side.researchProgress}/${researchTurns(current.cost)} weeks)`) : h('p', { class: 'muted' }, 'Engineers are idle. One project at a time; each takes a few weeks.'),
+      h('p', { class: 'muted small' }, `${doneCount} of ${RESEARCH.length} developments in service. Later projects in a branch build on earlier ones.`),
+    ),
+    h('div', { class: 'tech-tree' }, BRANCHES.map((b) => h('section', { class: 'paper panel tech-branch' },
+      h('h2', null, b.name),
+      h('div', { class: 'research-list' }, ordered(b.id).map(({ r, depth }) => card(r, depth))),
+    ))),
   );
 }
 

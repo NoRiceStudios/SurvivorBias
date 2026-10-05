@@ -1,3 +1,4 @@
+import { tech } from './tech';
 import { AIRCRAFT, MAX_ARMOR_PER_ZONE, RESEARCH } from './data';
 import { flyable } from './sim';
 import { bomberRange, depthFor, frontSector } from './theaters';
@@ -152,7 +153,7 @@ export function planCost(side: SideState, plan: TurnPlan): { stores: number } {
     stores += n * AIRCRAFT[sq.kind].storesCost;
   }
   if (plan.recon) stores += AIRCRAFT.recon.storesCost;
-  return { stores };
+  return { stores: Math.round(stores * (1 - tech(side, 'economy'))) };
 }
 
 /** Check a plan against the rules. Pass the game state to also check ranges and sites. */

@@ -1,10 +1,11 @@
+import { tech } from './tech';
 import { planCost, researchTurns } from './actions';
 import { AIRCRAFT, ARCHETYPE_INFO, RESEARCH, SQUADRON_NAMES, TARGETS } from './data';
 import { buildDebrief, updatePerceived } from './reports';
 import { facilityEffects } from './effects';
 import { generateRequests } from './requests';
 import { Rng } from './rng';
-import { makeAirframe, makeLeader, makeSquadron } from './setup';
+import { captainName, makeAirframe, makeLeader, makeSquadron } from './setup';
 import { finishDay, flyable, gatherFliers, newDay, resolveRaid, resolveRecon, type Flier } from './sim';
 import {
   applyPressure,
@@ -53,7 +54,7 @@ export const STORES_CAP = 240;
 /** Production points per week. */
 export function factoryRate(side: SideState): number {
   const f = side.factory;
-  return (3 + f.level * 2.5) * facilityEffects(side.facilities).production * (f.qc === 'rushed' ? 1.4 : f.qc === 'strict' ? 0.75 : 1);
+  return (3 + f.level * 2.5) * facilityEffects(side.facilities).production * (1 + tech(side, 'production')) * (f.qc === 'rushed' ? 1.4 : f.qc === 'strict' ? 0.75 : 1);
 }
 
 /** The AI's resource multiplier: difficulty plus escalation through the theaters. */
@@ -106,7 +107,11 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
       kills += r.trueKills;
       if (r.fate === 'lost') {
         lost++;
-        sq.crews--;
+        // Escape hatches and air-sea rescue bring some crews home without their aircraft.
+        if (!r.lead && rng.chance(tech(side, 'escape'))) {
+          news.push(`The crew of ${r.serial} (${sq.name}) got out and has been brought home.`);
+          r.captain = `${captainName(side.id, r.serial, state.seed)} (rescued with his crew, back with the squadron)`;
+        } else sq.crews--;
         // The leader flies callsign 1. Old hands get out more often than most: about half bale out and make it back.
         if (r.lead) {
           if (rng.chance(0.5)) {
@@ -221,7 +226,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   const graduates = t.inTraining;
   t.inTraining = 0;
   let pool = graduates;
-  const gradSkill = 0.25 + t.level * 0.07 + (t.focus === 'gunnery' || t.focus === 'evasion' ? 0.06 : 0) - (t.focus === 'reporting' ? 0.04 : 0);
+  const gradSkill = 0.25 + t.level * 0.07 + tech(side, 'training') + (t.focus === 'gunnery' || t.focus === 'evasion' ? 0.06 : 0) - (t.focus === 'reporting' ? 0.04 : 0);
   // Squadrons with no crew at all come first (a new recon flight must not wait for weeks), then the most short-handed.
   const needy = [...side.squadrons].sort((a, b) => (a.crews <= 0 ? -100 : 0) - (b.crews <= 0 ? -100 : 0) || a.crews - a.airframes.length - (b.crews - b.airframes.length));
   for (const sq of needy) {
@@ -240,7 +245,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   t.inTraining = intake;
 
   // Repairs at the airfield.
-  const repairCap = Math.round(4 + 8 * side.facilities.airfield / 100);
+  const repairCap = Math.round((4 + 8 * side.facilities.airfield / 100) * (1 + tech(side, 'repair')));
   let repaired = 0;
   for (const sq of side.squadrons) {
     for (const af of sq.airframes) {
@@ -270,7 +275,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   }
 
   // Facility repair: each site the side holds is patched up a little.
-  for (const site of state.theater.sites) if (site.owner === side.id) site.condition = Math.min(100, site.condition + 4);
+  for (const site of state.theater.sites) if (site.owner === side.id) site.condition = Math.min(100, site.condition + Math.round(4 * (1 + tech(side, 'repair'))));
 }
 
 /** What moved the front, from one side's point of view, in the Army liaison's words. */

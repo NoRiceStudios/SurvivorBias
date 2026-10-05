@@ -67,6 +67,7 @@ import {
   type TurnPlan,
   type ZoneId,
   fitPlanToStores,
+  BRANCHES,
 } from '../src/core';
 
 interface SaveFile {
@@ -243,9 +244,12 @@ function training() {
 function research() {
   const side = me();
   say(side.researching ? `In development: ${RESEARCH.find((r) => r.id === side.researching)!.name} (${side.researchProgress}/${researchTurns(RESEARCH.find((r) => r.id === side.researching)!.cost)} weeks)` : 'Engineers are idle.');
-  for (const r of RESEARCH) {
-    const status = side.research.includes(r.id) ? 'IN SERVICE' : side.researching === r.id ? 'IN HAND' : r.requires && !side.research.includes(r.requires) ? `needs ${r.requires}` : `${r.cost} supplies, ${researchTurns(r.cost)}w`;
-    say(`   ${r.id}: ${r.name} [${status}] — ${r.desc}`);
+  for (const b of BRANCHES) {
+    say(`${b.name}:`);
+    for (const r of RESEARCH.filter((x) => x.branch === b.id)) {
+      const status = side.research.includes(r.id) ? 'IN SERVICE' : side.researching === r.id ? 'IN HAND' : r.requires && !side.research.includes(r.requires) ? `needs ${r.requires}` : `${r.cost} supplies, ${researchTurns(r.cost)}w`;
+      say(`   ${r.requires ? '  ↳ ' : ''}${r.id}: ${r.name} [${status}] — ${r.desc}`);
+    }
   }
 }
 

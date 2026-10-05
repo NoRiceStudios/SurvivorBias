@@ -13,6 +13,9 @@ import {
   facilityEffects,
   fitPlanToStores,
   planCost,
+  tech,
+  RESEARCH,
+  startResearch,
   theaterDecision,
   HEAD_START,
   gatherFliers,
@@ -765,5 +768,19 @@ describe('designer decisions after round 2', () => {
       for (const raid of [...r.raids, ...r.feints]) for (const l of raid?.radio ?? []) { texts.add(l.text); total++; }
     }
     expect(texts.size / total).toBeGreaterThan(0.5);
+  });
+
+  it('the tech tree has tiered branches whose effects add up', () => {
+    const s = startCampaign({ seed: 'tech' });
+    const side = s.sides[0];
+    expect(RESEARCH.length).toBeGreaterThanOrEqual(30);
+    for (const r of RESEARCH) if (r.requires) expect(RESEARCH.some((x) => x.id === r.requires && x.branch === r.branch)).toBe(true);
+    side.resources.supplies = 10000;
+    expect(startResearch(side, 'pooledStores').ok).toBe(false);
+    const plan = playerPlan(s);
+    const before = planCost(side, plan).stores;
+    side.research.push('fuelEconomy', 'pooledStores');
+    expect(tech(side, 'economy')).toBeCloseTo(0.2);
+    expect(planCost(side, plan).stores).toBeLessThan(before);
   });
 });

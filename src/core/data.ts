@@ -150,25 +150,92 @@ export const MAX_ARMOR_PER_ZONE = 3;
 export const ARMOR_FACTOR = 0.55;
 export const ARMOR_FACTOR_ALLOY = 0.42;
 
+/** Numeric effects a development can have. Values of the same key add up. */
+export type TechKey =
+  | 'hits' // fighters' and gunners' hit rate, +x
+  | 'turrets' // bombers' defensive fire, +x
+  | 'accuracy' // bomb damage, +x
+  | 'blindBombing' // share of the weather penalty on bombing removed
+  | 'reliability' // share of mechanical aborts prevented
+  | 'plateWeight' // share of the weight penalty of armor removed
+  | 'fireproof' // engine and fuel hits are less often fatal, -x
+  | 'escape' // chance a lost aircraft's crew gets out and back
+  | 'detection' // interception chance of our defenders, +x
+  | 'production' // aircraft works output, +x
+  | 'repair' // aircraft repaired per week and site repair, +x
+  | 'economy' // stores used per sortie, -x
+  | 'training' // graduates' starting skill, +x
+  | 'stealth' // chance the enemy catches our recon aircraft, -x
+  | 'payload'; // bomb load, +x
+
+export type Branch = 'gunnery' | 'engines' | 'protection' | 'bombing' | 'signals' | 'industry';
+
+export const BRANCHES: { id: Branch; name: string }[] = [
+  { id: 'gunnery', name: 'Gunnery' },
+  { id: 'engines', name: 'Engines & Airframes' },
+  { id: 'protection', name: 'Protection' },
+  { id: 'bombing', name: 'Bombing' },
+  { id: 'signals', name: 'Signals & Intelligence' },
+  { id: 'industry', name: 'Industry & Logistics' },
+];
+
 export interface ResearchItem {
   id: string;
   name: string;
   cost: number;
   desc: string;
+  branch: Branch;
   requires?: string;
+  effects?: Partial<Record<TechKey, number>>;
 }
 
 export const RESEARCH: ResearchItem[] = [
-  { id: 'gunCameras', name: 'Gun Cameras', cost: 60, desc: 'Film from the guns confirms or refutes kill claims. Halves claim inflation.' },
-  { id: 'radios', name: 'VHF Radio Sets', cost: 70, desc: 'Clearer radio traffic. You hear more of the battle, including the final calls of crews who do not return.' },
-  { id: 'photoRecon', name: 'Photo Reconnaissance', cost: 80, desc: 'Unlocks the recon aircraft. Photographs show what really happened to a target.' },
-  { id: 'intelOfficer', name: 'Intelligence Section', cost: 60, desc: 'Analysts cross-check debriefs. Shows uncertainty ranges and flags contradictions.' },
-  { id: 'selfSealing', name: 'Self-Sealing Tanks', cost: 90, desc: 'Rubber-lined fuel tanks seal small punctures.' },
-  { id: 'armorAlloy', name: 'Face-Hardened Plate', cost: 110, desc: 'Each armor plate stops considerably more.' , requires: 'selfSealing' },
-  { id: 'heavyAirframe', name: 'Four-Engine Airframe', cost: 140, desc: 'Unlocks the heavy bomber: twice the bombs, twice the guns, twice the crew to lose.' },
-  { id: 'radar', name: 'Ground Radar', cost: 100, desc: 'Early warning: more of your fighters reach incoming raids.' },
-  { id: 'dropTanks', name: 'Drop Tanks', cost: 70, desc: 'Jettisonable fuel tanks let fighters escort bombers one sector deeper.' },
-  { id: 'gyroSight', name: 'Gyro Gunsight', cost: 90, desc: 'Fighters and gunners hit more often.', requires: 'gunCameras' },
+  // Gunnery
+  { id: 'gunneryManual', branch: 'gunnery', name: 'Gunnery Manuals', cost: 40, desc: 'Deflection-shooting tables for every crew room. Fighters and gunners hit 5% more often.', effects: { hits: 0.05 } },
+  { id: 'gyroSight', branch: 'gunnery', name: 'Gyro Gunsight', cost: 90, desc: 'Fighters and gunners hit 15% more often.', requires: 'gunneryManual', effects: { hits: 0.15 } },
+  { id: 'cannon', branch: 'gunnery', name: '20 mm Cannon', cost: 120, desc: 'Fighters swap rifle-calibre guns for cannon. Another 10% more hits.', requires: 'gyroSight', effects: { hits: 0.1 } },
+  { id: 'powerTurrets', branch: 'gunnery', name: 'Power Turrets', cost: 70, desc: 'Hydraulic turrets traverse faster. Bombers\' defensive fire +12%.', effects: { turrets: 0.12 } },
+  { id: 'twinTail', branch: 'gunnery', name: 'Twin-Gun Tail Turret', cost: 100, desc: 'More guns where the fighters come from. Defensive fire another +15%.', requires: 'powerTurrets', effects: { turrets: 0.15 } },
+  { id: 'gunCameras', branch: 'gunnery', name: 'Gun Cameras', cost: 60, desc: 'Film from the guns confirms or refutes kill claims. Halves claim inflation.' },
+
+  // Engines & airframes
+  { id: 'engineTuning', branch: 'engines', name: 'Engine Tuning', cost: 45, desc: 'Better plugs and carburettor settings. A quarter fewer mechanical aborts.', effects: { reliability: 0.25 } },
+  { id: 'uprated', branch: 'engines', name: 'Uprated Engines', cost: 90, desc: 'More power at height. Another quarter fewer aborts, and bombers carry 10% more.', requires: 'engineTuning', effects: { reliability: 0.25, payload: 0.1 } },
+  { id: 'dropTanks', branch: 'engines', name: 'Drop Tanks', cost: 70, desc: 'Jettisonable fuel tanks let fighters escort bombers one sector deeper.' },
+  { id: 'heavyAirframe', branch: 'engines', name: 'Four-Engine Airframe', cost: 140, desc: 'Unlocks the heavy bomber: twice the bombs, twice the guns, twice the crew to lose.' },
+  { id: 'heavyMk2', branch: 'engines', name: 'Heavy Bomber Mk II', cost: 120, desc: 'Strengthened wing and bomb bay. Bombers carry another 15%.', requires: 'heavyAirframe', effects: { payload: 0.15 } },
+
+  // Protection
+  { id: 'selfSealing', branch: 'protection', name: 'Self-Sealing Tanks', cost: 90, desc: 'Rubber-lined fuel tanks seal small punctures.' },
+  { id: 'extinguishers', branch: 'protection', name: 'Engine Fire Extinguishers', cost: 60, desc: 'Engine and fuel-tank hits are 10% less often fatal.', effects: { fireproof: 0.1 } },
+  { id: 'armorAlloy', branch: 'protection', name: 'Face-Hardened Plate', cost: 110, desc: 'Each armor plate stops considerably more.', requires: 'selfSealing' },
+  { id: 'lightPlate', branch: 'protection', name: 'Light Alloy Plate', cost: 90, desc: 'Plate weighs a third less, so armored aircraft are less sluggish.', requires: 'armorAlloy', effects: { plateWeight: 0.35 } },
+  { id: 'escapeHatches', branch: 'protection', name: 'Escape Hatches', cost: 50, desc: 'Wider hatches and better parachutes. When an aircraft is lost, its crew gets out and home 15% of the time.', effects: { escape: 0.15 } },
+  { id: 'airSeaRescue', branch: 'protection', name: 'Air-Sea Rescue', cost: 80, desc: 'Launches and spotter aircraft. Another 15% of lost crews are brought home.', requires: 'escapeHatches', effects: { escape: 0.15 } },
+
+  // Bombing
+  { id: 'bombsight2', branch: 'bombing', name: 'Bombsight Mk II', cost: 50, desc: 'A better-calibrated sight. Bombs do 8% more damage.', effects: { accuracy: 0.08 } },
+  { id: 'bombsight3', branch: 'bombing', name: 'Stabilised Bombsight', cost: 100, desc: 'Gyro-stabilised sight. Another 12% more damage.', requires: 'bombsight2', effects: { accuracy: 0.12 } },
+  { id: 'targetMarkers', branch: 'bombing', name: 'Target Markers', cost: 90, desc: 'Coloured flares mark the aiming point. Cloud and storms cost a third less accuracy.', requires: 'bombsight2', effects: { blindBombing: 0.35 } },
+  { id: 'heavyBombs', branch: 'bombing', name: 'Heavy-Case Bombs', cost: 80, desc: 'Bigger bombs for hard targets. Bombs do 10% more damage.', effects: { accuracy: 0.1 } },
+
+  // Signals & intelligence
+  { id: 'radios', branch: 'signals', name: 'VHF Radio Sets', cost: 70, desc: 'Clearer radio traffic. You hear far more of the battle, including the final calls of crews who do not return.' },
+  { id: 'radar', branch: 'signals', name: 'Ground Radar', cost: 100, desc: 'Early warning: more of your fighters reach incoming raids.' },
+  { id: 'radarChain', branch: 'signals', name: 'Radar Chain', cost: 110, desc: 'Overlapping stations and a filter room. Defenders intercept another 8% more often.', requires: 'radar', effects: { detection: 0.08 } },
+  { id: 'photoRecon', branch: 'signals', name: 'Photo Reconnaissance', cost: 80, desc: 'Unlocks the recon aircraft. Photographs show what really happened to a target.' },
+  { id: 'longLens', branch: 'signals', name: 'Long-Focus Cameras', cost: 60, desc: 'Photographs from higher up. Recon aircraft are caught a third less often.', requires: 'photoRecon', effects: { stealth: 0.33 } },
+  { id: 'intelOfficer', branch: 'signals', name: 'Intelligence Section', cost: 60, desc: 'Analysts cross-check debriefs. Shows uncertainty ranges and flags contradictions.' },
+
+  // Industry & logistics
+  { id: 'assembly1', branch: 'industry', name: 'Assembly Jigs', cost: 50, desc: 'Standard jigs on the factory floor. Aircraft production +10%.', effects: { production: 0.1 } },
+  { id: 'assembly2', branch: 'industry', name: 'Moving Assembly Line', cost: 100, desc: 'Production +15%.', requires: 'assembly1', effects: { production: 0.15 } },
+  { id: 'dispersal', branch: 'industry', name: 'Shadow Factories', cost: 140, desc: 'Production spread over many small works. Production another +15%.', requires: 'assembly2', effects: { production: 0.15 } },
+  { id: 'groundCrews', branch: 'industry', name: 'Repair Gangs', cost: 50, desc: 'More fitters and riggers. Repairs and site repair +25%.', effects: { repair: 0.25 } },
+  { id: 'fieldWorkshops', branch: 'industry', name: 'Field Workshops', cost: 90, desc: 'Mobile workshops at every airfield. Repairs and site repair another +25%.', requires: 'groundCrews', effects: { repair: 0.25 } },
+  { id: 'fuelEconomy', branch: 'industry', name: 'Fuel Economy', cost: 60, desc: 'Leaner mixture settings and cruise discipline. Each sortie uses 10% fewer stores.', effects: { economy: 0.1 } },
+  { id: 'pooledStores', branch: 'industry', name: 'Pooled Stores', cost: 90, desc: 'One supply system for the whole wing. Another 10% fewer stores per sortie.', requires: 'fuelEconomy', effects: { economy: 0.1 } },
+  { id: 'synthTrainer', branch: 'industry', name: 'Synthetic Trainers', cost: 60, desc: 'Link trainers and gunnery simulators at the school. Graduates start more skilled.', effects: { training: 0.04 } },
 ];
 
 export const TARGETS: Record<TargetId, { name: string; desc: string }> = {

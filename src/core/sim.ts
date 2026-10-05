@@ -8,6 +8,7 @@ import {
   ZONE_DAMAGE,
 } from './data';
 import { facilityEffects } from './effects';
+import { tech } from './tech';
 import { ABORT_MECH, BANDITS, BOMBS_GONE, BREAK_OFF, CHATTER, CONTACT, ESCORT_HOME, ESCORT_KILL, FEINT_OUT, FORM_UP, GROUND_SITE, GROUND_SUPPORT, GUNNER_KILL, MANY, NO_FIGHTERS, rt, RUN_IN, SEEN_GO, SEEN_WHAT, SUPPORT_IN, TOWER, WE_ARE_HIT, WEATHER_OUT, WOUNDED } from './radio';
 import { DEFAULT_LETHALITY, type LethalityTable } from './lethality';
 import type { Rng } from './rng';
@@ -83,9 +84,9 @@ export function emptyApproach(): Record<FighterApproach, number> {
   return { tail: 0, headOn: 0, beam: 0 };
 }
 
-export function armorLoad(sq: Squadron): number {
+export function armorLoad(sq: Squadron, side?: SideState): number {
   const total = ZONES.reduce((a, z) => a + sq.armor[z], 0);
-  return total / Math.max(1, AIRCRAFT[sq.kind].armorBudget);
+  return (total / Math.max(1, AIRCRAFT[sq.kind].armorBudget)) * (1 - (side ? tech(side, 'plateWeight') : 0));
 }
 
 export function hitLethality(zone: ZoneId, f: Flier, armor = f.sq.armor[zone]): number {
@@ -93,6 +94,7 @@ export function hitLethality(zone: ZoneId, f: Flier, armor = f.sq.armor[zone]): 
   const factor = res.includes('armorAlloy') ? ARMOR_FACTOR_ALLOY : ARMOR_FACTOR;
   let p = f.leth[zone] * Math.pow(factor, armor);
   if (zone === 'fuel' && res.includes('selfSealing')) p *= 0.45;
+  if (zone === 'fuel' || zone === 'engines') p *= 1 - tech(f.side, 'fireproof');
   // Small, fast airframes take less punishment per hole but have less to lose.
   if (f.af.kind === 'fighter' || f.af.kind === 'recon') p *= 1.25;
   if (f.af.kind === 'heavy') p *= 0.8;
@@ -173,8 +175,7 @@ function say(ctx: RaidContext, side: SideId, callsign: string, text: string, hea
 
 function skillMult(f: Flier): number {
   const s = f.sq.skill;
-  const gyro = f.side.research.includes('gyroSight') ? 1.15 : 1;
-  return (0.6 + 0.8 * s) * gyro * (1 - f.sq.fatigue * 0.3);
+  return (0.6 + 0.8 * s) * (1 + tech(f.side, 'hits')) * (1 - f.sq.fatigue * 0.3);
 }
 
 function makeFlier(sq: Squadron, af: Airframe, side: SideState, role: PlaneRecord['role'], index: number, lethality: LethalityTable = DEFAULT_LETHALITY): Flier {
@@ -246,7 +247,7 @@ function dogfight(ctx: RaidContext, a: Flier, b: Flier) {
   const order = rng.chance(0.5 + (skillMult(a) - skillMult(b)) * 0.3) ? [a, b] : [b, a];
   for (const [shooter, target] of [order, [order[1], order[0]]] as [Flier, Flier][]) {
     if (!shooter.alive || !target.alive) continue;
-    const loadPenalty = 1 + armorLoad(target.sq) * 0.15 - armorLoad(shooter.sq) * 0.15;
+    const loadPenalty = 1 + armorLoad(target.sq, target.side) * 0.15 - armorLoad(shooter.sq, shooter.side) * 0.15;
     const lambda = 1.3 * skillMult(shooter) * (0.6 + 0.8 * shooter.sq.doctrine.aggression) * loadPenalty;
     const n = rng.poisson(lambda);
     target.rec.sawApproach.tail += 1;
@@ -274,7 +275,7 @@ function bomberPass(ctx: RaidContext, fighter: Flier, bomber: Flier, bombers: Fl
   const formation = bomber.sq.doctrine.formation;
   const guns = AIRCRAFT[bomber.af.kind].guns;
   const coverage = approach === 'tail' ? 1.25 : approach === 'beam' ? 0.95 : 0.4;
-  const defLambda = 0.3 * (guns / 4) * skillMult(bomber) * (0.6 + formation * 0.9) * coverage;
+  const defLambda = 0.3 * (guns / 4) * skillMult(bomber) * (0.6 + formation * 0.9) * coverage * (1 + tech(bomber.side, 'turrets'));
   const defHits = rng.poisson(defLambda);
   for (let i = 0; i < defHits; i++) {
     if (applyHit(rng, fighter, approach === 'headOn' ? 'headOn' : 'tail')) {
@@ -291,7 +292,7 @@ function bomberPass(ctx: RaidContext, fighter: Flier, bomber: Flier, bombers: Fl
 
   // The attack itself.
   const closing = approach === 'headOn' ? 0.8 : approach === 'beam' ? 0.85 : 1.0;
-  const slow = 1 + armorLoad(bomber.sq) * 0.2;
+  const slow = 1 + armorLoad(bomber.sq, bomber.side) * 0.2;
   const lambda = 2.2 * skillMult(fighter) * (0.65 + 0.7 * fighter.sq.doctrine.aggression) * closing * slow;
   const n = rng.poisson(lambda);
   for (let i = 0; i < n; i++) {
@@ -400,7 +401,7 @@ export function resolveRaid(
 
   // Outbound: mechanical aborts from factory defects.
   for (const f of raid) {
-    if (f.af.defect > 0 && rng.chance(f.af.defect * 0.5)) {
+    if (f.af.defect > 0 && rng.chance(f.af.defect * 0.5 * (1 - tech(attacker, 'reliability')))) {
       f.out = true;
       f.home = true;
       f.rec.fate = 'aborted';
@@ -419,7 +420,7 @@ export function resolveRaid(
   const detectFor = (d: Flier): number => {
     const c = cover[d.sq.id];
     let p = c === undefined ? 0.55 + radar : c === sector ? 0.95 : Math.abs(c - sector) === 1 ? 0.3 + radar * 0.5 : 0.05;
-    p = (p + mods.detection + (0.5 - avgAlt) * 0.2) * wx.detection;
+    p = (p + mods.detection + tech(defender, 'detection') + (0.5 - avgAlt) * 0.2) * wx.detection;
     return Math.max(0, Math.min(0.97, p));
   };
   const interceptors = [
@@ -538,7 +539,9 @@ export function resolveRaid(
       const acc = 0.3 + 0.35 * b.sq.skill + 0.25 * (1 - alt) + 0.1 * b.sq.doctrine.aggression;
       damage += AIRCRAFT[b.af.kind].payload * acc * rng.range(0.5, 1.5);
     }
-    damage *= 1.25 * wx.accuracy;
+    // Bombsights, bigger bombs and target markers.
+    const blind = wx.accuracy + (1 - wx.accuracy) * tech(attacker, 'blindBombing');
+    damage *= 1.25 * blind * (1 + tech(attacker, 'accuracy')) * (1 + tech(attacker, 'payload'));
     if (bombers.some((b) => b.alive && !b.out)) say(ctx, attacker.id, speaker(bombers.filter((b) => !b.out)).callsign, rt(rng, BOMBS_GONE));
     // Defender's ground observers see the bombs fall.
     say(ctx, defender.id, 'Ground', rt(rng, support ? GROUND_SUPPORT : GROUND_SITE, { site: site?.name ?? 'our facilities' }), defender.id);
@@ -610,7 +613,7 @@ export function resolveRecon(
   const f = day.fliers.get(af.id) ?? makeFlier(sq, af, side, 'recon', 0, day.lethality);
   day.fliers.set(af.id, f);
   const hunters = patrols.filter((p) => p.alive);
-  const threat = hunters.length ? 0.6 : 0.12 + (enemy.research.includes('radar') ? 0.1 : 0);
+  const threat = (hunters.length ? 0.6 : 0.12 + (enemy.research.includes('radar') ? 0.1 : 0)) * (1 - tech(side, 'stealth'));
   const intercepted = rng.chance(threat);
   if (intercepted) {
     const n = rng.poisson(hunters.length ? 3 : 2);
