@@ -16,7 +16,7 @@ import type {
 } from './types';
 import { ZONES } from './types';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export function zoneMap<T>(fn: (z: (typeof ZONES)[number]) => T): ZoneMap<T> {
   return Object.fromEntries(ZONES.map((z) => [z, fn(z)])) as ZoneMap<T>;
@@ -155,6 +155,7 @@ function makeSide(state: GameState, rng: Rng, id: SideId, isAI: boolean): SideSt
   return {
     id,
     name: SIDE_NAMES[id].name,
+    commander: isAI ? 'Oberst Reinhold Kranz' : id === 0 ? 'Air Commodore' : 'Oberst',
     short: SIDE_NAMES[id].short,
     isAI,
     insight: 0.35,
@@ -202,6 +203,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     weather: 'clear',
     forecast: ['clear', 'clear'],
     lastDebriefs: [null, null],
+    sealed: [null, null],
     archive: [],
     outcome: null,
     nextId: 1,

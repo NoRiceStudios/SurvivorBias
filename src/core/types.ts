@@ -22,7 +22,7 @@ export type FighterApproach = Exclude<Approach, 'flak'>;
 export type Archetype = 'braggart' | 'pessimist' | 'gloryHunter' | 'byTheBook' | 'timid';
 export type FacilityType = 'industry' | 'airfield' | 'fuel';
 /** Raid target: a facility type (with a specific site), close support at the front, or a fighter sweep. */
-export type TargetId = FacilityType | 'support' | 'sweep';
+export type TargetId = FacilityType | 'support' | 'sweep' | 'feint';
 export type Weather = 'clear' | 'cloud' | 'storm';
 export type TrainingFocus = 'balanced' | 'gunnery' | 'evasion' | 'reporting';
 export type QcPolicy = 'rushed' | 'standard' | 'strict';
@@ -168,6 +168,8 @@ export interface Perceived {
 export interface SideState {
   id: SideId;
   name: string;
+  /** The human (or AI) in command, shown in hotseat handovers. */
+  commander: string;
   short: string;
   isAI: boolean;
   /** For AI sides: how well it understands survivorship bias (0 naive .. 1 Wald). */
@@ -207,6 +209,8 @@ export interface TurnPlan {
   cover: Record<string, number>;
   /** Recon squadron sent to photograph a site. */
   recon: { squadronId: string; siteId: string } | null;
+  /** Diversion: squadrons sent over another enemy sector to draw the reserve away. */
+  feint: { squadronIds: string[]; sector: number } | null;
   /** 0 = honest, 1 = heavily embellished report to High Command. */
   embellish: number;
 }
@@ -219,7 +223,7 @@ export interface PlaneRecord {
   squadronId: string;
   kind: AircraftKind;
   side: SideId;
-  role: 'raid' | 'escort' | 'defense' | 'recon';
+  role: 'raid' | 'escort' | 'defense' | 'recon' | 'feint';
   hits: Hit[];
   fate: 'returned' | 'lost' | 'aborted' | 'crashed';
   trueKills: number;
@@ -332,6 +336,8 @@ export interface GameState {
   weather: Weather;
   forecast: [Weather, Weather];
   lastDebriefs: [Debrief | null, Debrief | null];
+  /** Hotseat: orders sealed this week but not yet resolved (survives saving). */
+  sealed: [TurnPlan | null, TurnPlan | null];
   archive: ArchiveEntry[];
   outcome: [Outcome, Outcome] | null;
   nextId: number;

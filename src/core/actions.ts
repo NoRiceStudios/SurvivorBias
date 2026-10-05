@@ -1,6 +1,6 @@
 import { AIRCRAFT, MAX_ARMOR_PER_ZONE, RESEARCH } from './data';
 import { flyable } from './sim';
-import { bomberRange, depthFor } from './theaters';
+import { bomberRange, depthFor, frontSector } from './theaters';
 import type {
   AircraftKind,
   Doctrine,
@@ -144,7 +144,7 @@ export function researchTurns(cost: number): number {
 export function planCost(side: SideState, plan: TurnPlan): { fuel: number; munitions: number } {
   let fuel = 0;
   let munitions = 0;
-  const ids = new Set([...(plan.raid?.squadronIds ?? []), ...plan.defense]);
+  const ids = new Set([...(plan.raid?.squadronIds ?? []), ...plan.defense, ...(plan.feint?.squadronIds ?? [])]);
   for (const id of ids) {
     const sq = side.squadrons.find((s) => s.id === id);
     if (!sq) continue;
@@ -174,6 +174,21 @@ export function validatePlan(side: SideState, plan: TurnPlan, state?: GameState)
       }
     }
   }
+  if (plan.feint && plan.feint.squadronIds.length) {
+    for (const id of plan.feint.squadronIds) {
+      if (raidIds.includes(id) || plan.defense.includes(id)) return fail('A squadron cannot fly the feint and another mission');
+      const sq = side.squadrons.find((s) => s.id === id);
+      if (!sq || sq.kind === 'recon') return fail('Recon aircraft cannot fly feints');
+    }
+    if (state) {
+      const t = state.theater;
+      const sector = plan.feint.sector;
+      if ((sector < t.held0 ? 0 : 1) === side.id) return fail('The feint must be flown over enemy territory');
+      if (depthFor(t.held0, side.id, sector) > 2) return fail('The feint sector is too deep');
+      const main = plan.raid?.siteId ? t.sites.find((x) => x.id === plan.raid!.siteId)?.sector : plan.raid ? frontSector(t, side.id) : undefined;
+      if (main === sector) return fail('A feint over the same sector as the real raid fools nobody');
+    }
+  }
   if (state && plan.recon) {
     const site = state.theater.sites.find((x) => x.id === plan.recon!.siteId);
     if (!site || site.owner === side.id) return fail('Choose an enemy site to photograph');
@@ -200,5 +215,5 @@ export function validatePlan(side: SideState, plan: TurnPlan, state?: GameState)
 }
 
 export function emptyPlan(): TurnPlan {
-  return { raid: null, defense: [], cover: {}, recon: null, embellish: 0 };
+  return { raid: null, defense: [], cover: {}, recon: null, feint: null, embellish: 0 };
 }

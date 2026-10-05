@@ -9,7 +9,7 @@ import {
   ZONE_LETHALITY,
 } from './data';
 import type { Rng } from './rng';
-import { depthFor, escortRange, frontSector, theaterMods, WEATHER_EFFECT } from './theaters';
+import { depthFor, escortRange, frontSector, theaterMods, THEATERS, WEATHER_EFFECT } from './theaters';
 import type {
   Airframe,
   Approach,
@@ -18,6 +18,7 @@ import type {
   Hit,
   PlaneRecord,
   RadioLine,
+  RaidPlan,
   RaidResult,
   SideId,
   SideState,
@@ -40,6 +41,26 @@ export interface Flier {
   callsign: string;
   /** Damage taken, accumulated hits on fighters who strafe it. */
   passesTaken: number;
+  /** Drawn away by a feint: not available for the main raid. */
+  committed: boolean;
+  /** Defending fighter actually got off the ground (airfield damage). Rolled once per day. */
+  available?: boolean;
+}
+
+/**
+ * One day of operations. Every aircraft has exactly one Flier for the day, so
+ * a fighter that meets a feint in the morning is still damaged (or dead) when
+ * the main raid arrives.
+ */
+export interface Day {
+  fliers: Map<string, Flier>;
+  /** Sweeps over the front have already met each other today. */
+  metFront: boolean;
+  landing: RadioLine[];
+}
+
+export function newDay(): Day {
+  return { fliers: new Map(), metFront: false, landing: [] };
 }
 
 const CLOCK: Record<FighterApproach, string[]> = {
@@ -154,6 +175,7 @@ function makeFlier(sq: Squadron, af: Airframe, side: SideState, role: PlaneRecor
     out: false,
     callsign: `${cs} ${index + 1}`,
     passesTaken: 0,
+    committed: false,
   };
 }
 
@@ -162,12 +184,19 @@ export function flyable(sq: Squadron): Airframe[] {
   return sq.airframes.filter((a) => a.status === 'ready').slice(0, Math.max(0, sq.crews));
 }
 
-export function gatherFliers(side: SideState, ids: string[], role: (sq: Squadron) => PlaneRecord['role']): Flier[] {
+export function gatherFliers(side: SideState, ids: string[], role: (sq: Squadron) => PlaneRecord['role'], day?: Day): Flier[] {
   const out: Flier[] = [];
   for (const id of ids) {
     const sq = side.squadrons.find((s) => s.id === id);
     if (!sq) continue;
-    flyable(sq).forEach((af, i) => out.push(makeFlier(sq, af, side, role(sq), i)));
+    flyable(sq).forEach((af, i) => {
+      let f = day?.fliers.get(af.id);
+      if (!f) {
+        f = makeFlier(sq, af, side, role(sq), i);
+        day?.fliers.set(af.id, f);
+      }
+      out.push(f);
+    });
   }
   return out;
 }
@@ -273,40 +302,53 @@ function checkBreakOff(ctx: RaidContext, fliers: Flier[], startCounts: Map<Squad
   }
 }
 
+export interface RaidOpts {
+  day?: Day;
+  /** Feint: the sector overflown. Only `onlyDefenders` engage it. */
+  feintSector?: number;
+  onlyDefenders?: Flier[];
+  /** Enemy fighters sweeping the front, met in addition to the defenders. */
+  screen?: Flier[];
+}
+
 /**
- * Resolve one side's raid against the other side's defences.
- * Defender fighters are passed in so they can fight on the same day.
+ * Resolve one side's raid (or feint) against the other side's defences.
+ * Pass a shared Day so aircraft keep their state across the day's engagements.
  */
 export function resolveRaid(
   rng: Rng,
   state: GameState,
   attacker: SideState,
   defender: SideState,
-  plan: TurnPlan,
+  raidPlan: RaidPlan | null,
   defPlan: TurnPlan,
+  opts: RaidOpts = {},
 ): RaidResult | null {
-  if (!plan.raid || plan.raid.squadronIds.length === 0) return null;
-  const target: TargetId = plan.raid.target;
+  if (!raidPlan || raidPlan.squadronIds.length === 0) return null;
+  const day = opts.day ?? newDay();
+  const target: TargetId = raidPlan.target;
   const ctx: RaidContext = { rng, state, attacker, defender, radio: [], t: 0 };
 
-  const raid = gatherFliers(attacker, plan.raid.squadronIds, (sq) =>
-    sq.kind === 'fighter' ? (target === 'sweep' ? 'raid' : 'escort') : 'raid',
-  ).filter((f) => target !== 'sweep' || f.af.kind === 'fighter');
+  const raid = gatherFliers(attacker, raidPlan.squadronIds, (sq) =>
+    target === 'feint' ? 'feint' : sq.kind === 'fighter' ? (target === 'sweep' ? 'raid' : 'escort') : 'raid', day,
+  ).filter((f) => f.alive && (target !== 'sweep' || f.af.kind === 'fighter'));
   if (raid.length === 0) return null;
   const bombers = raid.filter((f) => f.af.kind === 'medium' || f.af.kind === 'heavy');
   const escorts = raid.filter((f) => f.af.kind === 'fighter');
   const th = state.theater;
-  const site = plan.raid.siteId ? th.sites.find((x) => x.id === plan.raid!.siteId) : undefined;
-  const sector = site ? site.sector : frontSector(th, attacker.id);
+  const site = raidPlan.siteId ? th.sites.find((x) => x.id === raidPlan.siteId) : undefined;
+  const sector = opts.feintSector ?? (site ? site.sector : frontSector(th, attacker.id));
   const depth = depthFor(th.held0, attacker.id, sector);
   const mods = theaterMods(state);
   const wx = WEATHER_EFFECT[state.weather];
   const escortReach = escortRange(attacker);
 
-  // Airfield damage grounds some of the defending fighters.
-  const defenders = gatherFliers(defender, defPlan.defense, () => 'defense').filter(
-    (f) => f.af.kind === 'fighter' && rng.chance(0.7 + 0.3 * (defender.facilities.airfield / 100)),
-  );
+  // Airfield damage grounds some of the defending fighters (decided once per day).
+  const defenders = (opts.onlyDefenders ?? gatherFliers(defender, defPlan.defense, () => 'defense', day)).filter((f) => {
+    if (f.available === undefined) f.available = rng.chance(0.7 + 0.3 * Math.min(1, defender.facilities.airfield / 100));
+    return f.af.kind === 'fighter' && f.alive && f.available && (opts.onlyDefenders ? true : !f.committed);
+  });
+  const screen = (opts.screen ?? []).filter((f) => f.alive && !f.out);
 
   const startCounts = new Map<Squadron, number>();
   for (const f of raid) startCounts.set(f.sq, (startCounts.get(f.sq) ?? 0) + 1);
@@ -314,7 +356,9 @@ export function resolveRaid(
 
   const lead = raid[0];
   ctx.t = 5;
-  say(ctx, attacker.id, lead.callsign, `${lead.callsign.split(' ')[0]} Leader, ${raid.length} aircraft formed up, setting course.`);
+  say(ctx, attacker.id, lead.callsign, target === 'feint'
+    ? `${lead.callsign.split(' ')[0]} Leader, diversion force of ${raid.length}, heading for ${THEATER_SECTOR(state, sector)}. Let's be seen.`
+    : `${lead.callsign.split(' ')[0]} Leader, ${raid.length} aircraft formed up, setting course.`);
 
   // Outbound: mechanical aborts from factory defects.
   for (const f of raid) {
@@ -337,9 +381,12 @@ export function resolveRaid(
     p = (p + mods.detection + (0.5 - avgAlt) * 0.2) * wx.detection;
     return Math.max(0, Math.min(0.97, p));
   };
-  const interceptors = defenders.filter((d) => rng.chance(detectFor(d)));
-  for (const f of raid) f.rec.enemiesSeen = interceptors.length;
-  for (const d of interceptors) d.rec.enemiesSeen = raid.length;
+  const interceptors = [
+    ...defenders.filter((d) => rng.chance(opts.onlyDefenders ? 0.95 * wx.detection : detectFor(d))),
+    ...screen.filter(() => rng.chance(0.85 * wx.detection)),
+  ];
+  for (const f of raid) f.rec.enemiesSeen = Math.max(f.rec.enemiesSeen, interceptors.length);
+  for (const d of interceptors) d.rec.enemiesSeen = Math.max(d.rec.enemiesSeen, raid.length);
 
   ctx.t = 35;
   if (interceptors.length > 0) {
@@ -416,7 +463,7 @@ export function resolveRaid(
 
   // Target: flak and bombs.
   let damage = 0;
-  if (target !== 'sweep') {
+  if (target !== 'sweep' && target !== 'feint') {
     ctx.t += 12;
     const support = target === 'support';
     const flakLevel = defender.flak * mods.flak * wx.flak * (0.7 + 0.3 * Math.min(1, defender.facilities.industry / 100)) * (support ? 0.8 : 1);
@@ -452,18 +499,9 @@ export function resolveRaid(
     if (!s.alive) witnessLoss(ctx, s, raid);
   }
 
-  // Landing: badly shot-up aircraft may be written off on return.
   ctx.t += 25;
-  for (const f of [...raid, ...defenders]) {
-    if (f.alive && f.condition < 25 && rng.chance((25 - f.condition) / 50)) {
-      f.rec.fate = 'crashed';
-      if (f.side === attacker) say(ctx, attacker.id, f.callsign, 'Undercarriage won\'t come down. Belly landing.');
-    }
-  }
   const landed = raid.filter((f) => f.alive).length;
-  say(ctx, attacker.id, 'Tower', `${landed} of ${raid.length} aircraft down safe.`);
-
-  for (const f of [...raid, ...defenders]) f.af.condition = Math.max(0, Math.round(f.condition));
+  say(ctx, attacker.id, 'Tower', `${landed} of ${raid.length} aircraft back over base.`);
 
   return {
     attacker: attacker.id,
@@ -471,14 +509,14 @@ export function resolveRaid(
     siteId: site?.id,
     sector,
     weather: state.weather,
-    planes: [...raid.map((f) => f.rec), ...defenders.map((f) => f.rec)],
+    planes: [...raid, ...defenders, ...screen].map((f) => f.rec),
     damage: Math.round(damage),
     aborted,
     interceptors: interceptors.length,
     flakLevel: defender.flak * mods.flak * wx.flak,
     lost: [
-      [...raid, ...defenders].filter((f) => f.side.id === 0 && f.rec.fate === 'lost').length,
-      [...raid, ...defenders].filter((f) => f.side.id === 1 && f.rec.fate === 'lost').length,
+      [...raid, ...defenders, ...screen].filter((f) => f.side.id === 0 && f.rec.fate === 'lost').length,
+      [...raid, ...defenders, ...screen].filter((f) => f.side.id === 1 && f.rec.fate === 'lost').length,
     ],
     radio: ctx.radio,
   };
@@ -498,18 +536,51 @@ export function zonePhrase(z: ZoneId): string {
 }
 
 /** Recon flight: unarmed, fast. Returns true if it got its photos home. */
-export function resolveRecon(rng: Rng, side: SideState, enemy: SideState, squadronId: string): { ok: boolean; rec: PlaneRecord | null } {
+/**
+ * Recon flight: unarmed and fast. Fighters patrolling the photographed
+ * sector stand a good chance of catching it.
+ */
+export function resolveRecon(
+  rng: Rng,
+  side: SideState,
+  enemy: SideState,
+  squadronId: string,
+  day: Day = newDay(),
+  patrols: Flier[] = [],
+): { ok: boolean; rec: PlaneRecord | null; intercepted: boolean } {
   const sq = side.squadrons.find((s) => s.id === squadronId);
-  if (!sq) return { ok: false, rec: null };
+  if (!sq) return { ok: false, rec: null, intercepted: false };
   const af = flyable(sq)[0];
-  if (!af) return { ok: false, rec: null };
-  const f = makeFlier(sq, af, side, 'recon', 0);
-  const threat = 0.12 + (enemy.research.includes('radar') ? 0.1 : 0);
-  if (rng.chance(threat)) {
-    const n = rng.poisson(2);
-    for (let i = 0; i < n; i++) applyHit(rng, f, rng.pick(['tail', 'beam'] as const));
+  if (!af) return { ok: false, rec: null, intercepted: false };
+  const f = day.fliers.get(af.id) ?? makeFlier(sq, af, side, 'recon', 0);
+  day.fliers.set(af.id, f);
+  const hunters = patrols.filter((p) => p.alive);
+  const threat = hunters.length ? 0.6 : 0.12 + (enemy.research.includes('radar') ? 0.1 : 0);
+  const intercepted = rng.chance(threat);
+  if (intercepted) {
+    const n = rng.poisson(hunters.length ? 3 : 2);
+    for (let i = 0; i < n; i++) {
+      if (applyHit(rng, f, rng.pick(['tail', 'beam'] as const)) && hunters.length) {
+        rng.pick(hunters).rec.trueKills++;
+        break;
+      }
+    }
   }
   if (rng.chance(0.15)) applyHit(rng, f, 'flak');
-  af.condition = Math.max(0, Math.round(f.condition));
-  return { ok: f.alive, rec: f.rec };
+  return { ok: f.alive, rec: f.rec, intercepted };
+}
+
+/** End of the day: shot-up aircraft may be written off on landing; write back condition. */
+export function finishDay(rng: Rng, day: Day) {
+  for (const f of day.fliers.values()) {
+    if (f.alive && f.condition < 25 && rng.chance((25 - f.condition) / 50)) {
+      f.rec.fate = 'crashed';
+      day.landing.push({ t: 190, side: f.side.id, callsign: f.callsign, text: 'Undercarriage won\'t come down. Belly landing.', heardBy: f.side.id });
+    }
+    f.af.condition = Math.max(0, Math.round(f.condition));
+  }
+}
+
+function THEATER_SECTOR(state: GameState, sector: number): string {
+  return THEATERS[state.theater.index].sectors[sector] ?? 'the line';
 }

@@ -180,7 +180,8 @@ export const TARGETS: Record<TargetId, { name: string; desc: string }> = {
   airfield: { name: 'Forward Airfields', desc: 'Grounds enemy fighters and slows repairs.' },
   fuel: { name: 'Fuel Depots', desc: 'Starves the enemy of fuel.' },
   support: { name: 'Close Support', desc: 'Bomb the enemy front line at low level. Pushes the front directly; the flak is close and heavy.' },
-  sweep: { name: 'Fighter Sweep', desc: 'Fighters only. Hunt enemy fighters over the front to win air superiority.' },
+  sweep: { name: 'Fighter Sweep', desc: 'Fighters only. Hunt enemy fighters over the front; also screens it against enemy close-support raids and sweeps.' },
+  feint: { name: 'Feint', desc: 'A diversion over another sector to draw the enemy reserve away from the real raid.' },
 };
 
 export const APPROACH_LABEL: Record<FighterApproach, string> = {

@@ -6,6 +6,7 @@ import type {
   Debrief,
   FighterApproach,
   PlaneRecord,
+  RadioLine,
   RaidResult,
   SideId,
   SideState,
@@ -82,7 +83,7 @@ export function squadronReport(
   const flakHits = survivors.reduce((a, r) => a + r.hits.filter((h) => h.approach === 'flak').length, 0) / survivors.length;
   report.flakReported = flakLabel((raid ? raid.flakLevel * 0.6 : 0) + flakHits * 0.35 * bias.flak + rng.gauss(0.1));
 
-  const isBomberRaid = raid && raid.target !== 'sweep' && survivors.some((r) => r.role === 'raid');
+  const isBomberRaid = raid && raid.target !== 'sweep' && raid.target !== 'feint' && survivors.some((r) => r.role === 'raid');
   if (isBomberRaid) {
     if (rng.chance(bias.unknownRate + (sq.trauma > 0.5 ? 0.2 : 0) + WEATHER_EFFECT[raid.weather].unobserved)) {
       report.targetDamageReported = null;
@@ -128,64 +129,74 @@ export function buildDebrief(
   turn: number,
   side: SideState,
   enemy: SideState,
-  myRaid: RaidResult | null,
-  enemyRaid: RaidResult | null,
+  myRaids: RaidResult[],
+  enemyRaids: RaidResult[],
+  allRecs: PlaneRecord[],
   recon: { siteId: string; condition: number } | null,
-  reconRec: PlaneRecord | null,
+  reconLost: boolean,
   damageTaken: Partial<Record<'industry' | 'airfield' | 'fuel', number>>,
+  landing: RadioLine[] = [],
+  sectorNames: string[] = [],
 ): Debrief {
-  const mine: PlaneRecord[] = [
-    ...(myRaid?.planes.filter((p) => p.side === side.id) ?? []),
-    ...(enemyRaid?.planes.filter((p) => p.side === side.id) ?? []),
-    ...(reconRec ? [reconRec] : []),
-  ];
+  const mine = allRecs.filter((p) => p.side === side.id);
   const returned = mine.filter((p) => p.fate !== 'lost');
   const radioLines = [
-    ...(myRaid?.radio.filter((l) => l.heardBy === side.id) ?? []),
-    ...(enemyRaid?.radio.filter((l) => l.heardBy === side.id) ?? []).map((l) => ({ ...l, t: l.t + 200 })),
+    ...myRaids.flatMap((r) => r.radio.filter((l) => l.heardBy === side.id)),
+    ...enemyRaids.flatMap((r) => r.radio.filter((l) => l.heardBy === side.id)).map((l) => ({ ...l, t: l.t + 200 })),
+    ...landing.filter((l) => l.heardBy === side.id),
   ];
   const missing = mine
     .filter((p) => p.fate === 'lost')
     .map((p) => ({ serial: p.serial, squadronId: p.squadronId, kind: p.kind, lastWords: p.lastWords }));
 
+  const mainRaid = myRaids.find((r) => r.target !== 'feint') ?? null;
   const reports: SquadronReport[] = [];
   const bySq = new Map<string, PlaneRecord[]>();
   for (const p of mine) {
     if (p.role === 'recon') continue;
-    const k = p.squadronId;
-    if (!bySq.has(k)) bySq.set(k, []);
-    bySq.get(k)!.push(p);
+    if (!bySq.has(p.squadronId)) bySq.set(p.squadronId, []);
+    bySq.get(p.squadronId)!.push(p);
   }
+  const involved = (r: RaidResult, sqId: string) => r.planes.some((p) => p.squadronId === sqId);
   for (const [sqId, recs] of bySq) {
     const isDefense = recs[0].role === 'defense';
-    const raid = isDefense ? enemyRaid : myRaid;
-    reports.push(squadronReport(rng, side, sqId, recs, raid, isDefense ? 0 : (myRaid?.damage ?? 0)));
+    // Defenders report on the enemy raid they met (the main one if they met both).
+    const raid = isDefense
+      ? enemyRaids.filter((r) => involved(r, sqId)).sort((x) => (x.target === 'feint' ? 1 : -1))[0] ?? null
+      : myRaids.find((r) => involved(r, sqId)) ?? null;
+    reports.push(squadronReport(rng, side, sqId, recs, raid, !isDefense && raid && raid === mainRaid ? raid.damage : 0));
   }
 
   const defenseSummary: string[] = [];
-  if (enemyRaid) {
+  const sectorName = (n: number) => sectorNames[n] ?? `sector ${n + 1}`;
+  for (const enemyRaid of enemyRaids) {
     const enemyPlanes = enemyRaid.planes.filter((p) => p.side !== side.id);
-    const bombers = enemyPlanes.filter((p) => p.kind !== 'fighter').length;
-    const fighters = enemyPlanes.filter((p) => p.kind === 'fighter').length;
-    const seen = Math.max(0, Math.round((bombers + fighters) * (1 + rng.gauss(0.3)) * 1.15));
+    const seen = Math.max(1, Math.round(enemyPlanes.length * (1 + rng.gauss(0.3)) * 1.15));
     const enemyLost = enemyPlanes.filter((p) => p.fate === 'lost').length;
     // Flak batteries and observers claim everything that falls, and some that doesn't.
     const groundClaims = Math.round(enemyLost * rng.range(0.4, 1.0) + rng.poisson(1.5));
+    const ourSquadrons = [...new Set(enemyRaid.planes.filter((p) => p.side === side.id && p.role === 'defense').map((p) => side.squadrons.find((q) => q.id === p.squadronId)?.name).filter(Boolean))];
+    if (enemyRaid.target === 'feint') {
+      defenseSummary.push(`Observers report a formation of about ${seen} aircraft over ${sectorName(enemyRaid.sector)}. It turned away without bombing.${ourSquadrons.length ? ` ${ourSquadrons.join(' and ')} went after it.` : ''}`);
+      continue;
+    }
     if (enemyRaid.target === 'sweep') {
-      defenseSummary.push(`Enemy fighter sweep of roughly ${seen} aircraft over our sector.`);
+      defenseSummary.push(`Enemy fighter sweep of roughly ${seen} aircraft over the front.`);
     } else {
       defenseSummary.push(enemyRaid.target === 'support'
         ? `Army reports about ${seen} enemy aircraft attacking our forward positions.`
         : `Observer Corps reports an enemy formation of about ${seen} aircraft attacking our ${TARGETS[enemyRaid.target].name.toLowerCase()}.`);
       defenseSummary.push(`Flak batteries claim ${groundClaims} destroyed.`);
     }
-    const dmg = Object.entries(damageTaken).filter(([, v]) => (v ?? 0) > 0);
-    for (const [k, v] of dmg) defenseSummary.push(`Damage to our ${k === 'industry' ? 'aircraft works' : k === 'airfield' ? 'airfields' : 'fuel depots'}: ${v}% of capacity lost.`);
-  } else {
-    defenseSummary.push('No enemy raid against our sector reported.');
+    if (enemyRaid.planes.some((p) => p.side === side.id && p.role === 'raid')) {
+      defenseSummary.push('Our fighter sweep over the front ran into the enemy formation.');
+    }
   }
-
-  if (reconRec && !recon) defenseSummary.push('Photo-reconnaissance aircraft failed to return.');
+  if (enemyRaids.length === 0) defenseSummary.push('No enemy raid against our sector reported.');
+  const dmg = Object.entries(damageTaken).filter(([, v]) => (v ?? 0) > 0);
+  for (const [k, v] of dmg) defenseSummary.push(`Damage to our ${k === 'industry' ? 'aircraft works' : k === 'airfield' ? 'airfields' : 'fuel depots'}: ${v}% of capacity lost.`);
+  if (reconLost) defenseSummary.push('Photo-reconnaissance aircraft failed to return.');
+  void enemy;
 
   return {
     turn,

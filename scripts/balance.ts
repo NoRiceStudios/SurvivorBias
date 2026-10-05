@@ -18,6 +18,7 @@ function scriptedPlan(state: GameState): TurnPlan {
     defense: fighters.slice(0, 1).map((s) => s.id),
     cover: {},
     recon: null,
+    feint: null,
     embellish: 0,
   };
   let g = 0;

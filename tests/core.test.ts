@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   aiPlan,
+  gatherFliers,
+  newDay,
+  resolveRecon,
+  resolveTurn,
   applyPressure,
   depthFor,
   reachableSites,
@@ -35,6 +39,7 @@ function playerPlan(state: GameState): TurnPlan {
     defense: fighters[0] ? [fighters[0].id] : [],
     cover: {},
     recon: null,
+    feint: null,
     embellish: 0,
   };
   let guard = 0;
@@ -125,7 +130,7 @@ describe('survivorship bias', () => {
         for (const sq of side.squadrons) sq.armor = chooseArmor(side, sq);
         const enemy = s.sides[1];
         const plan = playerPlan(s);
-        const r = resolveRaid(new Rng({ s: 1234 + g }), s, side, enemy, plan, aiPlan(s, 1));
+        const r = resolveRaid(new Rng({ s: 1234 + g }), s, side, enemy, plan.raid, aiPlan(s, 1));
         if (!r) continue;
         const mine = r.planes.filter((p) => p.side === 0 && p.kind !== 'fighter');
         sent += mine.length;
@@ -197,7 +202,7 @@ describe('theaters', () => {
         const def = aiPlan(s, 1);
         def.defense = s.sides[1].squadrons.filter((q) => q.kind === 'fighter').map((q) => q.id);
         def.cover = Object.fromEntries(def.defense.map((id) => [id, coverRight ? site.sector : 5]));
-        const r = resolveRaid(new Rng({ s: 99 + g }), s, s.sides[0], s.sides[1], plan, def);
+        const r = resolveRaid(new Rng({ s: 99 + g }), s, s.sides[0], s.sides[1], plan.raid, def);
         n += r?.interceptors ?? 0;
       }
       return n;
@@ -226,5 +231,103 @@ describe('theater transitions', () => {
       for (const side of s.sides)
         for (const o of side.orders) if (o.siteId) expect(s.theater.sites.some((x) => x.id === o.siteId)).toBe(true);
     }
+  });
+});
+
+describe('hotseat missions', () => {
+  /** Defender holds every fighter squadron in reserve. */
+  const reserveDefence = (s: GameState): TurnPlan => {
+    const p = emptyPlan();
+    p.defense = s.sides[1].squadrons.filter((q) => q.kind === 'fighter').map((q) => q.id);
+    return p;
+  };
+
+  it('a feint draws reserve fighters away from the main raid', () => {
+    const run = (withFeint: boolean) => {
+      let met = 0;
+      for (let g = 0; g < 40; g++) {
+        const s = startCampaign({ seed: `feint${g}` });
+        const plan = playerPlan(s);
+        const fighters = s.sides[0].squadrons.filter((q) => q.kind === 'fighter');
+        plan.raid!.squadronIds = plan.raid!.squadronIds.filter((id) => id !== fighters[1].id);
+        const main = s.theater.sites.find((x) => x.id === plan.raid!.siteId)!.sector;
+        plan.feint = withFeint ? { squadronIds: [fighters[1].id], sector: main === 3 ? 4 : 3 } : null;
+        const r = resolveTurn(s, [plan, reserveDefence(s)]);
+        met += r.raids[0]?.interceptors ?? 0;
+      }
+      return met;
+    };
+    expect(run(true)).toBeLessThan(run(false) * 0.85);
+  });
+
+  it('a feint over the main raid sector is rejected', () => {
+    const s = startCampaign({ seed: 'feint-same' });
+    const plan = playerPlan(s);
+    const main = s.theater.sites.find((x) => x.id === plan.raid!.siteId)!.sector;
+    const f = s.sides[0].squadrons.find((q) => q.kind === 'fighter' && !plan.raid!.squadronIds.includes(q.id) && !plan.defense.includes(q.id));
+    plan.defense = [];
+    plan.feint = { squadronIds: [f?.id ?? s.sides[0].squadrons[0].id], sector: main };
+    expect(validatePlan(s.sides[0], plan, s).ok).toBe(false);
+  });
+
+  it('a fighter sweep screens the front against enemy close support', () => {
+    let screened = 0;
+    for (let g = 0; g < 20; g++) {
+      const s = startCampaign({ seed: `screen${g}` });
+      const attack = emptyPlan();
+      attack.raid = { target: 'support', squadronIds: s.sides[0].squadrons.filter((q) => q.kind === 'medium').map((q) => q.id) };
+      const def = emptyPlan();
+      def.raid = { target: 'sweep', squadronIds: s.sides[1].squadrons.filter((q) => q.kind === 'fighter').map((q) => q.id) };
+      const r = resolveTurn(s, [attack, def]);
+      screened += r.raids[0]!.interceptors;
+    }
+    expect(screened).toBeGreaterThan(20 * 5);
+  });
+
+  it('every aircraft has exactly one record per day', () => {
+    const s = startCampaign({ seed: 'unique' });
+    const plan = playerPlan(s);
+    const ai = aiPlan(s, 1);
+    resolveTurn(s, [plan, ai]);
+    for (const d of s.lastDebriefs) {
+      const ids = [...d!.returned, ...d!.missing.map((m) => ({ airframeId: m.serial }))].map((r) => r.airframeId);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+  });
+
+  it('recon over a patrolled sector is intercepted more often', () => {
+    const run = (patrolled: boolean) => {
+      let jumped = 0;
+      for (let g = 0; g < 60; g++) {
+        const s = startCampaign({ seed: `recon${g}` });
+        const site = s.theater.sites.find((x) => x.owner === 1)!;
+        const fighters = s.sides[1].squadrons.filter((q) => q.kind === 'fighter');
+        const day = newDay();
+        const patrols = patrolled ? gatherFliers(s.sides[1], fighters.map((q) => q.id), () => 'defense', day) : [];
+        s.sides[0].squadrons.push({ ...s.sides[0].squadrons[0], id: 'rc', kind: 'recon', airframes: [{ ...s.sides[0].squadrons[0].airframes[0], id: 'rcaf', kind: 'recon' }], crews: 1 });
+        const r = resolveRecon(new Rng({ s: g }), s.sides[0], s.sides[1], 'rc', day, patrols);
+        if (r.intercepted) jumped++;
+        void site;
+      }
+      return jumped;
+    };
+    expect(run(true)).toBeGreaterThan(run(false) * 2);
+  });
+
+  it('sealed hotseat orders survive a save and load', () => {
+    const s = startCampaign({ seed: 'sealed', mode: 'hotseat', commanders: ['Cdre Ashworth', 'Oberst Voigt'] });
+    s.sealed[0] = playerPlan(s);
+    const copy = deserialize(serialize(s));
+    expect(copy.sealed[0]).toEqual(s.sealed[0]);
+    expect(copy.sides[1].commander).toBe('Oberst Voigt');
+  });
+
+  it('loads a version 2 save', () => {
+    const s = startCampaign({ seed: 'v2' }) as unknown as Record<string, unknown>;
+    const old = { ...s, version: 2 } as Record<string, unknown>;
+    delete old.sealed;
+    const loaded = deserialize(JSON.stringify(old));
+    expect(loaded.version).toBe(3);
+    expect(loaded.sealed).toEqual([null, null]);
   });
 });

@@ -7,9 +7,10 @@ import { resolveTurn } from './turn';
 import type { GameState, SideId, TurnPlan } from './types';
 
 /** Create a new campaign with opening orders and memos. */
-export function startCampaign(opts: NewGameOptions = {}): GameState {
+export function startCampaign(opts: NewGameOptions & { commanders?: [string, string] } = {}): GameState {
   const state = newGame(opts);
   const rng = new Rng(state.rng);
+  if (opts.commanders) opts.commanders.forEach((c, i) => { if (c.trim()) state.sides[i].commander = c.trim().slice(0, 40); });
   for (const side of state.sides) {
     const enemy = state.sides[(1 - side.id) as SideId];
     const t = state.theater;
@@ -57,6 +58,13 @@ export function serialize(state: GameState): string {
 export function deserialize(json: string): GameState {
   const s = JSON.parse(json) as GameState;
   if (!s || typeof s !== 'object' || !Array.isArray(s.sides)) throw new Error('Not a Survivor Bias save file');
+  // Version 2 saves predate feints, commander names and sealed hotseat orders.
+  if (s.version === 2) {
+    s.sealed = [null, null];
+    for (const side of s.sides) side.commander ??= side.id === 0 ? 'Air Commodore' : 'Oberst';
+    s.version = 3;
+  }
   if (s.version !== SAVE_VERSION) throw new Error(`Save version ${s.version} is not supported (expected ${SAVE_VERSION})`);
+  for (const p of s.sealed) if (p) p.feint ??= null;
   return s;
 }

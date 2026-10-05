@@ -3,7 +3,7 @@ import { AIRCRAFT, RESEARCH, TARGETS } from './data';
 import { buildDebrief, updatePerceived } from './reports';
 import { Rng } from './rng';
 import { makeAirframe, makeLeader, makeSquadron } from './setup';
-import { resolveRaid, resolveRecon } from './sim';
+import { finishDay, gatherFliers, newDay, resolveRaid, resolveRecon, type Flier } from './sim';
 import {
   applyPressure,
   enterTheater,
@@ -372,6 +372,7 @@ function secondaryObjectives(rng: Rng, state: GameState, news: [string[], string
 
 export interface TurnResult {
   raids: [RaidResult | null, RaidResult | null];
+  feints: [RaidResult | null, RaidResult | null];
 }
 
 /**
@@ -391,16 +392,57 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     state.sides[id].resources.munitions = Math.max(0, state.sides[id].resources.munitions - c.munitions);
   }
 
-  const raids: [RaidResult | null, RaidResult | null] = [
-    resolveRaid(battle, state, s0, s1, plans[0], plans[1]),
-    resolveRaid(battle, state, s1, s0, plans[1], plans[0]),
-  ];
+  const day = newDay();
+  const other = (id: SideId) => (1 - id) as SideId;
 
-  const recons: [{ ok: boolean; rec: PlaneRecord | null } | null, { ok: boolean; rec: PlaneRecord | null } | null] = [null, null];
+  // 1. Feints go in first. The enemy controller may scramble reserve squadrons at them;
+  //    patrols over the feint sector engage it as a matter of course.
+  const feints: [RaidResult | null, RaidResult | null] = [null, null];
+  for (const id of [0, 1] as SideId[]) {
+    const f = plans[id].feint;
+    if (!f || f.squadronIds.length === 0) continue;
+    const defender = state.sides[other(id)];
+    const dp = plans[other(id)];
+    const radar = defender.research.includes('radar');
+    const drawnSquadrons = new Set(dp.defense.filter((sqId) => dp.cover[sqId] === f.sector || (dp.cover[sqId] === undefined && battle.chance(radar ? 0.25 : 0.5))));
+    const drawn = gatherFliers(defender, dp.defense, () => 'defense', day).filter((x) => drawnSquadrons.has(x.sq.id) && x.af.kind === 'fighter' && x.alive && !x.committed);
+    for (const x of drawn) x.committed = true;
+    feints[id] = resolveRaid(battle, state, state.sides[id], defender, { target: 'feint', squadronIds: f.squadronIds }, dp, { day, feintSector: f.sector, onlyDefenders: drawn });
+  }
+
+  // 2. Main raids. Fighters sweeping the front also screen it: enemy close-support
+  //    raids and sweeps over the front run into them.
+  const sweepers = (id: SideId): Flier[] => {
+    const r = plans[id].raid;
+    return r?.target === 'sweep' ? gatherFliers(state.sides[id], r.squadronIds, () => 'raid', day).filter((f) => f.af.kind === 'fighter') : [];
+  };
+  const raids: [RaidResult | null, RaidResult | null] = [null, null];
+  for (const id of [0, 1] as SideId[]) {
+    const r = plans[id].raid;
+    let screen: Flier[] = [];
+    if (r && (r.target === 'support' || (r.target === 'sweep' && !day.metFront))) {
+      screen = sweepers(other(id));
+      if (r.target === 'sweep' && screen.length) day.metFront = true;
+    }
+    raids[id] = resolveRaid(battle, state, state.sides[id], state.sides[other(id)], r, plans[other(id)], { day, screen });
+  }
+
+  // 3. Recon: fighters patrolling the photographed sector may catch it.
+  const recons: [ReturnType<typeof resolveRecon> | null, ReturnType<typeof resolveRecon> | null] = [null, null];
   for (const id of [0, 1] as SideId[]) {
     const p = plans[id];
-    if (p.recon) recons[id] = resolveRecon(battle, state.sides[id], state.sides[(1 - id) as SideId], p.recon.squadronId);
+    if (!p.recon) continue;
+    const site = t.sites.find((x) => x.id === p.recon!.siteId);
+    const ep = plans[other(id)];
+    const patrols = site
+      ? gatherFliers(state.sides[other(id)], ep.defense.filter((sqId) => ep.cover[sqId] === site.sector), () => 'defense', day).filter((f) => f.alive && f.available !== false && f.af.kind === 'fighter')
+      : [];
+    recons[id] = resolveRecon(battle, state.sides[id], state.sides[other(id)], p.recon.squadronId, day, patrols);
   }
+
+  // 4. Landing.
+  finishDay(battle, day);
+  const allRecs = [...day.fliers.values()].map((f) => f.rec);
 
   // Damage (true). Strikes hit sites; close support pushes the front directly.
   const damageTaken: [Partial<Facilities>, Partial<Facilities>] = [{}, {}];
@@ -409,7 +451,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     const r = raids[id];
     if (!r) continue;
     if (r.target === 'support') supportPush[id] = r.damage * mods.support;
-    else if (r.target !== 'sweep') {
+    else if (r.target !== 'sweep' && r.target !== 'feint') {
       const dealt = applyDamage(state, r.siteId, r.damage);
       damageTaken[(1 - id) as SideId][r.target] = dealt;
       r.damage = dealt;
@@ -417,15 +459,11 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   }
 
   // Losses & morale.
-  const allRecs = [...(raids[0]?.planes ?? []), ...(raids[1]?.planes ?? [])];
-  for (const id of [0, 1] as SideId[]) {
-    const rr = recons[id]?.rec;
-    applyLosses(rng, state.sides[id], rr ? [...allRecs, rr] : allRecs);
-  }
+  for (const id of [0, 1] as SideId[]) applyLosses(rng, state.sides[id], allRecs);
 
   // Pressure on the front moves on true results.
-  const lost0 = (raids[0]?.lost[0] ?? 0) + (raids[1]?.lost[0] ?? 0);
-  const lost1 = (raids[0]?.lost[1] ?? 0) + (raids[1]?.lost[1] ?? 0);
+  const lost0 = allRecs.filter((r) => r.side === 0 && r.fate === 'lost').length;
+  const lost1 = allRecs.filter((r) => r.side === 1 && r.fate === 'lost').length;
   const strat0 = raids[0] && raids[0].target !== 'support' ? raids[0].damage : 0;
   const strat1 = raids[1] && raids[1].target !== 'support' ? raids[1].damage : 0;
   syncFacilities(state);
@@ -455,7 +493,11 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       if (state.weather === 'storm' && rng.chance(0.6)) news[id].push('Photo-reconnaissance returned, but the target was hidden by cloud.');
       else reconResult = { siteId: reconSite.id, condition: Math.max(0, Math.min(100, Math.round(reconSite.condition + rng.gauss(2)))) };
     }
-    const d = buildDebrief(rng, state.turn, side, enemy, raids[id], raids[(1 - id) as SideId], reconResult, rc?.rec ?? null, damageTaken[id]);
+    if (rc?.intercepted && rc.ok) news[id].push('The photo-reconnaissance aircraft was jumped by fighters over the target and only just got home.');
+    const d = buildDebrief(rng, state.turn, side, enemy,
+      [raids[id], feints[id]].filter((x): x is RaidResult => !!x),
+      [raids[other(id)], feints[other(id)]].filter((x): x is RaidResult => !!x),
+      allRecs, reconResult, !!rc && !rc.ok, damageTaken[id], day.landing, theaterDef(state).sectors);
     updatePerceived(rng, side, d, raids[id]);
     // Army liaison: honest about towns, optimistic about pressure.
     side.perceived.front = Math.round(state.front * (id === 0 ? 1 : -1) + 5 + rng.gauss(5));
@@ -474,7 +516,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   // Archive the truth.
   const hitsOf = (side: SideId, lost: boolean): Hit[] =>
     allRecs
-      .filter((r) => r.side === side && r.kind !== 'fighter' && (lost ? r.fate === 'lost' : r.fate !== 'lost'))
+      .filter((r) => r.side === side && (r.kind === 'medium' || r.kind === 'heavy') && (lost ? r.fate === 'lost' : r.fate !== 'lost'))
       .flatMap((r) => r.hits);
   const entry: ArchiveEntry = {
     turn: state.turn,
@@ -529,6 +571,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   if (!state.outcome) state.outcome = commandFailure(state);
   if (!decision) rollWeather(state, rng);
   state.rng = rng.state;
+  state.sealed = [null, null];
   if (!state.outcome) state.turn++;
-  return { raids };
+  return { raids, feints };
 }

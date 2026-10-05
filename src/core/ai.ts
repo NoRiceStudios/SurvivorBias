@@ -2,7 +2,7 @@ import { emptyPlan, queueAircraft, setApproach, startResearch, upgradeFactory, u
 import { AIRCRAFT, APPROACH_ZONES, MAX_ARMOR_PER_ZONE, RESEARCH, ZONE_AREA } from './data';
 import { Rng } from './rng';
 import { flyable } from './sim';
-import { bomberRange, depthFor, escortRange, reachableSites, theaterMods } from './theaters';
+import { bomberRange, depthFor, escortRange, frontSector, reachableSites, sectorAtDepth, theaterMods } from './theaters';
 import { act } from './turn';
 import type { GameState, SideId, SideState, Squadron, TargetId, TurnPlan, ZoneId } from './types';
 import { ZONES } from './types';
@@ -143,6 +143,13 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   } else if (escorts.length > 0) {
     plan.raid = { target: 'sweep', squadronIds: [escorts[0].id] };
   }
+  // Occasionally fly a feint with a spare fighter squadron to pull the enemy reserve away.
+  const spare = escorts.filter((q) => !plan.raid?.squadronIds.includes(q.id) && !plan.defense.includes(q.id));
+  if (plan.raid && plan.raid.target !== 'sweep' && spare.length && rng.chance(0.4)) {
+    const mainSector = plan.raid.siteId ? t.sites.find((x) => x.id === plan.raid!.siteId)!.sector : frontSector(t, id);
+    const options = [1, 2].map((d) => sectorAtDepth(t.held0, (1 - id) as SideId, d)).filter((sec) => sec !== mainSector && sec >= 0 && sec < 6);
+    if (options.length) plan.feint = { squadronIds: [spare[0].id], sector: rng.pick(options) };
+  }
   const recon = side.squadrons.find((q) => q.kind === 'recon' && ready(q) > 0);
   const enemySites = t.sites.filter((x) => x.owner !== id);
   if (recon && enemySites.length && rng.chance(0.6)) {
@@ -161,6 +168,7 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   let guard = 0;
   while (!validatePlan(side, plan, state).ok && guard++ < 10) {
     if (plan.recon) plan.recon = null;
+    else if (plan.feint) plan.feint = null;
     else if (plan.raid && plan.raid.squadronIds.length > 1) plan.raid.squadronIds.pop();
     else if (plan.raid) plan.raid = null;
     else if (plan.defense.length) plan.defense.pop();
