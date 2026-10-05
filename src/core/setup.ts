@@ -1,0 +1,211 @@
+import { AIRCRAFT, FIRST_NAMES, LAST_NAMES, RANKS, SIDE_NAMES, SQUADRON_NAMES } from './data';
+import { Rng } from './rng';
+import type {
+  AircraftKind,
+  Airframe,
+  Archetype,
+  Doctrine,
+  GameState,
+  Leader,
+  Perceived,
+  SideId,
+  SideState,
+  Squadron,
+  ZoneMap,
+} from './types';
+import { ZONES } from './types';
+
+export const SAVE_VERSION = 1;
+
+export function zoneMap<T>(fn: (z: (typeof ZONES)[number]) => T): ZoneMap<T> {
+  return Object.fromEntries(ZONES.map((z) => [z, fn(z)])) as ZoneMap<T>;
+}
+
+export function defaultArmor(kind: AircraftKind): ZoneMap<number> {
+  // "Factory standard" layout: plates where the pre-war manual said to put them.
+  const a = zoneMap(() => 0);
+  if (kind === 'fighter') {
+    a.fuselage = 1;
+    a.tail = 1;
+    a.outerWing = 1;
+  } else if (kind === 'medium') {
+    a.fuselage = 2;
+    a.outerWing = 2;
+    a.tail = 1;
+    a.cockpit = 1;
+  } else if (kind === 'heavy') {
+    a.fuselage = 3;
+    a.outerWing = 3;
+    a.tail = 2;
+    a.cockpit = 1;
+  } else {
+    a.fuselage = 1;
+  }
+  return a;
+}
+
+export function defaultDoctrine(kind: AircraftKind): Doctrine {
+  return {
+    aggression: kind === 'fighter' ? 0.6 : 0.5,
+    formation: kind === 'fighter' ? 0.4 : 0.6,
+    breakOff: 0.5,
+    altitude: kind === 'fighter' ? 0.5 : 0.6,
+  };
+}
+
+export function newId(state: { nextId: number }, prefix: string): string {
+  return `${prefix}${state.nextId++}`;
+}
+
+export function makeAirframe(
+  state: { nextId: number },
+  rng: Rng,
+  kind: AircraftKind,
+  side: SideId,
+  defectScale = 0.5,
+): Airframe {
+  const n = state.nextId++;
+  const letters = side === 0 ? 'ABCDEFGHJKLMNPRSTVWX' : 'ABCDEFGHKLMNPRSTUVWZ';
+  const serial =
+    side === 0
+      ? `${letters[n % letters.length]}${letters[(n * 7) % letters.length]}-${100 + ((n * 37) % 900)}`
+      : `${10 + (n % 89)}+${letters[(n * 3) % letters.length]}${letters[(n * 11) % letters.length]}`;
+  return {
+    id: `af${n}`,
+    serial,
+    kind,
+    condition: 100,
+    hits: [],
+    patches: 0,
+    sorties: 0,
+    defect: rng.chance(0.25 * defectScale * 2) ? rng.range(0.05, 0.4) * defectScale * 2 : 0,
+    status: 'ready',
+    repairTurns: 0,
+  };
+}
+
+export function makeLeader(rng: Rng, side: SideId, archetype?: Archetype): Leader {
+  const archetypes: Archetype[] = ['braggart', 'pessimist', 'gloryHunter', 'byTheBook', 'timid'];
+  return {
+    name: `${rng.pick(FIRST_NAMES[side])} ${rng.pick(LAST_NAMES[side])}`,
+    rank: rng.pick(RANKS[side]),
+    archetype: archetype ?? rng.pick(archetypes),
+  };
+}
+
+export function makeSquadron(
+  state: { nextId: number },
+  rng: Rng,
+  side: SideId,
+  kind: AircraftKind,
+  size: number,
+  nameIndex: number,
+  archetype?: Archetype,
+): Squadron {
+  const names = SQUADRON_NAMES[side];
+  const sq: Squadron = {
+    id: newId(state, 'sq'),
+    name: names[nameIndex % names.length],
+    side,
+    kind,
+    airframes: [],
+    crews: size,
+    skill: rng.range(0.4, 0.55),
+    morale: rng.range(0.65, 0.8),
+    fatigue: 0,
+    trauma: 0,
+    leader: makeLeader(rng, side, archetype),
+    doctrine: defaultDoctrine(kind),
+    armor: defaultArmor(kind),
+    notables: [],
+    insignia: nameIndex % 10,
+  };
+  for (let i = 0; i < size; i++) sq.airframes.push(makeAirframe(state, rng, kind, side));
+  return sq;
+}
+
+export function emptyPerceived(): Perceived {
+  return {
+    enemyFighters: 30,
+    enemyFightersSd: 15,
+    enemyBombers: 12,
+    enemyFlak: 0.5,
+    enemyApproach: { tail: 0.34, headOn: 0.33, beam: 0.33 },
+    enemyFacilities: { industry: 100, airfield: 100, fuel: 100 },
+    front: 0,
+    enemyArmorSeen: zoneMap(() => 0),
+    survivorHits: zoneMap(() => 0),
+    claimedKillsTotal: 0,
+  };
+}
+
+function makeSide(state: GameState, rng: Rng, id: SideId, isAI: boolean): SideState {
+  const archetypes: Archetype[] = rng.shuffle(['braggart', 'pessimist', 'gloryHunter', 'byTheBook', 'timid']);
+  const order = rng.shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  const squadrons: Squadron[] = [
+    makeSquadron(state, rng, id, 'fighter', 8, order[0], archetypes[0]),
+    makeSquadron(state, rng, id, 'fighter', 8, order[1], archetypes[1]),
+    makeSquadron(state, rng, id, 'medium', 6, order[2], archetypes[2]),
+    makeSquadron(state, rng, id, 'medium', 6, order[3], archetypes[3]),
+  ];
+  // Keep fighter names for fighters on the Directorate side where names imply role.
+  return {
+    id,
+    name: SIDE_NAMES[id].name,
+    short: SIDE_NAMES[id].short,
+    isAI,
+    insight: 0.35,
+    resources: { supplies: 160, fuel: 140, munitions: 90, replacements: 6 },
+    squadrons,
+    factory: { level: 1, qc: 'standard', queue: [], progress: 0 },
+    training: { level: 1, focus: 'balanced', inTraining: 0 },
+    facilities: { industry: 100, airfield: 100, fuel: 100 },
+    research: [],
+    researching: null,
+    researchProgress: 0,
+    trust: 60,
+    approach: { tail: 0.6, headOn: 0.1, beam: 0.3 },
+    flak: 0.5,
+    perceived: emptyPerceived(),
+    orders: [],
+    memos: [],
+    lowMoraleTurns: 0,
+    caught: 0,
+  };
+}
+
+export interface NewGameOptions {
+  seed?: string;
+  mode?: 'single' | 'hotseat' | 'lan';
+  maxTurns?: number;
+  /** AI difficulty: 0 (naive) .. 1 (understands survivorship bias). */
+  aiInsight?: number;
+}
+
+export function newGame(opts: NewGameOptions = {}): GameState {
+  const seed = opts.seed ?? String(Date.now());
+  const rng = Rng.fromSeed(seed);
+  const state: GameState = {
+    version: SAVE_VERSION,
+    seed,
+    rng: rng.state,
+    turn: 1,
+    maxTurns: opts.maxTurns ?? 30,
+    mode: opts.mode ?? 'single',
+    sides: undefined as unknown as [SideState, SideState],
+    front: 0,
+    lastDebriefs: [null, null],
+    archive: [],
+    outcome: null,
+    nextId: 1,
+  };
+  const single = state.mode === 'single';
+  state.sides = [makeSide(state, rng, 0, false), makeSide(state, rng, 1, single)];
+  if (single) state.sides[1].insight = opts.aiInsight ?? 0.4;
+  state.rng = rng.state;
+  return state;
+}
+
+export function aircraftName(kind: AircraftKind, side: SideId): string {
+  return AIRCRAFT[kind].name[side];
+}

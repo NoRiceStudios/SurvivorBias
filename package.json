@@ -1,0 +1,33 @@
+{
+  "name": "survivor-bias",
+  "version": "0.1.0",
+  "description": "Survivor Bias - a game about commanding an air wing from the reports of those who came back.",
+  "main": "dist/electron/main.js",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "start": "npm run build && electron .",
+    "package:win": "npm run build && node scripts/package-win.mjs",
+    "screenshots": "npm run build && node scripts/screenshots.mjs",
+    "balance": "npx tsx scripts/balance.ts"
+  },
+  "author": "NoRiceStudios",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "@types/node": "^26.6.4",
+    "electron": "^44.5.1",
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.63.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "@fontsource/pixelify-sans": "^5.3.0",
+    "@fontsource/silkscreen": "^5.3.0",
+    "@fontsource/vt323": "^5.3.0"
+  }
+}
