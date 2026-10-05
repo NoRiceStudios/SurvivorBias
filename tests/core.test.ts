@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   aiPlan,
+  applyPressure,
+  depthFor,
+  reachableSites,
+  SECTOR_PRESSURE,
+  THEATERS,
   chooseArmor,
   deserialize,
   emptyPlan,
@@ -22,14 +27,18 @@ function playerPlan(state: GameState): TurnPlan {
   const side = state.sides[0];
   const fighters = side.squadrons.filter((s) => s.kind === 'fighter');
   const bombers = side.squadrons.filter((s) => s.kind !== 'fighter' && s.kind !== 'recon');
+  const site = reachableSites(state, 0, 'medium')[0];
   const plan: TurnPlan = {
-    raid: { target: 'industry', squadronIds: [...bombers.map((s) => s.id), fighters[1]?.id].filter(Boolean) as string[] },
+    raid: site
+      ? { target: site.type, siteId: site.id, squadronIds: [...bombers.map((s) => s.id), fighters[1]?.id].filter(Boolean) as string[] }
+      : { target: 'support', squadronIds: bombers.map((s) => s.id) },
     defense: fighters[0] ? [fighters[0].id] : [],
+    cover: {},
     recon: null,
     embellish: 0,
   };
   let guard = 0;
-  while (!validatePlan(side, plan).ok && guard++ < 10) {
+  while (!validatePlan(side, plan, state).ok && guard++ < 10) {
     if (plan.raid && plan.raid.squadronIds.length > 1) plan.raid.squadronIds.pop();
     else plan.raid = null;
   }
@@ -146,5 +155,64 @@ describe('actions', () => {
     plan.raid = { target: 'sweep', squadronIds: [f.id] };
     plan.defense = [f.id];
     expect(validatePlan(s.sides[0], plan).ok).toBe(false);
+  });
+});
+
+describe('theaters', () => {
+  it('starts in the first theater with symmetric sites', () => {
+    const s = startCampaign({ seed: 't0' });
+    expect(s.theater.index).toBe(0);
+    const own = (side: 0 | 1) => s.theater.sites.filter((x) => x.owner === side).length;
+    expect(own(0)).toBe(own(1));
+    expect(s.sides[0].facilities.industry).toBe(100);
+  });
+
+  it('captures a sector and its facilities when pressure builds', () => {
+    const s = startCampaign({ seed: 't1' });
+    const before = s.theater.held0;
+    const frontSites = s.theater.sites.filter((x) => x.sector === before);
+    s.front = SECTOR_PRESSURE + 5;
+    applyPressure(s);
+    expect(s.theater.held0).toBe(before + 1);
+    for (const x of frontSites) expect(x.owner).toBe(0);
+    expect(s.front).toBe(5);
+  });
+
+  it('medium bombers cannot reach the enemy rear sector', () => {
+    const s = startCampaign({ seed: 't2' });
+    const rear = s.theater.sites.find((x) => x.owner === 1 && depthFor(s.theater.held0, 0, x.sector) === 3)!;
+    const plan = playerPlan(s);
+    plan.raid = { target: rear.type, siteId: rear.id, squadronIds: s.sides[0].squadrons.filter((q) => q.kind === 'medium').map((q) => q.id) };
+    expect(validatePlan(s.sides[0], plan, s).ok).toBe(false);
+    expect(reachableSites(s, 0, 'heavy').some((x) => x.id === rear.id)).toBe(true);
+  });
+
+  it('fighters patrolling the raided sector intercept more often than those patrolling elsewhere', () => {
+    const count = (coverRight: boolean) => {
+      let n = 0;
+      for (let g = 0; g < 40; g++) {
+        const s = startCampaign({ seed: `cov${g}` });
+        const plan = playerPlan(s);
+        const site = s.theater.sites.find((x) => x.id === plan.raid!.siteId)!;
+        const def = aiPlan(s, 1);
+        def.defense = s.sides[1].squadrons.filter((q) => q.kind === 'fighter').map((q) => q.id);
+        def.cover = Object.fromEntries(def.defense.map((id) => [id, coverRight ? site.sector : 5]));
+        const r = resolveRaid(new Rng({ s: 99 + g }), s, s.sides[0], s.sides[1], plan, def);
+        n += r?.interceptors ?? 0;
+      }
+      return n;
+    };
+    expect(count(true)).toBeGreaterThan(count(false) * 2);
+  });
+
+  it('a campaign moves through more than one theater', () => {
+    let maxTheater = 0;
+    for (let g = 0; g < 6; g++) {
+      const s = startCampaign({ seed: `prog${g}` });
+      while (!s.outcome) endTurnSingle(s, playerPlan(s));
+      maxTheater = Math.max(maxTheater, s.theaterResults.length);
+      for (const r of s.theaterResults) expect(r.weeks).toBeLessThanOrEqual(THEATERS[r.index].weeks);
+    }
+    expect(maxTheater).toBeGreaterThan(1);
   });
 });

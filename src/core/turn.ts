@@ -4,6 +4,19 @@ import { buildDebrief, updatePerceived } from './reports';
 import { Rng } from './rng';
 import { makeAirframe, makeLeader, makeSquadron } from './setup';
 import { resolveRaid, resolveRecon } from './sim';
+import {
+  applyPressure,
+  enterTheater,
+  frontSector,
+  reachableSites,
+  rollWeather,
+  sectorOwner,
+  syncFacilities,
+  theaterDecision,
+  theaterDef,
+  theaterMods,
+  THEATERS,
+} from './theaters';
 import type {
   AircraftKind,
   ArchiveEntry,
@@ -21,9 +34,9 @@ import type {
   TurnPlan,
 } from './types';
 
-export function act(turn: number, maxTurns: number): 1 | 2 | 3 {
-  const f = turn / maxTurns;
-  return f <= 0.34 ? 1 : f <= 0.67 ? 2 : 3;
+/** Which theater (1..3) the war has reached; drives AI escalation and HQ demands. */
+export function act(state: GameState): 1 | 2 | 3 {
+  return Math.min(3, state.theater.index + 1) as 1 | 2 | 3;
 }
 
 function memo(side: SideState, turn: number, kind: Memo['kind'], subject: string, body: string, from = 'Air Ministry') {
@@ -87,17 +100,18 @@ function applyLosses(rng: Rng, side: SideState, recs: PlaneRecord[]) {
   }
 }
 
-function applyDamage(f: Facilities, target: TargetId, dmg: number): number {
-  if (target === 'sweep' || dmg <= 0) return 0;
-  const before = f[target];
-  f[target] = Math.max(0, Math.round(f[target] - dmg));
-  return before - f[target];
+function applyDamage(state: GameState, siteId: string | undefined, dmg: number): number {
+  const site = state.theater.sites.find((x) => x.id === siteId);
+  if (!site || dmg <= 0) return 0;
+  const before = site.condition;
+  site.condition = Math.max(0, Math.round(site.condition - dmg));
+  return before - site.condition;
 }
 
 function economy(rng: Rng, state: GameState, side: SideState) {
   const r = side.resources;
   const trustF = 0.4 + side.trust / 100;
-  const bonus = side.isAI ? 1 + 0.15 * (act(state.turn, state.maxTurns) - 1) : 1;
+  const bonus = side.isAI ? 1 + 0.15 * (act(state) - 1) : 1;
   const sup = Math.round((45 + 45 * trustF) * (0.55 + 0.45 * side.facilities.industry / 100) * bonus);
   const fuel = Math.round((35 + 35 * trustF) * (0.3 + 0.7 * side.facilities.fuel / 100) * bonus);
   const mun = Math.round((25 + 20 * trustF) * bonus);
@@ -188,19 +202,27 @@ function economy(rng: Rng, state: GameState, side: SideState) {
     }
   }
 
-  // Facility repair.
-  for (const k of ['industry', 'airfield', 'fuel'] as const) side.facilities[k] = Math.min(100, side.facilities[k] + 4);
+  // Facility repair: each site the side holds is patched up a little.
+  for (const site of state.theater.sites) if (site.owner === side.id) site.condition = Math.min(100, site.condition + 4);
 }
 
 function newOrder(rng: Rng, state: GameState, side: SideState): Order {
-  const a = act(state.turn, state.maxTurns);
-  const kind = rng.weighted({ strike: 0.5, kills: 0.35, sorties: 0.15 });
+  const a = act(state);
+  const t = state.theater;
+  const def = theaterDef(state);
   const id = `o${state.nextId++}`;
   const deadline = state.turn + rng.int(1, 2);
+  const targets = reachableSites(state, side.id, 'medium');
+  const kind = rng.weighted({ strike: targets.length ? 0.45 : 0, kills: 0.3, sorties: 0.1, advance: t.week >= 2 ? 0.2 : 0 });
   if (kind === 'strike') {
-    const target = rng.pick(['industry', 'airfield', 'fuel'] as const);
+    const site = rng.pick(targets);
     const amount = 10 + 5 * a + rng.int(0, 6);
-    return { id, kind, target, amount, deadline, text: `Inflict at least ${amount}% damage on the enemy ${TARGETS[target].name.toLowerCase()} by week ${deadline}.` };
+    return { id, kind, target: site.type, siteId: site.id, amount, deadline, text: `Inflict at least ${amount}% damage on the ${site.name} by week ${deadline}.` };
+  }
+  if (kind === 'advance') {
+    const sector = frontSector(t, side.id);
+    const dl = state.turn + 3;
+    return { id, kind, amount: sector, deadline: dl, text: `Support the Army until ${def.sectors[sector]} is in our hands, by week ${dl}.` };
   }
   if (kind === 'kills') {
     const amount = 6 + 3 * a + rng.int(0, 4);
@@ -212,7 +234,8 @@ function newOrder(rng: Rng, state: GameState, side: SideState): Order {
 
 interface Reported {
   kills: number;
-  damage: Partial<Record<TargetId, number>>;
+  /** Reported damage, by site id. */
+  damage: Record<string, number>;
   sorties: number;
 }
 
@@ -228,9 +251,11 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
   for (const o of side.orders) {
     if (o.done || o.failed) continue;
     if (o.kind === 'kills') o.amount -= toHq.kills;
-    if (o.kind === 'strike' && o.target) o.amount -= toHq.damage[o.target] ?? 0;
+    if (o.kind === 'strike' && o.siteId) o.amount -= toHq.damage[o.siteId] ?? 0;
     if (o.kind === 'sorties') o.amount -= toHq.sorties;
-    if (o.amount <= 0) {
+    // The Army knows where its own front line is: this one cannot be talked up.
+    const advanced = o.kind === 'advance' && sectorOwner(state.theater, o.amount) === side.id;
+    if (o.kind !== 'advance' ? o.amount <= 0 : advanced) {
       o.done = true;
       trustDelta += 8;
       hqLines.push(`Order fulfilled: "${o.text}" — noted with satisfaction.`);
@@ -273,38 +298,76 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
   return toHq;
 }
 
-function checkOutcome(state: GameState): [Outcome, Outcome] | null {
+function crewLoss(s: SideState): number {
+  return 1 - s.squadrons.reduce((x, q) => x + q.crews, 0) / 28;
+}
+
+/** Early-ending conditions that are about a commander, not a theater. */
+function commandFailure(state: GameState): [Outcome, Outcome] | null {
   const [a, b] = state.sides;
-  const lose = (s: SideState): Outcome | null => {
-    const planes = s.squadrons.reduce((x, q) => x + q.airframes.length, 0);
-    const avgMorale = s.squadrons.length ? s.squadrons.reduce((x, q) => x + q.morale, 0) / s.squadrons.length : 0;
-    if (s.trust <= 0 && !s.isAI) return 'relieved';
-    if (planes === 0 && s.resources.supplies < AIRCRAFT.fighter.cost && s.factory.queue.length === 0) return 'grounded';
-    if (s.lowMoraleTurns >= 3) return 'mutiny';
-    void avgMorale;
-    return null;
-  };
   for (const s of state.sides) {
     const avgMorale = s.squadrons.length ? s.squadrons.reduce((x, q) => x + q.morale, 0) / s.squadrons.length : 0;
     s.lowMoraleTurns = avgMorale < 0.15 ? s.lowMoraleTurns + 1 : 0;
   }
-  if (state.front <= -100) return ['collapse', 'victory'];
-  if (state.front >= 100) return ['victory', 'collapse'];
+  const lose = (s: SideState): Outcome | null => {
+    const planes = s.squadrons.reduce((x, q) => x + q.airframes.length, 0);
+    if (s.trust <= 0 && !s.isAI) return 'relieved';
+    if (planes === 0 && s.resources.supplies < AIRCRAFT.fighter.cost && s.factory.queue.length === 0) return 'grounded';
+    if (s.lowMoraleTurns >= 3) return 'mutiny';
+    return null;
+  };
   const la = lose(a);
   const lb = lose(b);
   if (la && lb) return [la, lb];
   if (la) return [la, 'victory'];
   if (lb) return ['victory', lb];
-  if (a.facilities.industry <= 0 && b.facilities.industry > 0) return ['defeat', 'victory'];
-  if (b.facilities.industry <= 0 && a.facilities.industry > 0) return ['victory', 'defeat'];
-  if (state.turn >= state.maxTurns) {
-    const crewLossA = 1 - a.squadrons.reduce((x, q) => x + q.crews, 0) / 28;
-    const crewLossB = 1 - b.squadrons.reduce((x, q) => x + q.crews, 0) / 28;
-    if (state.front > 20) return [crewLossA > 0.6 ? 'pyrrhic' : 'victory', 'defeat'];
-    if (state.front < -20) return ['defeat', crewLossB > 0.6 ? 'pyrrhic' : 'victory'];
-    return ['stalemate', 'stalemate'];
-  }
   return null;
+}
+
+/** The war's verdict once the last theater is decided. */
+function warOutcome(state: GameState): [Outcome, Outcome] {
+  const last = state.theaterResults[state.theaterResults.length - 1];
+  if (last.decisive && last.winner !== null) {
+    const w = last.winner;
+    const res: [Outcome, Outcome] = ['collapse', 'collapse'];
+    res[w] = crewLoss(state.sides[w]) > 0.6 ? 'pyrrhic' : 'victory';
+    return res;
+  }
+  const score = state.theaterResults.reduce((a, r) => a + (r.winner === 0 ? 1 : r.winner === 1 ? -1 : 0), 0);
+  if (score > 0) return [crewLoss(state.sides[0]) > 0.6 ? 'pyrrhic' : 'victory', 'defeat'];
+  if (score < 0) return ['defeat', crewLoss(state.sides[1]) > 0.6 ? 'pyrrhic' : 'victory'];
+  return ['stalemate', 'stalemate'];
+}
+
+/** Secondary objectives are judged on what the commander believes, and HQ may check later. */
+function secondaryObjectives(rng: Rng, state: GameState, news: [string[], string[]]) {
+  for (const o of state.theater.objectives) {
+    const side = state.sides[o.side];
+    const site = state.theater.sites.find((x) => x.id === o.siteId)!;
+    const believed = side.perceived.sites[o.siteId] ?? 100;
+    if (o.status === 'open') {
+      const captured = site.owner === o.side;
+      if (captured || believed <= 25) {
+        const confirmed = captured || side.perceived.photographed.includes(o.siteId);
+        o.status = confirmed ? 'confirmed' : 'claimed';
+        const r = o.reward;
+        if (r.supplies) side.resources.supplies += r.supplies;
+        if (r.trust) side.trust = Math.min(100, side.trust + r.trust);
+        if (r.research && !side.research.includes(r.research)) side.research.push(r.research);
+        const rewards = [r.supplies ? `${r.supplies} supplies` : '', r.trust ? 'the confidence of the Air Council' : '', r.research ? `priority delivery of ${RESEARCH.find((x) => x.id === r.research)?.name}` : ''].filter(Boolean).join(', ');
+        news[o.side].push(`Secondary objective achieved${confirmed ? ' and confirmed' : ' (on crews\' reports)'}: ${site.name}. Awarded: ${rewards}.`);
+      }
+    } else if (o.status === 'claimed' && site.owner !== o.side) {
+      // Unconfirmed claims can come back to haunt a commander.
+      if (side.perceived.photographed.includes(o.siteId) && (side.perceived.sites[o.siteId] ?? 0) <= 25) o.status = 'confirmed';
+      else if (site.condition > 45 && rng.chance(0.3)) {
+        o.status = 'discredited';
+        side.trust = Math.max(side.isAI ? 20 : 0, side.trust - 15);
+        news[o.side].push(`Air Ministry reconnaissance shows the ${site.name} working normally. Your claim to have destroyed it has been withdrawn.`);
+        memo(side, state.turn + 1, 'reprimand', 'Objective not achieved', `Photographs taken this week show the ${site.name} in full operation. The award made on the strength of your returns is noted against your record.`);
+      }
+    }
+  }
 }
 
 export interface TurnResult {
@@ -318,6 +381,8 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   const rng = new Rng(state.rng);
   const battle = rng.fork(`battle-${state.turn}`);
   const [s0, s1] = state.sides;
+  const t = state.theater;
+  const mods = theaterMods(state);
 
   // Pay for fuel & munitions.
   for (const id of [0, 1] as SideId[]) {
@@ -337,14 +402,18 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     if (p.recon) recons[id] = resolveRecon(battle, state.sides[id], state.sides[(1 - id) as SideId], p.recon.squadronId);
   }
 
-  // Facility damage (true).
+  // Damage (true). Strikes hit sites; close support pushes the front directly.
   const damageTaken: [Partial<Facilities>, Partial<Facilities>] = [{}, {}];
+  const supportPush: [number, number] = [0, 0];
   for (const id of [0, 1] as SideId[]) {
     const r = raids[id];
     if (!r) continue;
-    const victim = state.sides[(1 - id) as SideId];
-    const dealt = applyDamage(victim.facilities, r.target, r.damage);
-    if (r.target !== 'sweep') damageTaken[(1 - id) as SideId][r.target] = dealt;
+    if (r.target === 'support') supportPush[id] = r.damage * mods.support;
+    else if (r.target !== 'sweep') {
+      const dealt = applyDamage(state, r.siteId, r.damage);
+      damageTaken[(1 - id) as SideId][r.target] = dealt;
+      r.damage = dealt;
+    }
   }
 
   // Losses & morale.
@@ -354,18 +423,24 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     applyLosses(rng, state.sides[id], rr ? [...allRecs, rr] : allRecs);
   }
 
-  // Front line moves on true results.
+  // Pressure on the front moves on true results.
   const lost0 = (raids[0]?.lost[0] ?? 0) + (raids[1]?.lost[0] ?? 0);
   const lost1 = (raids[0]?.lost[1] ?? 0) + (raids[1]?.lost[1] ?? 0);
-  const dmg0 = raids[0]?.damage ?? 0;
-  const dmg1 = raids[1]?.damage ?? 0;
+  const strat0 = raids[0] && raids[0].target !== 'support' ? raids[0].damage : 0;
+  const strat1 = raids[1] && raids[1].target !== 'support' ? raids[1].damage : 0;
+  syncFacilities(state);
   const delta =
-    (lost1 - lost0) * 1.4 +
-    (dmg0 - dmg1) * 0.35 +
-    (s0.facilities.industry - s1.facilities.industry) * 0.04 +
-    rng.gauss(2.5) +
-    (s1.isAI ? -0.6 * (act(state.turn, state.maxTurns) - 1) : 0);
-  state.front = Math.max(-100, Math.min(100, Math.round(state.front + delta)));
+    (lost1 - lost0) * 2 +
+    (supportPush[0] - supportPush[1]) * 1.4 +
+    (strat0 - strat1) * 0.2 +
+    (Math.min(120, s0.facilities.industry) - Math.min(120, s1.facilities.industry)) * 0.03 +
+    (Math.min(120, s0.facilities.fuel) - Math.min(120, s1.facilities.fuel)) * 0.02 +
+    rng.gauss(3) +
+    (s1.isAI ? -0.8 * (act(state) - 1) : 0);
+  state.front = Math.round(state.front + delta);
+  t.week++;
+  const news = applyPressure(state);
+  syncFacilities(state);
 
   // Debriefs.
   const debriefs: [ReturnType<typeof buildDebrief>, ReturnType<typeof buildDebrief>] = [null!, null!];
@@ -374,23 +449,27 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     const side = state.sides[id];
     const enemy = state.sides[(1 - id) as SideId];
     const rc = recons[id];
-    const reconResult = rc?.ok && plans[id].recon ? { target: plans[id].recon!.target as TargetId, condition: Math.max(0, Math.min(100, Math.round(enemy.facilities[plans[id].recon!.target] + rng.gauss(2)))) } : null;
+    const reconSite = plans[id].recon ? t.sites.find((x) => x.id === plans[id].recon!.siteId) : undefined;
+    let reconResult: { siteId: string; condition: number } | null = null;
+    if (rc?.ok && reconSite) {
+      if (state.weather === 'storm' && rng.chance(0.6)) news[id].push('Photo-reconnaissance returned, but the target was hidden by cloud.');
+      else reconResult = { siteId: reconSite.id, condition: Math.max(0, Math.min(100, Math.round(reconSite.condition + rng.gauss(2)))) };
+    }
     const d = buildDebrief(rng, state.turn, side, enemy, raids[id], raids[(1 - id) as SideId], reconResult, rc?.rec ?? null, damageTaken[id]);
-    updatePerceived(rng, side, d, plans[id].raid?.target ?? null);
-    side.perceived.front = Math.max(-100, Math.min(100, Math.round(state.front * (id === 0 ? 1 : -1) + 6 + rng.gauss(6))));
+    updatePerceived(rng, side, d, raids[id]);
+    // Army liaison: honest about towns, optimistic about pressure.
+    side.perceived.front = Math.round(state.front * (id === 0 ? 1 : -1) + 5 + rng.gauss(5));
     const reported: Reported = {
       kills: d.reports.reduce((a, r) => a + r.claims, 0),
       damage: {},
       sorties: d.reports.reduce((a, r) => a + r.sent, 0),
     };
-    if (raids[id] && raids[id]!.target !== 'sweep') {
-      const dmgR = d.reports.filter((r) => r.targetDamageReported !== null);
-      reported.damage[raids[id]!.target] = dmgR.reduce((a, r) => a + (r.targetDamageReported ?? 0), 0);
-    }
+    const sid = raids[id]?.siteId;
+    if (sid) reported.damage[sid] = d.reports.filter((r) => r.targetDamageReported !== null).reduce((a, r) => a + (r.targetDamageReported ?? 0), 0);
     toHq[id] = highCommand(rng, state, side, enemy, reported, plans[id], d.hqResponse);
     debriefs[id] = d;
   }
-  state.lastDebriefs = debriefs;
+  secondaryObjectives(rng, state, news);
 
   // Archive the truth.
   const hitsOf = (side: SideId, lost: boolean): Hit[] =>
@@ -404,6 +483,8 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     claimed: [debriefs[0].reports.reduce((a, r) => a + r.claims, 0), debriefs[1].reports.reduce((a, r) => a + r.claims, 0)],
     reportedToHq: [toHq[0].kills, toHq[1].kills],
     facilities: [{ ...s0.facilities }, { ...s1.facilities }],
+    theater: t.index,
+    sectors0: t.held0,
     front: state.front,
     lostHits: [hitsOf(0, true), hitsOf(1, true)],
     survivorHits: [hitsOf(0, false), hitsOf(1, false)],
@@ -411,8 +492,37 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   state.archive.push(entry);
 
   for (const id of [0, 1] as SideId[]) economy(rng, state, state.sides[id]);
+  syncFacilities(state);
 
-  state.outcome = checkOutcome(state);
+  // Has the theater been decided?
+  const decision = theaterDecision(state);
+  if (decision) {
+    const def = theaterDef(state);
+    state.theaterResults.push({ index: t.index, name: def.name, winner: decision.winner, weeks: t.week, decisive: decision.decisive });
+    for (const id of [0, 1] as SideId[]) {
+      const side = state.sides[id];
+      const won = decision.winner === id;
+      const lostT = decision.winner !== null && !won;
+      news[id].push(
+        won ? `${def.name}: VICTORY. ${decision.decisive ? 'The enemy front has broken.' : 'We hold the advantage as the campaign season ends.'}`
+        : lostT ? `${def.name}: DEFEAT. ${decision.decisive ? 'Our front has broken.' : 'The enemy holds the advantage as the season ends.'}`
+        : `${def.name}: the campaign ends in deadlock.`,
+      );
+      side.trust = Math.max(side.isAI ? 20 : 0, Math.min(100, side.trust + (won ? 15 : lostT ? -12 : 0)));
+      if (won) side.resources.supplies += 100;
+    }
+    if (t.index + 1 < THEATERS.length) {
+      const next = THEATERS[t.index + 1];
+      for (const id of [0, 1] as SideId[]) news[id].push(`The wing is redeploying to ${next.name}.`);
+      enterTheater(state, t.index + 1, rng, decision.winner);
+    } else {
+      state.outcome = warOutcome(state);
+    }
+  }
+  for (const id of [0, 1] as SideId[]) debriefs[id].theaterNews.push(...news[id]);
+  state.lastDebriefs = debriefs;
+  if (!state.outcome) state.outcome = commandFailure(state);
+  if (!decision) rollWeather(state, rng);
   state.rng = rng.state;
   if (!state.outcome) state.turn++;
   return { raids };

@@ -1,6 +1,7 @@
 import { AIRCRAFT, ARCHETYPE_BIAS, TARGETS, ZONE_LABEL } from './data';
 import type { Rng } from './rng';
 import { emptyApproach } from './sim';
+import { WEATHER_EFFECT } from './theaters';
 import type {
   Debrief,
   FighterApproach,
@@ -83,9 +84,9 @@ export function squadronReport(
 
   const isBomberRaid = raid && raid.target !== 'sweep' && survivors.some((r) => r.role === 'raid');
   if (isBomberRaid) {
-    if (rng.chance(bias.unknownRate + (sq.trauma > 0.5 ? 0.2 : 0))) {
+    if (rng.chance(bias.unknownRate + (sq.trauma > 0.5 ? 0.2 : 0) + WEATHER_EFFECT[raid.weather].unobserved)) {
       report.targetDamageReported = null;
-      report.remarks.push('Results unobserved owing to smoke and cloud.');
+      report.remarks.push(raid.weather === 'clear' ? 'Results unobserved owing to smoke.' : 'Results unobserved: target obscured by cloud.');
     } else {
       report.targetDamageReported = Math.max(0, Math.round(trueDamage * biasScale(bias.damage) * (1 + rng.gauss(noise + 0.15))));
     }
@@ -129,7 +130,7 @@ export function buildDebrief(
   enemy: SideState,
   myRaid: RaidResult | null,
   enemyRaid: RaidResult | null,
-  recon: { target: TargetId; condition: number } | null,
+  recon: { siteId: string; condition: number } | null,
   reconRec: PlaneRecord | null,
   damageTaken: Partial<Record<'industry' | 'airfield' | 'fuel', number>>,
 ): Debrief {
@@ -173,7 +174,9 @@ export function buildDebrief(
     if (enemyRaid.target === 'sweep') {
       defenseSummary.push(`Enemy fighter sweep of roughly ${seen} aircraft over our sector.`);
     } else {
-      defenseSummary.push(`Observer Corps reports an enemy formation of about ${seen} aircraft attacking our ${TARGETS[enemyRaid.target].name.toLowerCase()}.`);
+      defenseSummary.push(enemyRaid.target === 'support'
+        ? `Army reports about ${seen} enemy aircraft attacking our forward positions.`
+        : `Observer Corps reports an enemy formation of about ${seen} aircraft attacking our ${TARGETS[enemyRaid.target].name.toLowerCase()}.`);
       defenseSummary.push(`Flak batteries claim ${groundClaims} destroyed.`);
     }
     const dmg = Object.entries(damageTaken).filter(([, v]) => (v ?? 0) > 0);
@@ -192,6 +195,7 @@ export function buildDebrief(
     reports,
     radio: radioLines.sort((a, b) => a.t - b.t),
     recon,
+    theaterNews: [],
     defenseSummary,
     facilityDamageTaken: damageTaken,
     hqResponse: [],
@@ -199,7 +203,7 @@ export function buildDebrief(
 }
 
 /** Update a commander's beliefs from a debrief. Never touches truth. */
-export function updatePerceived(rng: Rng, side: SideState, d: Debrief, myRaidTarget: TargetId | null) {
+export function updatePerceived(rng: Rng, side: SideState, d: Debrief, myRaid: RaidResult | null) {
   const p = side.perceived;
   const fighterReports = d.reports.filter((r) => !r.noReport && r.enemyFightersReported > 0);
   if (fighterReports.length > 0) {
@@ -218,16 +222,20 @@ export function updatePerceived(rng: Rng, side: SideState, d: Debrief, myRaidTar
   }
   for (const r of d.returned) for (const h of r.hits) p.survivorHits[h.zone]++;
   p.claimedKillsTotal += d.reports.reduce((a, r) => a + r.claims, 0);
-  if (myRaidTarget && myRaidTarget !== 'sweep') {
+  // Beliefs about enemy repair: staff assume a modest recovery each turn.
+  for (const k of Object.keys(p.sites)) p.sites[k] = Math.min(100, p.sites[k] + 3);
+  if (myRaid?.siteId) {
     const dmgReports = d.reports.filter((r) => r.targetDamageReported !== null);
     if (dmgReports.length) {
       const dmg = dmgReports.reduce((a, r) => a + (r.targetDamageReported ?? 0), 0);
-      p.enemyFacilities[myRaidTarget] = Math.max(0, p.enemyFacilities[myRaidTarget] - dmg);
+      p.sites[myRaid.siteId] = Math.max(0, (p.sites[myRaid.siteId] ?? 100) - dmg);
+      p.photographed = p.photographed.filter((x) => x !== myRaid.siteId);
     }
   }
-  if (d.recon) p.enemyFacilities[d.recon.target as 'industry'] = d.recon.condition;
-  // Beliefs about enemy repair: staff assume a modest recovery each turn.
-  for (const k of ['industry', 'airfield', 'fuel'] as const) p.enemyFacilities[k] = Math.min(100, p.enemyFacilities[k] + 3);
+  if (d.recon) {
+    p.sites[d.recon.siteId] = d.recon.condition;
+    if (!p.photographed.includes(d.recon.siteId)) p.photographed.push(d.recon.siteId);
+  }
   void rng;
   void ZONES;
   void AIRCRAFT;

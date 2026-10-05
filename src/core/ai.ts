@@ -2,6 +2,7 @@ import { emptyPlan, queueAircraft, setApproach, startResearch, upgradeFactory, u
 import { AIRCRAFT, APPROACH_ZONES, MAX_ARMOR_PER_ZONE, RESEARCH, ZONE_AREA } from './data';
 import { Rng } from './rng';
 import { flyable } from './sim';
+import { bomberRange, depthFor, escortRange, reachableSites, theaterMods } from './theaters';
 import { act } from './turn';
 import type { GameState, SideId, SideState, Squadron, TargetId, TurnPlan, ZoneId } from './types';
 import { ZONES } from './types';
@@ -56,7 +57,7 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   const side = state.sides[id];
   const rng = new Rng({ s: (state.rng.s ^ (0x9e3779b9 * (id + 1) + state.turn * 7919)) >>> 0 });
   const plan = emptyPlan();
-  const a = act(state.turn, state.maxTurns);
+  const a = act(state);
 
   // --- Spending ---
   const bomberSqs = side.squadrons.filter((s) => s.kind === 'medium' || s.kind === 'heavy');
@@ -73,7 +74,7 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
     }
   }
   if (!side.researching) {
-    const prefs = ['radar', 'selfSealing', 'gunCameras', a >= 2 ? 'heavyAirframe' : 'photoRecon', 'gyroSight', 'armorAlloy', 'radios', 'intelOfficer', 'photoRecon', 'heavyAirframe'];
+    const prefs = ['radar', 'dropTanks', 'selfSealing', 'gunCameras', a >= 2 ? 'heavyAirframe' : 'photoRecon', 'gyroSight', 'armorAlloy', 'radios', 'intelOfficer', 'photoRecon', 'heavyAirframe'];
     for (const p of prefs) {
       const item = RESEARCH.find((r) => r.id === p)!;
       if (!side.research.includes(p) && side.resources.supplies > item.cost + 80) {
@@ -108,20 +109,46 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   if (fighterSqs.length > 0) plan.defense.push(fighterSqs[0].id);
   const spareFighters = fighterSqs.slice(1);
 
-  const pickTarget = (): TargetId => {
-    const f = side.perceived.enemyFacilities;
-    if (believedThreat > ownFighters * 1.6) return 'airfield';
-    const options: TargetId[] = ['industry', 'airfield', 'fuel'];
-    return options.sort((x, y) => f[x as 'industry'] - f[y as 'industry'])[rng.chance(0.6) ? 2 : rng.int(0, 2)];
-  };
-
-  if (readyBombers.length > 0 && rng.chance(0.85)) {
-    plan.raid = { target: pickTarget(), squadronIds: [...readyBombers.map((s) => s.id), ...spareFighters.slice(0, 1).map((s) => s.id)] };
-  } else if (spareFighters.length > 0) {
-    plan.raid = { target: 'sweep', squadronIds: [spareFighters[0].id] };
+  const t = state.theater;
+  // Guess where the enemy will strike: our sites within its reach, weighted by value.
+  const exposed = t.sites.filter((x) => x.owner === id && depthFor(t.held0, (1 - id) as SideId, x.sector) <= 2);
+  const coverSquadrons = [fighterSqs[0], ...(spareFighters.length > 1 ? [spareFighters[spareFighters.length - 1]] : [])].filter(Boolean);
+  for (const sq of coverSquadrons) {
+    if (!plan.defense.includes(sq.id)) plan.defense.push(sq.id);
+    if (exposed.length && rng.chance(0.65)) {
+      const w: Record<string, number> = {};
+      exposed.forEach((x, k) => (w[k] = x.condition * (x.type === 'industry' ? 1.5 : 1)));
+      plan.cover[sq.id] = exposed[Number(rng.weighted(w))].sector;
+    }
   }
-  const recon = side.squadrons.find((s) => s.kind === 'recon' && ready(s) > 0);
-  if (recon && rng.chance(0.6)) plan.recon = { squadronId: recon.id, target: rng.pick(['industry', 'airfield', 'fuel'] as const) };
+  const escorts = spareFighters.filter((f) => !plan.defense.includes(f.id));
+
+  const minRange = Math.min(...readyBombers.map((q) => bomberRange(q.kind)), 3);
+  const targets = reachableSites(state, id, readyBombers.some((q) => q.kind === 'medium') ? 'medium' : 'heavy').filter((x) => depthFor(t.held0, id, x.sector) <= minRange);
+  const pressured = side.perceived.front < -12 || theaterMods(state).support > 1;
+  if (readyBombers.length > 0 && rng.chance(0.85)) {
+    if (rng.chance(pressured ? 0.55 : 0.3) || targets.length === 0) {
+      plan.raid = { target: 'support', squadronIds: [...readyBombers.map((q) => q.id), ...escorts.slice(0, 1).map((q) => q.id)] };
+    } else {
+      const reach = escortRange(side);
+      const w: Record<string, number> = {};
+      targets.forEach((x, k) => {
+        const believed = side.perceived.sites[x.id] ?? 100;
+        const depth = depthFor(t.held0, id, x.sector);
+        w[k] = (believed + 10) * (x.type === 'industry' ? 1.4 : x.type === 'airfield' && believedThreat > ownFighters * 1.5 ? 1.6 : 1) * (depth <= reach ? 1.3 : 0.7);
+      });
+      const site = targets[Number(rng.weighted(w))];
+      plan.raid = { target: site.type, siteId: site.id, squadronIds: [...readyBombers.map((q) => q.id), ...escorts.slice(0, 1).map((q) => q.id)] };
+    }
+  } else if (escorts.length > 0) {
+    plan.raid = { target: 'sweep', squadronIds: [escorts[0].id] };
+  }
+  const recon = side.squadrons.find((q) => q.kind === 'recon' && ready(q) > 0);
+  const enemySites = t.sites.filter((x) => x.owner !== id);
+  if (recon && enemySites.length && rng.chance(0.6)) {
+    const lastSite = plan.raid?.siteId;
+    plan.recon = { squadronId: recon.id, siteId: lastSite ?? rng.pick(enemySites).id };
+  }
 
   // Doctrine: bolder when morale is high.
   for (const sq of side.squadrons) {
@@ -132,7 +159,7 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
 
   // Trim the plan until it fits the fuel and munitions available.
   let guard = 0;
-  while (!validatePlan(side, plan).ok && guard++ < 10) {
+  while (!validatePlan(side, plan, state).ok && guard++ < 10) {
     if (plan.recon) plan.recon = null;
     else if (plan.raid && plan.raid.squadronIds.length > 1) plan.raid.squadronIds.pop();
     else if (plan.raid) plan.raid = null;

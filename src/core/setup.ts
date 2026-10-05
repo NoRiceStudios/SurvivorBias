@@ -1,5 +1,6 @@
 import { AIRCRAFT, FIRST_NAMES, LAST_NAMES, RANKS, SIDE_NAMES, SQUADRON_NAMES } from './data';
 import { Rng } from './rng';
+import { enterTheater } from './theaters';
 import type {
   AircraftKind,
   Airframe,
@@ -15,7 +16,7 @@ import type {
 } from './types';
 import { ZONES } from './types';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export function zoneMap<T>(fn: (z: (typeof ZONES)[number]) => T): ZoneMap<T> {
   return Object.fromEntries(ZONES.map((z) => [z, fn(z)])) as ZoneMap<T>;
@@ -132,6 +133,8 @@ export function emptyPerceived(): Perceived {
     enemyFlak: 0.5,
     enemyApproach: { tail: 0.34, headOn: 0.33, beam: 0.33 },
     enemyFacilities: { industry: 100, airfield: 100, fuel: 100 },
+    sites: {},
+    photographed: [],
     front: 0,
     enemyArmorSeen: zoneMap(() => 0),
     survivorHits: zoneMap(() => 0),
@@ -194,6 +197,10 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     mode: opts.mode ?? 'single',
     sides: undefined as unknown as [SideState, SideState],
     front: 0,
+    theater: undefined as unknown as GameState['theater'],
+    theaterResults: [],
+    weather: 'clear',
+    forecast: ['clear', 'clear'],
     lastDebriefs: [null, null],
     archive: [],
     outcome: null,
@@ -202,6 +209,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
   const single = state.mode === 'single';
   state.sides = [makeSide(state, rng, 0, false), makeSide(state, rng, 1, single)];
   if (single) state.sides[1].insight = opts.aiInsight ?? 0.4;
+  enterTheater(state, 0, rng, null);
   state.rng = rng.state;
   return state;
 }

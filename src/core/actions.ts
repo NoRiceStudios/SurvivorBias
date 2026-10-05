@@ -1,9 +1,11 @@
 import { AIRCRAFT, MAX_ARMOR_PER_ZONE, RESEARCH } from './data';
 import { flyable } from './sim';
+import { bomberRange, depthFor } from './theaters';
 import type {
   AircraftKind,
   Doctrine,
   FighterApproach,
+  GameState,
   QcPolicy,
   SideState,
   Squadron,
@@ -156,8 +158,26 @@ export function planCost(side: SideState, plan: TurnPlan): { fuel: number; munit
   return { fuel, munitions };
 }
 
-export function validatePlan(side: SideState, plan: TurnPlan): ActionResult {
+/** Check a plan against the rules. Pass the game state to also check ranges and sites. */
+export function validatePlan(side: SideState, plan: TurnPlan, state?: GameState): ActionResult {
   const raidIds = plan.raid?.squadronIds ?? [];
+  if (state && plan.raid && raidIds.length) {
+    const t = state.theater;
+    const r = plan.raid;
+    if (r.target !== 'sweep' && r.target !== 'support') {
+      const site = t.sites.find((x) => x.id === r.siteId);
+      if (!site || site.owner === side.id) return fail('Choose an enemy site to strike');
+      const depth = depthFor(t.held0, side.id, site.sector);
+      for (const id of raidIds) {
+        const sq = side.squadrons.find((s) => s.id === id);
+        if (sq && sq.kind !== 'fighter' && bomberRange(sq.kind) < depth) return fail(`${sq.name} cannot reach ${site.name}: it is ${depth} sectors deep`);
+      }
+    }
+  }
+  if (state && plan.recon) {
+    const site = state.theater.sites.find((x) => x.id === plan.recon!.siteId);
+    if (!site || site.owner === side.id) return fail('Choose an enemy site to photograph');
+  }
   for (const id of plan.defense) {
     if (raidIds.includes(id)) return fail('A squadron cannot both raid and defend');
     const sq = side.squadrons.find((s) => s.id === id);
@@ -180,5 +200,5 @@ export function validatePlan(side: SideState, plan: TurnPlan): ActionResult {
 }
 
 export function emptyPlan(): TurnPlan {
-  return { raid: null, defense: [], recon: null, embellish: 0 };
+  return { raid: null, defense: [], cover: {}, recon: null, embellish: 0 };
 }

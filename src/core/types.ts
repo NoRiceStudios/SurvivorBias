@@ -20,7 +20,10 @@ export type AircraftKind = 'fighter' | 'medium' | 'heavy' | 'recon';
 export type Approach = 'tail' | 'headOn' | 'beam' | 'flak';
 export type FighterApproach = Exclude<Approach, 'flak'>;
 export type Archetype = 'braggart' | 'pessimist' | 'gloryHunter' | 'byTheBook' | 'timid';
-export type TargetId = 'industry' | 'airfield' | 'fuel' | 'sweep';
+export type FacilityType = 'industry' | 'airfield' | 'fuel';
+/** Raid target: a facility type (with a specific site), close support at the front, or a fighter sweep. */
+export type TargetId = FacilityType | 'support' | 'sweep';
+export type Weather = 'clear' | 'cloud' | 'storm';
 export type TrainingFocus = 'balanced' | 'gunnery' | 'evasion' | 'reporting';
 export type QcPolicy = 'rushed' | 'standard' | 'strict';
 
@@ -121,8 +124,9 @@ export interface Facilities {
 
 export interface Order {
   id: string;
-  kind: 'strike' | 'kills' | 'sorties';
+  kind: 'strike' | 'kills' | 'sorties' | 'advance';
   target?: TargetId;
+  siteId?: string;
   amount: number;
   text: string;
   deadline: number;
@@ -146,9 +150,13 @@ export interface Perceived {
   enemyFlak: number;
   /** Believed share of each approach used by enemy interceptors. */
   enemyApproach: Record<FighterApproach, number>;
-  /** Reported enemy facility condition (0..100). */
+  /** Reported enemy facility condition (0..100), by type. */
   enemyFacilities: Facilities;
-  /** Reported front line, + favours this side. */
+  /** Believed condition of each enemy site, by site id. */
+  sites: Record<string, number>;
+  /** Sites whose condition was confirmed by photographs this theater. */
+  photographed: string[];
+  /** Army liaison's account of the pressure on the front, + favours this side. */
   front: number;
   /** Believed enemy armor emphasis per zone, from observation. */
   enemyArmorSeen: ZoneMap<number>;
@@ -186,6 +194,8 @@ export interface SideState {
 
 export interface RaidPlan {
   target: TargetId;
+  /** For strikes: the specific site attacked. */
+  siteId?: string;
   squadronIds: string[];
 }
 
@@ -193,8 +203,10 @@ export interface TurnPlan {
   raid: RaidPlan | null;
   /** Fighter squadrons held back to intercept enemy raids. */
   defense: string[];
-  /** Recon squadron sent to photograph a target. */
-  recon: { squadronId: string; target: Exclude<TargetId, 'sweep'> } | null;
+  /** Sector each defending squadron patrols; absent = central reserve. */
+  cover: Record<string, number>;
+  /** Recon squadron sent to photograph a site. */
+  recon: { squadronId: string; siteId: string } | null;
   /** 0 = honest, 1 = heavily embellished report to High Command. */
   embellish: number;
 }
@@ -230,6 +242,10 @@ export interface RadioLine {
 export interface RaidResult {
   attacker: SideId;
   target: TargetId;
+  siteId?: string;
+  /** Sector over which the main action took place. */
+  sector: number;
+  weather: Weather;
   planes: PlaneRecord[];
   /** True damage to the target facility. */
   damage: number;
@@ -265,7 +281,9 @@ export interface Debrief {
   missing: { serial: string; squadronId: string; kind: AircraftKind; lastWords?: string }[];
   reports: SquadronReport[];
   radio: RadioLine[];
-  recon: { target: TargetId; condition: number } | null;
+  recon: { siteId: string; condition: number } | null;
+  /** Theater news: sectors won or lost, objectives, stage changes. */
+  theaterNews: string[];
   /** Enemy raid on us: what our defenders and ground observers say. */
   defenseSummary: string[];
   facilityDamageTaken: Partial<Facilities>;
@@ -280,6 +298,9 @@ export interface ArchiveEntry {
   claimed: [number, number];
   reportedToHq: [number, number];
   facilities: [Facilities, Facilities];
+  /** Theater index and the number of sectors held by side 0 at week's end. */
+  theater: number;
+  sectors0: number;
   front: number;
   lostHits: [Hit[], Hit[]];
   survivorHits: [Hit[], Hit[]];
@@ -303,10 +324,58 @@ export interface GameState {
   maxTurns: number;
   mode: 'single' | 'hotseat' | 'lan';
   sides: [SideState, SideState];
-  /** True front line, + favours side 0. -100..100. */
+  /** True pressure on the contested sector boundary, + favours side 0. */
   front: number;
+  theater: TheaterState;
+  theaterResults: TheaterResult[];
+  /** Weather for the coming week (true) and each side's forecast. */
+  weather: Weather;
+  forecast: [Weather, Weather];
   lastDebriefs: [Debrief | null, Debrief | null];
   archive: ArchiveEntry[];
   outcome: [Outcome, Outcome] | null;
   nextId: number;
+}
+
+/** --- Theaters --- */
+
+export interface Site {
+  id: string;
+  name: string;
+  type: FacilityType;
+  sector: number;
+  owner: SideId;
+  condition: number;
+}
+
+export interface SecondaryObjective {
+  side: SideId;
+  siteId: string;
+  text: string;
+  reward: { supplies?: number; trust?: number; research?: string };
+  status: 'open' | 'claimed' | 'confirmed' | 'discredited';
+}
+
+export interface TheaterState {
+  index: number;
+  id: string;
+  /** Weeks spent in this theater so far. */
+  week: number;
+  /** Sectors held by side 0 (sectors 0..held0-1); side 1 holds the rest. */
+  held0: number;
+  /** held0 at the start of the theater. */
+  start0: number;
+  sites: Site[];
+  /** Number of sites of each type each side started the theater with. */
+  baseline: [Facilities, Facilities];
+  stage: number;
+  objectives: SecondaryObjective[];
+}
+
+export interface TheaterResult {
+  index: number;
+  name: string;
+  winner: SideId | null;
+  weeks: number;
+  decisive: boolean;
 }

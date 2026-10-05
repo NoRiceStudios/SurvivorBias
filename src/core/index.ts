@@ -8,3 +8,4 @@ export * from './actions';
 export * from './turn';
 export * from './ai';
 export * from './game';
+export * from './theaters';

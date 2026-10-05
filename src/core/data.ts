@@ -171,6 +171,7 @@ export const RESEARCH: ResearchItem[] = [
   { id: 'armorAlloy', name: 'Face-Hardened Plate', cost: 110, desc: 'Each armor plate stops considerably more.' , requires: 'selfSealing' },
   { id: 'heavyAirframe', name: 'Four-Engine Airframe', cost: 140, desc: 'Unlocks the heavy bomber: twice the bombs, twice the guns, twice the crew to lose.' },
   { id: 'radar', name: 'Ground Radar', cost: 100, desc: 'Early warning: more of your fighters reach incoming raids.' },
+  { id: 'dropTanks', name: 'Drop Tanks', cost: 70, desc: 'Jettisonable fuel tanks let fighters escort bombers one sector deeper.' },
   { id: 'gyroSight', name: 'Gyro Gunsight', cost: 90, desc: 'Fighters and gunners hit more often.', requires: 'gunCameras' },
 ];
 
@@ -178,7 +179,8 @@ export const TARGETS: Record<TargetId, { name: string; desc: string }> = {
   industry: { name: 'Aircraft Works', desc: 'Slows enemy aircraft production.' },
   airfield: { name: 'Forward Airfields', desc: 'Grounds enemy fighters and slows repairs.' },
   fuel: { name: 'Fuel Depots', desc: 'Starves the enemy of fuel.' },
-  sweep: { name: 'Fighter Sweep', desc: 'Fighters only. Hunt enemy fighters to win air superiority.' },
+  support: { name: 'Close Support', desc: 'Bomb the enemy front line at low level. Pushes the front directly; the flak is close and heavy.' },
+  sweep: { name: 'Fighter Sweep', desc: 'Fighters only. Hunt enemy fighters over the front to win air superiority.' },
 };
 
 export const APPROACH_LABEL: Record<FighterApproach, string> = {

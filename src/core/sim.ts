@@ -9,6 +9,7 @@ import {
   ZONE_LETHALITY,
 } from './data';
 import type { Rng } from './rng';
+import { depthFor, escortRange, frontSector, theaterMods, WEATHER_EFFECT } from './theaters';
 import type {
   Airframe,
   Approach,
@@ -294,6 +295,13 @@ export function resolveRaid(
   if (raid.length === 0) return null;
   const bombers = raid.filter((f) => f.af.kind === 'medium' || f.af.kind === 'heavy');
   const escorts = raid.filter((f) => f.af.kind === 'fighter');
+  const th = state.theater;
+  const site = plan.raid.siteId ? th.sites.find((x) => x.id === plan.raid!.siteId) : undefined;
+  const sector = site ? site.sector : frontSector(th, attacker.id);
+  const depth = depthFor(th.held0, attacker.id, sector);
+  const mods = theaterMods(state);
+  const wx = WEATHER_EFFECT[state.weather];
+  const escortReach = escortRange(attacker);
 
   // Airfield damage grounds some of the defending fighters.
   const defenders = gatherFliers(defender, defPlan.defense, () => 'defense').filter(
@@ -318,11 +326,18 @@ export function resolveRaid(
     }
   }
 
-  // Detection: how many defenders actually find the raid.
+  // Detection: fighters patrolling the raided sector almost always find it;
+  // the central reserve depends on warning time; other patrols rarely arrive.
   const radar = defender.research.includes('radar') ? 0.25 : 0;
   const avgAlt = raid.reduce((a, f) => a + f.sq.doctrine.altitude, 0) / raid.length;
-  const detection = Math.min(0.97, 0.72 + radar + (0.5 - avgAlt) * 0.2);
-  const interceptors = defenders.filter(() => rng.chance(detection));
+  const cover = defPlan.cover ?? {};
+  const detectFor = (d: Flier): number => {
+    const c = cover[d.sq.id];
+    let p = c === undefined ? 0.55 + radar : c === sector ? 0.95 : Math.abs(c - sector) === 1 ? 0.3 + radar * 0.5 : 0.05;
+    p = (p + mods.detection + (0.5 - avgAlt) * 0.2) * wx.detection;
+    return Math.max(0, Math.min(0.97, p));
+  };
+  const interceptors = defenders.filter((d) => rng.chance(detectFor(d)));
   for (const f of raid) f.rec.enemiesSeen = interceptors.length;
   for (const d of interceptors) d.rec.enemiesSeen = raid.length;
 
@@ -338,6 +353,12 @@ export function resolveRaid(
   const rounds = 3;
   for (let round = 0; round < rounds; round++) {
     ctx.t += 6;
+    // Escorts beyond their range turn back after the first engagement.
+    if (round === 1 && depth > escortReach && escorts.some((e) => e.alive && !e.out) && target !== 'sweep') {
+      const e0 = escorts.find((e) => e.alive)!;
+      say(ctx, attacker.id, e0.callsign, 'Fuel state critical. Little friends turning for home. You\'re on your own.');
+      for (const e of escorts) if (e.alive) e.out = true;
+    }
     const liveEscorts = escorts.filter((f) => f.alive && !f.out);
     const liveInterceptors = interceptors.filter((f) => f.alive);
     // Escorts tie up interceptors.
@@ -397,25 +418,28 @@ export function resolveRaid(
   let damage = 0;
   if (target !== 'sweep') {
     ctx.t += 12;
-    const flakLevel = defender.flak * (0.7 + 0.3 * (defender.facilities.industry / 100));
+    const support = target === 'support';
+    const flakLevel = defender.flak * mods.flak * wx.flak * (0.7 + 0.3 * Math.min(1, defender.facilities.industry / 100)) * (support ? 0.8 : 1);
     const overTarget = raid.filter((f) => f.alive && !f.out);
     if (overTarget.length > 0) say(ctx, attacker.id, overTarget[0].callsign, rng.pick(['Flak ahead. Steady... steady...', 'Bomb doors open. Hold her level.', 'Target in sight, running in.']));
     for (const f of overTarget) {
       const exposure = f.af.kind === 'fighter' ? 0.25 : 1;
-      const n = rng.poisson(flakLevel * (1.55 - f.sq.doctrine.altitude) * 3.6 * exposure);
+      const alt = support ? 0.15 : f.sq.doctrine.altitude;
+      const n = rng.poisson(flakLevel * (1.55 - alt) * 3.6 * exposure);
       for (let i = 0; i < n; i++) if (applyHit(rng, f, 'flak')) {
         witnessLoss(ctx, f, raid);
         break;
       }
     }
     for (const b of bombers.filter((x) => x.alive && !x.out)) {
-      const acc = 0.3 + 0.35 * b.sq.skill + 0.25 * (1 - b.sq.doctrine.altitude) + 0.1 * b.sq.doctrine.aggression;
+      const alt = support ? 0.15 : b.sq.doctrine.altitude;
+      const acc = 0.3 + 0.35 * b.sq.skill + 0.25 * (1 - alt) + 0.1 * b.sq.doctrine.aggression;
       damage += AIRCRAFT[b.af.kind].payload * acc * rng.range(0.5, 1.5);
     }
-    damage *= 1.25;
+    damage *= 1.25 * wx.accuracy;
     if (bombers.some((b) => b.alive && !b.out)) say(ctx, attacker.id, lead.alive ? lead.callsign : bombers.find((b) => b.alive)!.callsign, 'Bombs gone. Turning for home.');
     // Defender's ground observers see the bombs fall.
-    say(ctx, defender.id, 'Ground', `Bombs falling on the ${target === 'industry' ? 'works' : target === 'airfield' ? 'airfield' : 'depots'}. Fires visible.`, defender.id);
+    say(ctx, defender.id, 'Ground', support ? 'Enemy bombers low over our forward positions.' : `Bombs falling on ${site?.name ?? 'our facilities'}. Fires visible.`, defender.id);
   }
 
   // Egress: stragglers get picked off.
@@ -444,11 +468,14 @@ export function resolveRaid(
   return {
     attacker: attacker.id,
     target,
+    siteId: site?.id,
+    sector,
+    weather: state.weather,
     planes: [...raid.map((f) => f.rec), ...defenders.map((f) => f.rec)],
     damage: Math.round(damage),
     aborted,
     interceptors: interceptors.length,
-    flakLevel: defender.flak,
+    flakLevel: defender.flak * mods.flak * wx.flak,
     lost: [
       [...raid, ...defenders].filter((f) => f.side.id === 0 && f.rec.fate === 'lost').length,
       [...raid, ...defenders].filter((f) => f.side.id === 1 && f.rec.fate === 'lost').length,
