@@ -176,7 +176,7 @@ export function renderDebrief(app: App, sideId: SideId, tab: string): HTMLElemen
   const sent = d.reports.reduce((a, r) => a + r.sent, 0);
   const back = d.reports.reduce((a, r) => a + r.returned, 0);
   return h('div', { class: 'hq debrief' },
-    topBar(app, side),
+    topBar(app, side, d.turn),
     h('div', { class: 'hq-body' }, nav, h('main', { class: 'content', 'data-keep-scroll': `db-${tab}` }, body)),
     h('div', { class: 'launchbar' },
       h('div', { class: 'launch-summary' }, `Week ${d.turn} debrief · ${back} of ${sent} aircraft returned`),
@@ -202,7 +202,7 @@ function aircraftView(app: App, d: Debrief): HTMLElement {
     );
   });
   return h('div', { class: 'col' },
-    d.theaterNews.length ? h('section', { class: 'paper panel news' }, h('h2', null, 'From the Front'), d.theaterNews.map((x) => h('p', { class: 'typed' }, x))) : null,
+    d.theaterNews.length ? h('section', { class: 'paper panel news' }, h('h2', null, 'News'), d.theaterNews.map((x) => h('p', { class: 'typed' }, x))) : null,
     bombersBack.length ? h('section', { class: 'paper panel' },
       h('h2', null, 'Ground Crew Damage Plot — this operation'),
       h('div', { class: 'composite-row' },
@@ -232,7 +232,10 @@ function reportForm(r: SquadronReport, isDefense: boolean): HTMLElement {
         h('span', null, 'Enemy fighters encountered'), h('b', null, r.enemyFightersReported > 0 ? `approx. ${r.enemyFightersReported}` : 'none seen'),
         h('span', null, 'Attacks came mostly'), h('b', null, mostly ? APPROACH_LABEL[mostly].toLowerCase() : '—'),
         h('span', null, 'Flak'), h('b', null, isDefense ? '—' : r.flakReported),
-        h('span', null, 'Bombing results'), h('b', null, isDefense ? '—' : r.targetDamageReported === null ? 'unobserved' : `target ${r.targetDamageReported > 25 ? 'heavily' : r.targetDamageReported > 10 ? 'well' : 'lightly'} hit (est. ${r.targetDamageReported}% destroyed)`),
+        h('span', null, r.mission === 'support' ? 'Results at the front' : 'Bombing results'), h('b', null, isDefense || r.mission === 'sweep' || r.mission === 'feint' ? '—' : r.targetDamageReported === null ? 'unobserved'
+          : r.mission === 'support' ? `enemy positions ${r.targetDamageReported > 25 ? 'heavily' : r.targetDamageReported > 10 ? 'well' : 'lightly'} hit`
+          : r.targetDamageReported < 3 ? 'bombs fell wide; little or no damage seen'
+          : `target ${r.targetDamageReported > 25 ? 'heavily' : r.targetDamageReported > 10 ? 'well' : 'lightly'} hit (est. ${r.targetDamageReported}% destroyed)`),
       ]),
     ),
     h('div', { class: 'remarks' }, h('span', null, 'Remarks:'), r.remarks.map((x) => h('div', { class: 'typed' }, x))),
@@ -270,9 +273,10 @@ function missingView(app: App, d: Debrief): HTMLElement {
     h('h2', null, 'Aircraft Missing from Operations'),
     h('p', { class: 'muted' }, 'Next-of-kin telegrams will be sent in due course.'),
     h('table', { class: 'missing' },
-      h('thead', null, h('tr', null, h('th', null, 'Serial'), h('th', null, 'Type'), h('th', null, 'Unit'), h('th', null, 'Crew'), h('th', null, 'Last heard'))),
+      h('thead', null, h('tr', null, h('th', null, 'Serial'), h('th', null, 'Type'), h('th', null, 'Unit'), h('th', null, 'Captain and crew'), h('th', null, 'Last heard'))),
       h('tbody', null, d.missing.map((m) => h('tr', null,
-        h('td', null, m.serial), h('td', null, AIRCRAFT[m.kind].name[d.side]), h('td', null, sqName(m.squadronId)), h('td', null, String(AIRCRAFT[m.kind].crew)),
+        h('td', null, m.serial), h('td', null, AIRCRAFT[m.kind].name[d.side]), h('td', null, sqName(m.squadronId)),
+        h('td', null, `${m.captain ?? 'Unknown'}${AIRCRAFT[m.kind].crew > 1 ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}`),
         h('td', { class: 'typed' }, m.lastWords ? `"${m.lastWords}"` : 'Nothing heard.'),
       ))),
     ),

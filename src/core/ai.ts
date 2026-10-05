@@ -66,7 +66,7 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
     // Re-plate only every few turns to save supplies, and only once there is evidence.
     if (state.turn % 3 === 0 && ZONES.reduce((x, z) => x + side.perceived.survivorHits[z], 0) > 10) {
       const target = chooseArmor(side, sq);
-      const cost = ZONES.reduce((x, z) => x + Math.abs(target[z] - sq.armor[z]), 0) * 4;
+      const cost = ZONES.reduce((x, z) => x + Math.max(0, target[z] - sq.armor[z]), 0) * 4;
       if (side.resources.supplies > cost + 60) {
         side.resources.supplies -= cost;
         sq.armor = target;

@@ -315,6 +315,7 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
   };
   let trustDelta = 0;
   const failedKinds: Order['kind'][] = [];
+  hqLines.push(`Returns submitted: ${toHq.kills} enemy aircraft destroyed${toHq.kills !== reported.kills ? ` (crews claimed ${reported.kills})` : ''}${Object.values(toHq.damage).length ? `, target damage ${Object.values(toHq.damage)[0]}%` : ''}.`);
   for (const o of side.orders) {
     if (o.done || o.failed) continue;
     // A strike order on a site we now hold is moot.
@@ -426,12 +427,13 @@ function secondaryObjectives(rng: Rng, state: GameState, news: [string[], string
       if (captured || believed <= 25) {
         const confirmed = captured || side.perceived.photographed.includes(o.siteId);
         o.status = confirmed ? 'confirmed' : 'claimed';
-        const r = o.reward;
+        // Taking it with the Army counts, but the Air Ministry pays less for it.
+        const r = captured ? { supplies: o.reward.supplies && Math.round(o.reward.supplies / 2), trust: o.reward.trust && Math.round(o.reward.trust / 2), research: o.reward.research } : o.reward;
         if (r.supplies) side.resources.supplies += r.supplies;
         if (r.trust) side.trust = Math.min(100, side.trust + r.trust);
         if (r.research && !side.research.includes(r.research)) side.research.push(r.research);
         const rewards = [r.supplies ? `${r.supplies} supplies` : '', r.trust ? 'the confidence of the Air Council' : '', r.research ? `priority delivery of ${RESEARCH.find((x) => x.id === r.research)?.name}` : ''].filter(Boolean).join(', ');
-        news[o.side].push(`Secondary objective achieved${confirmed ? ' and confirmed' : ' (on crews\' reports)'}: ${site.name}. Awarded: ${rewards}.`);
+        news[o.side].push(`Secondary objective achieved${captured ? ' by the Army taking it' : confirmed ? ' and confirmed' : ' (on crews\' reports)'}: ${site.name}. Awarded: ${rewards}.`);
       }
     } else if (o.status === 'claimed' && site.owner !== o.side) {
       // Unconfirmed claims can come back to haunt a commander.
@@ -583,7 +585,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       allRecs, reconResult, !!rc && !rc.ok, damageTaken[id], day.landing, theaterDef(state).sectors);
     updatePerceived(rng, side, d, raids[id]);
     // Army liaison: honest about towns, optimistic about pressure.
-    side.perceived.front = Math.round(state.front * (id === 0 ? 1 : -1) + 5 + rng.gauss(5));
+    side.perceived.front = Math.round(state.front * (id === 0 ? 1 : -1) + 4 + rng.gauss(3));
     const reported: Reported = {
       kills: d.reports.reduce((a, r) => a + r.claims, 0),
       damage: {},

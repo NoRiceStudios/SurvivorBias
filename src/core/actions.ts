@@ -39,7 +39,8 @@ export function setArmor(side: SideState, sqId: string, zone: ZoneId, value: num
   if (delta === 0) return ok;
   const budget = AIRCRAFT[sq.kind].armorBudget;
   if (armorUsed(sq) + delta > budget) return fail('Armor budget exceeded: remove plate elsewhere first');
-  const cost = Math.abs(delta) * COSTS.armorChange;
+  // Fitting plate costs supplies; taking it off is free.
+  const cost = Math.max(0, delta) * COSTS.armorChange;
   if (side.resources.supplies < cost) return fail('Not enough supplies for the refit');
   side.resources.supplies -= cost;
   sq.armor[zone] = v;

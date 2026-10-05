@@ -344,3 +344,68 @@ describe('names', () => {
     }
   });
 });
+
+describe('playtest fixes', () => {
+  it('at most one sector falls per week', () => {
+    const s = startCampaign({ seed: 'cascade' });
+    const before = s.theater.held0;
+    s.front = SECTOR_PRESSURE * 3;
+    applyPressure(s);
+    expect(s.theater.held0).toBe(before + 1);
+    expect(Math.abs(s.front)).toBeLessThanOrEqual(SECTOR_PRESSURE / 2);
+  });
+
+  it('standing orders never fall due after the theater ends, and never duplicate', () => {
+    for (let g = 0; g < 8; g++) {
+      const s = startCampaign({ seed: `ord${g}` });
+      while (!s.outcome) {
+        endTurnSingle(s, playerPlan(s));
+        if (s.outcome) break;
+        const lastWeek = s.turn + (THEATERS[s.theater.index].weeks - s.theater.week) - 1;
+        for (const side of s.sides) {
+          const open = side.orders.filter((o) => !o.done && !o.failed);
+          expect(new Set(open.map((o) => o.kind)).size).toBe(open.length);
+          for (const o of open) expect(o.deadline).toBeLessThanOrEqual(lastWeek + 1);
+        }
+      }
+    }
+  });
+
+  it('aircraft that abort with mechanical trouble are never shot down later that day', () => {
+    for (let g = 0; g < 30; g++) {
+      const s = startCampaign({ seed: `abort${g}` });
+      for (const sq of s.sides[0].squadrons) for (const af of sq.airframes) af.defect = 0.9;
+      const r = resolveTurn(s, [playerPlan(s), aiPlan(s, 1)]);
+      for (const raid of [r.raids[0], r.feints[0]]) {
+        if (!raid) continue;
+        const abortedLines = raid.radio.filter((l) => /turning back|aborting|returning to base/.test(l.text)).map((l) => l.callsign);
+        for (const cs of abortedLines) {
+          expect(raid.radio.some((l) => l.text.startsWith(`${cs} is going down`) || l.text.startsWith(`${cs} has gone in`) || l.text.startsWith(`${cs} just blew up`))).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('single-seat fighters never radio about bombardiers or several engines', () => {
+    for (let g = 0; g < 30; g++) {
+      const s = startCampaign({ seed: `words${g}` });
+      for (let w = 0; w < 4 && !s.outcome; w++) endTurnSingle(s, playerPlan(s));
+      for (const d of s.lastDebriefs) {
+        for (const m of d!.missing.filter((x) => x.kind === 'fighter')) {
+          expect(m.lastWords ?? '').not.toMatch(/bombardier|Both engines|Number two|Skipper|Gunners/);
+        }
+      }
+    }
+  });
+
+  it('armor records the hits it stopped', () => {
+    let saved = 0;
+    for (let g = 0; g < 20; g++) {
+      const s = startCampaign({ seed: `saved${g}` });
+      for (const sq of s.sides[0].squadrons) if (sq.kind === 'medium') { for (const z of ZONES) sq.armor[z] = 0; sq.armor.cockpit = 3; sq.armor.engines = 3; }
+      endTurnSingle(s, playerPlan(s));
+      saved += s.lastDebriefs[0]!.returned.flatMap((r) => r.hits).filter((h) => h.saved).length;
+    }
+    expect(saved).toBeGreaterThan(0);
+  });
+});

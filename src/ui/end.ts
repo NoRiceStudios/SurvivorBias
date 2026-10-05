@@ -8,7 +8,7 @@ import { h } from './dom';
 import { aircraftCanvas } from './sprites';
 
 const OUTCOME_TEXT: Record<Outcome, [string, string]> = {
-  victory: ['VICTORY', 'The enemy air arm is broken. The war in this sector is over, and you will be remembered as the commander who won it.'],
+  victory: ['VICTORY', 'The enemy has asked for terms. The war is over, and you will be remembered as the commander who won it, whatever the archives say.'],
   pyrrhic: ['PYRRHIC VICTORY', 'The enemy is beaten. Almost nobody who flew with you in the first week is alive to see it.'],
   stalemate: ['ARMISTICE', 'Neither side could break the other. The line on the map is where it was. The cemeteries are not.'],
   relieved: ['RELIEVED OF COMMAND', 'The Air Council has lost confidence in your leadership. You are posted to a training command in the north.'],

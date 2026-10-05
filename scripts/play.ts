@@ -18,6 +18,7 @@ import {
   MAX_ARMOR_PER_ZONE,
   RESEARCH,
   SECTORS,
+  SECTOR_PRESSURE,
   TARGETS,
   THEATERS,
   WEATHER_LABEL,
@@ -135,15 +136,38 @@ function brief() {
     `${stage.text}`,
     `Weather forecast for this operation: ${WEATHER_LABEL[st.forecast[0]]} (Met Office forecasts are usually right).`,
     `Resources: supplies ${r.supplies} · fuel ${r.fuel} · munitions ${r.munitions} · replacement aircrew ${r.replacements}`,
-    `High Command confidence: ${side.trust}/100 · Sectors held: ${t.held0}/${SECTORS} · Army liaison reports pressure on the front ${side.perceived.front >= 0 ? 'in our favour' : 'against us'} (${side.perceived.front >= 0 ? '+' : ''}${side.perceived.front})`,
+    `High Command confidence: ${side.trust}/100 (deliveries grow with it; at 0 you are relieved) · Sectors held: ${t.held0}/${SECTORS}`,
+    `Army liaison puts the pressure on the front at ${side.perceived.front >= 0 ? '+' : ''}${side.perceived.front} (a sector usually falls at about ±${SECTOR_PRESSURE}, at most one a week; liaison figures run a little optimistic).`,
     `Primary objective: gain ${DECISIVE_GAIN} sectors from the enemy (so far ${gain >= 0 ? '+' : ''}${gain}). If neither side breaks through by week ${def.weeks}, the theater goes to whoever holds the advantage.`,
     `Secondary objective: ${obj.text} [${obj.status.toUpperCase()}]`,
     `Theater record: ${THEATERS.map((th, i) => { const res = st.theaterResults.find((x) => x.index === i); return `${th.name}: ${res ? (res.winner === 0 ? 'WON' : res.winner === null ? 'DRAWN' : 'LOST') : i === t.index ? 'in progress' : 'ahead'}`; }).join(' | ')}`,
     'Standing orders:',
     ...(side.orders.length ? side.orders.map((o) => `  - ${o.text}${o.deadline <= st.turn ? ' [DUE THIS WEEK]' : ''}`) : ['  (none)']),
+    ...(adjutant().length ? ['Adjutant\'s notes:', ...adjutant().map((n) => `  ! ${n}`)] : []),
     'Correspondence this week:',
     ...side.memos.filter((m) => m.turn >= st.turn).map((m) => `  [${m.kind.toUpperCase()}] ${m.from} — ${m.subject}: ${m.body}`),
   );
+}
+
+function adjutant(): string[] {
+  const side = me();
+  const notes: string[] = [];
+  for (const sq of side.squadrons) {
+    if (sq.fatigue >= 0.7) notes.push(`${sqCode(sq)} ${sq.name} is exhausted (fatigue ${Math.round(sq.fatigue * 10)}/10). Tired crews shoot and fly worse, and their morale slides. A week standing down restores them.`);
+    if (sq.morale <= 0.25) notes.push(`Morale in ${sqCode(sq)} ${sq.name} is very low. If the whole wing's morale stays this low for three weeks, the crews will refuse to fly.`);
+    const idle = sq.airframes.filter((a) => a.status === 'ready').length - Math.max(0, sq.crews);
+    if (idle >= 2) notes.push(`${sqCode(sq)} has ${idle} serviceable aircraft with no crews. The training school fills gaps as crews graduate.`);
+  }
+  const spare = side.squadrons.reduce((a, q) => a + Math.max(0, q.crews - q.airframes.length), 0) + side.resources.replacements;
+  if (spare >= 8) notes.push(`${spare} trained or waiting aircrew have no aircraft. The works can build more (build ...).`);
+  const c = planCost(side, plan!);
+  if (c.fuel > side.resources.fuel) notes.push(`This week's plan needs ${c.fuel} fuel and we have ${side.resources.fuel}.`);
+  if (c.munitions > side.resources.munitions) notes.push(`This week's plan needs ${c.munitions} munitions and we have ${side.resources.munitions}.`);
+  if (!side.researching && side.resources.supplies >= 70) notes.push('The engineers are idle (research ...).');
+  if (side.factory.queue.length === 0 && side.resources.supplies >= 60) notes.push('Nothing is on order at the aircraft works (build ...).');
+  if (side.trust < 30) notes.push(`High Command's confidence is ${side.trust}/100.`);
+  if (state!.forecast[0] === 'storm') notes.push('Storms are forecast: bombing will be inaccurate, interceptions fewer, results hard to observe.');
+  return notes.slice(0, 6);
 }
 
 function map() {
@@ -189,7 +213,7 @@ function hangar(code: string) {
     : st.archive.slice(-10).flatMap((e) => e.survivorHits[0]);
   const counts: Record<string, number> = {};
   for (const h of comp) counts[h.zone] = (counts[h.zone] ?? 0) + 1;
-  say(`Hangar — ${sq.name} (${AIRCRAFT[sq.kind].name[0]}). Plates ${armorUsed(sq)}/${AIRCRAFT[sq.kind].armorBudget} (max ${MAX_ARMOR_PER_ZONE} per zone, ${COSTS.armorChange} supplies per plate moved; plates add weight, slower aircraft are caught more often).`);
+  say(`Hangar — ${sq.name} (${AIRCRAFT[sq.kind].name[0]}). Plates ${armorUsed(sq)}/${AIRCRAFT[sq.kind].armorBudget} (max ${MAX_ARMOR_PER_ZONE} per zone; fitting a plate costs ${COSTS.armorChange} supplies, removing is free; plates add weight, slower aircraft are caught more often).`);
   say(`Damage survey of returned aircraft (${sq.kind === 'fighter' || sq.kind === 'recon' ? 'last week' : 'last 10 weeks, all bombers'}): ${comp.length} holes plotted.`);
   for (const z of ZONES) say(`   ${ZONE_LABEL[z].padEnd(12)} armor ${'■'.repeat(sq.armor[z])}${'□'.repeat(MAX_ARMOR_PER_ZONE - sq.armor[z])}   holes seen: ${counts[z] ?? 0}${comp.length ? ` (${Math.round(((counts[z] ?? 0) / comp.length) * 100)}%)` : ''}`);
   say('Airframes:');
@@ -237,11 +261,11 @@ function planView() {
   const side = me();
   const p = plan!;
   const name = (ids: string[]) => ids.map((id) => { const sq = side.squadrons.find((q) => q.id === id); return sq ? `${sqCode(sq)} (${flyable(sq).length})` : '?'; }).join(', ') || 'none';
-  const target = p.raid ? (p.raid.siteId ? `strike ${state!.theater.sites.find((x) => x.id === p.raid!.siteId)?.name}` : TARGETS[p.raid.target].name) : 'no operation';
+  const target = p.raid ? (p.raid.siteId ? `strike ${state!.theater.sites.find((x) => x.id === p.raid!.siteId)?.name}` : TARGETS[p.raid.target].name) : null;
   const c = planCost(side, p);
   const v = validatePlan(side, p, state!);
   say(
-    `Plan: ${target} with ${name(p.raid?.squadronIds ?? [])}`,
+    target ? `Plan: ${target} with ${name(p.raid?.squadronIds ?? [])}` : 'Plan: no operation this week (a defensive week).',
     `Defence: ${p.defense.map((id) => { const sq = side.squadrons.find((q) => q.id === id)!; const cv = p.cover[id]; return `${sqCode(sq)} ${cv === undefined ? 'in reserve' : `patrolling ${sectorName(cv)} [${cv + 1}]`}`; }).join(', ') || 'none'}`,
     `Feint: ${p.feint ? `${name(p.feint.squadronIds)} over ${sectorName(p.feint.sector)} [${p.feint.sector + 1}]` : 'none'} · Recon: ${p.recon ? `${name([p.recon.squadronId])} photographing ${state!.theater.sites.find((x) => x.id === p.recon!.siteId)?.name}` : 'none'}`,
     `Returns policy: ${p.embellish === 0 ? 'accurate' : p.embellish < 0.6 ? 'optimistic' : 'creative'} · Cost: fuel ${c.fuel}/${side.resources.fuel}, munitions ${c.munitions}/${side.resources.munitions}`,
@@ -250,6 +274,14 @@ function planView() {
 }
 
 /* ---------------- Actions ---------------- */
+/** Coming from "no operation", the ready squadrons go back on the job. */
+function autoAssign(kind: string): string[] {
+  const p = plan!;
+  return me().squadrons
+    .filter((q) => (kind === 'sweep' ? q.kind === 'fighter' && !p.defense.includes(q.id) : q.kind === 'medium' || q.kind === 'heavy') && flyable(q).length > 0 && !p.feint?.squadronIds.includes(q.id))
+    .map((q) => q.id);
+}
+
 function assign(code: string, roleArg: string) {
   const sq = findSq(code);
   const p = plan!;
@@ -307,12 +339,14 @@ function launch() {
     if (r.noReport) { say(`  ${r.squadronName}: NO REPORT — ${r.returned}/${r.sent} returned.`); continue; }
     const tot = r.approachReported.tail + r.approachReported.headOn + r.approachReported.beam;
     const mostly = tot ? (Object.keys(r.approachReported) as ('tail' | 'headOn' | 'beam')[]).sort((a, b) => r.approachReported[b] - r.approachReported[a])[0] : null;
-    say(`  ${r.squadronName} (${r.leader.rank} ${r.leader.name}): returned ${r.returned}/${r.sent} · claims ${r.claims} destroyed · enemy fighters ~${r.enemyFightersReported} · attacks mostly ${mostly ? APPROACH_LABEL[mostly].toLowerCase() : '—'} · flak ${r.flakReported} · bombing: ${r.targetDamageReported === null ? 'unobserved / n.a.' : `est. ${r.targetDamageReported}% destroyed`}`);
-    for (const x of r.remarks) say(`      "${x}"`);
+    const results = r.targetDamageReported === null ? (r.mission === 'sweep' || r.mission === 'feint' || !r.mission ? 'n/a' : 'unobserved')
+      : r.mission === 'support' ? `enemy positions ${r.targetDamageReported > 25 ? 'heavily' : r.targetDamageReported > 10 ? 'well' : 'lightly'} hit` : r.targetDamageReported < 3 ? 'bombs fell wide' : `est. ${r.targetDamageReported}% destroyed`;
+    say(`  ${r.squadronName} (${r.leader.rank} ${r.leader.name}): returned ${r.returned}/${r.sent} · claims ${r.claims} destroyed · enemy fighters ${r.enemyFightersReported ? `~${r.enemyFightersReported}` : 'none seen'} · attacks mostly ${mostly ? APPROACH_LABEL[mostly].toLowerCase() : '—'} · flak ${r.flakReported} · results: ${results}`);
+    for (const x of r.remarks) say(`      ${x}`);
   }
   if (d.missing.length) {
     say('Missing:');
-    for (const m of d.missing) say(`  ${m.serial} ${AIRCRAFT[m.kind].name[0]} — crew of ${AIRCRAFT[m.kind].crew}. Last heard: ${m.lastWords ? `"${m.lastWords}"` : 'nothing'}`);
+    for (const m of d.missing) say(`  ${m.serial} ${AIRCRAFT[m.kind].name[0]} — ${m.captain}${AIRCRAFT[m.kind].crew > 1 ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}. Last heard: ${m.lastWords ? `"${m.lastWords}"` : 'nothing'}`);
   }
   say('Home front:', ...d.defenseSummary.map((x) => `  ${x}`));
   if (d.recon) say(`  PHOTOGRAPHIC INTERPRETATION: ${st.theater.sites.find((x) => x.id === d.recon!.siteId)?.name} at ${d.recon.condition}% capacity.`);
@@ -393,7 +427,7 @@ function run(cmd: string) {
       } else if (a[0] === 'strike') {
         const site = findSite(a[1]);
         if (site.owner === 0) throw new Error('That site is ours');
-        plan.raid = { target: site.type, siteId: site.id, squadronIds: plan.raid?.squadronIds ?? [] };
+        plan.raid = { target: site.type, siteId: site.id, squadronIds: plan.raid?.squadronIds.length ? plan.raid.squadronIds : autoAssign('strike') };
       } else throw new Error('mission strike P# | support | sweep | none');
       return planView();
     }

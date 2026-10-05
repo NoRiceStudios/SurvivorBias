@@ -148,10 +148,15 @@ The crew is modelled at squadron level:
 
 | Resource | Used for | Comes from |
 |---|---|---|
-| **Supplies** | Upgrades, R&D, repairs, construction | High Command deliveries (scaled by trust) |
-| **Fuel** | Each sortie, scaled by aircraft type and range | High Command; can be cut by enemy bombing |
-| **Munitions** | Bomb loads, ammunition | High Command; local production upgrade |
-| **Replacements** | New airmen into training | High Command; scarce |
+| **Supplies** | Upgrades, R&D, repairs, armor (4 per plate fitted; removal free) | High Command deliveries (scaled by trust and our works) |
+| **Fuel** | Each sortie, scaled by aircraft type | Rationed: a full effort every week burns more than arrives. Depots hold at most 320. Bombing our fuel depots cuts it. |
+| **Munitions** | Bomb loads, ammunition | Rationed. Depots hold at most 260. |
+| **Replacements** | New airmen into training | Posted only while the pool is under 8 |
+
+Between theaters the Ministry partly makes good a depleted wing: about 30–70%
+of the shortfall below 28 aircraft, depending on trust. Difficulty scales the
+AI's resources (Green ×0.64, Seasoned ×0.82, Wald ×1.09), and the AI gets 15%
+more with each theater.
 
 ### 6.6 War theaters
 
@@ -176,7 +181,14 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
   boundary each week from losses inflicted vs suffered, close-support damage,
   strategic damage and the industrial balance. Every 24 points of pressure
   captures the next sector, and its sites change hands at 30% condition.
-  Captured airfields and works become yours.
+  Captured airfields and works become yours. **At most one sector falls per
+  week**, and leftover pressure is capped at ±12, so a theater can't collapse
+  in a single turn.
+- **Both sides learn.** Each side remembers the feints and close-support raids
+  it has seen recently. Repeated feints draw fewer reserve fighters, and the
+  Army masses anti-aircraft guns against repeated close support (more flak, less
+  pressure per raid). The AI also patrols and sweeps its own front when it is
+  being hit there, and how quickly it reacts depends on difficulty.
 - **Range opens up as you advance.** Medium bombers reach two sectors deep and
   heavies reach three. Escorts reach two sectors deep, or three with drop tanks,
   and past that the bombers go on alone. Pushing the front forward brings the

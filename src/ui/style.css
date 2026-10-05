@@ -342,3 +342,28 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 #cover .handover-card { padding: 30px 50px; }
 .ledger.diaries th.grp { text-align: center; border-bottom: 2px solid var(--ink); }
 .diaries-totals { max-width: 760px; }
+
+/* ---------- Playtest round 1 ---------- */
+.res-v { display: flex; flex-direction: column; line-height: 0.9; }
+.res-v b { font-weight: normal; font-size: 22px; }
+.res-v small { font-size: 13px; color: #a8a088; letter-spacing: 0.5px; }
+.res.bad .res-v b { color: #e07a6a; }
+.res.good .res-v b { color: #a8d080; }
+.adjutant { box-shadow: 0 0 0 2px #2c4672, 0 0 0 4px #16171a, 6px 6px 0 4px var(--shadow); }
+.adjutant ul { margin: 0; padding-left: 20px; }
+.adjutant li { margin: 3px 0; }
+.site-table { width: 100%; border-collapse: collapse; }
+.site-table td { padding: 5px 8px; border-bottom: 1px dotted var(--paper-3); }
+.site-row { cursor: pointer; }
+.site-row:hover td { background: rgba(176, 48, 42, 0.07); }
+.site-row.on td { background: #e6c9b0; }
+.site-row.on td:first-child { box-shadow: inset 4px 0 0 var(--stamp); }
+.site-row.locked { opacity: 0.45; cursor: not-allowed; }
+.targets.three .target-card { padding: 6px 10px; }
+.help-line { color: var(--paper-2); font-size: 19px; margin: 0 8px 10px; }
+.col-bar em { font-style: normal; font-size: 14px; color: var(--ink); }
+.armor-table td { padding: 1px 6px; }
+.topbar { flex-wrap: nowrap; gap: 18px; }
+.topbar .crest, .topbar .week, .topbar .week span { white-space: nowrap; }
+.resources { gap: 14px; }
+.missing td:first-child { white-space: nowrap; }
