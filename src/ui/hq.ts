@@ -193,6 +193,10 @@ export function adjutantNotes(app: App, side: SideState): string[] {
     const idleAircraft = sq.airframes.filter((a) => a.status === 'ready').length - Math.max(0, sq.crews);
     if (idleAircraft >= 2) notes.push(`${sq.name} has ${idleAircraft} serviceable aircraft with no crews to fly them. The training school fills gaps as crews graduate.`);
   }
+  // Bombers sent without fighter cover.
+  const raidIds = plan.raid?.squadronIds ?? [];
+  const kindIn = (k: AircraftKind[]) => raidIds.some((id) => k.includes(side.squadrons.find((q) => q.id === id)?.kind ?? 'recon'));
+  if (plan.raid && plan.raid.target !== 'sweep' && kindIn(['medium', 'heavy']) && !kindIn(['fighter'])) notes.push('The bombers fly unescorted this week. Enemy fighters will have them to themselves.');
   // Squadrons with aircraft ready but no job this week.
   const busy = new Set([...(plan.raid?.squadronIds ?? []), ...plan.defense, ...(plan.feint?.squadronIds ?? []), plan.recon?.squadronId, ...(plan.rested ?? []).map((r) => r.id)]);
   const idle = side.squadrons.filter((q) => !busy.has(q.id) && flyable(q).length > 0);

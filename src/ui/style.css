@@ -406,3 +406,6 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .theater-ledger span { font-size: 12px; opacity: 0.75; }
 .theater-ledger b { font-size: 22px; }
 .fit-btn { margin-left: 8px; padding: 2px 8px; }
+.radio-set { margin-top: 8px; padding: 6px 8px; border: 1px dashed currentColor; }
+.radio-set.hf { color: #c9a35a; }
+.radio-set.vhf { color: #8fbf7a; }

@@ -92,10 +92,13 @@ export function makeLeader(rng: Rng, side: SideId, archetype?: Archetype, taken:
   const usedFirst = new Set(taken.map((n) => n.split(' ')[0]));
   const usedLast = new Set(taken.map((n) => n.split(' ').slice(1).join(' ')));
   const free = (pool: string[], used: Set<string>) => pool.filter((x) => !used.has(x));
-  const firsts = free(FIRST_NAMES[side], usedFirst);
-  const lasts = free(LAST_NAMES[side], usedLast);
+  // Officers' names come first; the wider crew pools keep a long war from running out of names.
+  const firstPool = [...new Set([...FIRST_NAMES[side], ...CREW_FIRST[side]])];
+  const lastPool = [...new Set([...LAST_NAMES[side], ...CREW_LAST[side]])];
+  const firsts = free(FIRST_NAMES[side], usedFirst).length ? free(FIRST_NAMES[side], usedFirst) : free(firstPool, usedFirst);
+  const lasts = free(LAST_NAMES[side], usedLast).length ? free(LAST_NAMES[side], usedLast) : free(lastPool, usedLast);
   return {
-    name: `${rng.pick(firsts.length ? firsts : FIRST_NAMES[side])} ${rng.pick(lasts.length ? lasts : LAST_NAMES[side])}`,
+    name: `${rng.pick(firsts.length ? firsts : firstPool)} ${rng.pick(lasts.length ? lasts : lastPool)}`,
     rank: rng.pick(RANKS[side]),
     archetype: archetype ?? rng.pick(archetypes),
   };

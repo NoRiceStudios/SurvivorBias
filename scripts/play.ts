@@ -348,7 +348,7 @@ function launch() {
   }
   if (d.missing.length) {
     say('Missing:');
-    for (const m of d.missing) say(`  ${m.serial} ${AIRCRAFT[m.kind].name[0]} — ${m.captain}${AIRCRAFT[m.kind].crew > 1 ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}. Last heard: ${m.lastWords ? `"${m.lastWords}"` : 'nothing'}`);
+    for (const m of d.missing) say(`  ${m.serial} ${AIRCRAFT[m.kind].name[0]} — ${m.captain}${AIRCRAFT[m.kind].crew > 1 ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}. Last heard: ${m.lastWords ? `"${m.lastWords}"` : 'nothing'}${m.witnessed ? ` · ${m.witnessed}` : ''}`);
   }
   say('Home front:', ...d.defenseSummary.map((x) => `  ${x}`));
   if (d.recon) say(`  PHOTOGRAPHIC INTERPRETATION: ${st.theater.sites.find((x) => x.id === d.recon!.siteId)?.name} at ${d.recon.condition}% capacity.`);

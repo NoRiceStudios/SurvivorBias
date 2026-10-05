@@ -53,17 +53,26 @@ export function carryPlan(state: GameState, side: SideId, prev: TurnPlan): TurnP
 }
 
 
-/** Shrink a plan until the wing can afford it: the feint goes first, then squadrons from the raid, then patrols. */
+/**
+ * Shrink a plan until the wing can afford it: the feint goes first, then bomber
+ * squadrons together with a matching escort, so the raid keeps its cover for as
+ * long as possible. Patrols go last.
+ */
 export function fitPlanToStores(state: GameState, side: SideId, plan: TurnPlan): TurnPlan {
   const s = state.sides[side];
   const over = () => planCost(s, plan).stores > s.resources.stores;
   if (over() && plan.feint) plan.feint = null;
   if (over() && plan.recon) plan.recon = null;
+  const kindOf = (id: string) => s.squadrons.find((q) => q.id === id)?.kind;
   while (over() && plan.raid && plan.raid.squadronIds.length > 1) {
-    // Keep the bombers if we can: drop escorts first, then the last bomber squadron.
     const ids = plan.raid.squadronIds;
-    const fighter = [...ids].reverse().find((id) => s.squadrons.find((q) => q.id === id)?.kind === 'fighter');
-    ids.splice(ids.lastIndexOf(fighter ?? ids[ids.length - 1]), 1);
+    const bombers = ids.filter((id) => kindOf(id) === 'medium' || kindOf(id) === 'heavy');
+    const fighters = ids.filter((id) => kindOf(id) === 'fighter');
+    if (bombers.length >= 2) {
+      ids.splice(ids.lastIndexOf(bombers[bombers.length - 1]), 1);
+      if (fighters.length > bombers.length - 1 && fighters.length > 1) ids.splice(ids.lastIndexOf(fighters[fighters.length - 1]), 1);
+    } else if (fighters.length > 1 || bombers.length === 0) ids.splice(ids.lastIndexOf(fighters[fighters.length - 1]), 1);
+    else break; // one bomber squadron and its escort: fly both or neither
   }
   if (over() && plan.raid) plan.raid = null;
   while (over() && plan.defense.length) {

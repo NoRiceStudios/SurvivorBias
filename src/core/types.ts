@@ -95,6 +95,8 @@ export interface Squadron {
   armor: ZoneMap<number>;
   notables: string[];
   insignia: number;
+  /** The leader's last remark in a Form 541, so he doesn't repeat himself. */
+  lastRemark?: string;
   /** Week each kind of request was last put to the commander (leaders don't nag every week). */
   asked?: Partial<Record<RequestKind, number>>;
 }
@@ -204,6 +206,8 @@ export interface SideState {
   observed: { feints: number; support: number };
   /** Squadron leaders' requests waiting on the commander's desk this week. */
   requests: LeaderRequest[];
+  /** Leaders' names already used in this war (lost leaders included). */
+  usedNames?: string[];
 }
 
 export interface RaidPlan {
@@ -246,6 +250,8 @@ export interface PlaneRecord {
   sawApproach: Record<FighterApproach, number>;
   enemiesSeen: number;
   lastWords?: string;
+  /** What a squadron mate saw of the loss, e.g. "falling out of formation, 3 chutes". */
+  witnessed?: string;
   /** Turned back with a mechanical fault before contact. */
   mechanical?: boolean;
   /** The squadron leader's own aircraft (callsign 1). */
@@ -261,6 +267,8 @@ export interface RadioLine {
   text: string;
   /** Only heard by the listed side. */
   heardBy: SideId;
+  /** A crew's last call (already subject to radio range when generated). */
+  final?: boolean;
 }
 
 export interface RaidResult {
@@ -304,7 +312,7 @@ export interface Debrief {
   /** Survivors only. Full hit lists for display. */
   returned: PlaneRecord[];
   /** Lost planes: only serials and squadron, never the hits. */
-  missing: { serial: string; squadronId: string; kind: AircraftKind; lastWords?: string; captain?: string }[];
+  missing: { serial: string; squadronId: string; kind: AircraftKind; lastWords?: string; witnessed?: string; captain?: string }[];
   reports: SquadronReport[];
   radio: RadioLine[];
   recon: { siteId: string; condition: number } | null;

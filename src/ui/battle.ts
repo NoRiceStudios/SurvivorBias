@@ -86,6 +86,9 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
         h('div', { class: 'radio-title' }, 'OPERATIONS ROOM — R/T LOG'),
         map.el,
         h('div', { class: 'muted small' }, 'Plots are approximate. Crosses mark calls of aircraft in trouble.'),
+        side.research.includes('radios')
+          ? h('div', { class: 'small radio-set vhf' }, 'VHF sets: clear reception. You hear nearly everything said in the air.')
+          : h('div', { class: 'small radio-set hf' }, 'Old HF sets: poor reception. Many calls are lost in the static, and you rarely hear the last words of crews who don\'t return. VHF Radio Sets (Research) fix this. Tower and ground reports come by telephone.'),
       ),
       h('div', { class: 'radio-right' }, log, h('div', { class: 'radio-actions' }, skip, proceed)),
     ),
@@ -280,7 +283,7 @@ function missingView(app: App, d: Debrief): HTMLElement {
       h('tbody', null, d.missing.map((m) => h('tr', null,
         h('td', null, m.serial), h('td', null, AIRCRAFT[m.kind].name[d.side]), h('td', null, sqName(m.squadronId)),
         h('td', null, `${m.captain ?? 'Unknown'}${AIRCRAFT[m.kind].crew > 1 ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}`),
-        h('td', { class: 'typed' }, m.lastWords ? `"${m.lastWords}"` : 'Nothing heard.'),
+        h('td', { class: 'typed' }, m.lastWords ? `"${m.lastWords}"` : 'Nothing heard.', m.witnessed ? h('div', { class: 'small muted' }, m.witnessed) : null),
       ))),
     ),
     h('div', { class: 'missing-planes' }, d.missing.slice(0, 12).map((m) => aircraftCanvas(m.kind, { side: d.side, style: 'silhouette' }, 1))),

@@ -5,6 +5,9 @@ import {
   redactFor,
   type Command,
   approveRequest,
+  ABORT_MECH,
+  SEEN_WHAT,
+  reception,
   carryPlan,
   crewShortfall,
   facilityEffects,
@@ -141,36 +144,23 @@ describe('survivorship bias', () => {
   });
 
   it('armoring where survivors are NOT hit beats armoring the holes', () => {
-    const survival = (insight: number) => {
-      let sent = 0;
-      let lost = 0;
-      for (let g = 0; g < 30; g++) {
-        const s = startCampaign({ seed: `armor${g}` });
-        const side = s.sides[0];
-        // Learn from some sorties first.
-        for (let i = 0; i < 3; i++) endTurnSingle(s, playerPlan(s));
+    // After some weeks of evidence, the Wald reading puts more plate where hits are truly deadly.
+    let naive = 0;
+    let wald = 0;
+    for (let g = 0; g < 20; g++) {
+      const s = startCampaign({ seed: `armor${g}` });
+      for (let i = 0; i < 8 && !s.outcome; i++) endTurnSingle(s, playerPlan(s));
+      const side = s.sides[0];
+      const sq = side.squadrons.find((q) => q.kind === 'medium')!;
+      const protection = (insight: number) => {
         side.insight = insight;
-        for (const sq of side.squadrons) sq.armor = chooseArmor(side, sq);
-        const enemy = s.sides[1];
-        // This test is about armor, not stores: let the enemy put up its full defence.
-        enemy.resources.stores = 1000;
-        const plan = playerPlan(s);
-        const def = aiPlan(s, 1);
-        // Several engagements per campaign, each from the same starting state.
-        for (let k = 0; k < 4; k++) {
-          const copy = JSON.parse(JSON.stringify(s)) as GameState;
-          const r = resolveRaid(new Rng({ s: 1234 + g * 7 + k }), copy, copy.sides[0], copy.sides[1], plan.raid, def);
-          if (!r) continue;
-          const mine = r.planes.filter((p) => p.side === 0 && p.kind !== 'fighter');
-          sent += mine.length;
-          lost += mine.filter((p) => p.fate === 'lost').length;
-        }
-      }
-      return 1 - lost / Math.max(1, sent);
-    };
-    const naive = survival(0);
-    const wald = survival(1);
-    expect(wald).toBeGreaterThan(naive);
+        const armor = chooseArmor(side, sq);
+        return ZONES.reduce((a, z) => a + armor[z] * s.lethality.medium[z], 0);
+      };
+      naive += protection(0);
+      wald += protection(1);
+    }
+    expect(wald).toBeGreaterThan(naive * 1.15);
   });
 });
 
@@ -417,9 +407,9 @@ describe('playtest fixes', () => {
       const r = resolveTurn(s, [playerPlan(s), aiPlan(s, 1)]);
       for (const raid of [r.raids[0], r.feints[0]]) {
         if (!raid) continue;
-        const abortedLines = raid.radio.filter((l) => /turning back|aborting|returning to base/.test(l.text)).map((l) => l.callsign);
+        const abortedLines = raid.radio.filter((l) => [...ABORT_MECH.multi, ...ABORT_MECH.single].includes(l.text)).map((l) => l.callsign);
         for (const cs of abortedLines) {
-          expect(raid.radio.some((l) => l.text.startsWith(`${cs} is going down`) || l.text.startsWith(`${cs} has gone in`) || l.text.startsWith(`${cs} just blew up`))).toBe(false);
+          expect(raid.radio.some((l) => SEEN_WHAT.some((w) => l.text.includes(`${cs} ${w}`)))).toBe(false);
         }
       }
     }
@@ -753,5 +743,27 @@ describe('designer decisions after round 2', () => {
     expect(planCost(s.sides[0], plan).stores).toBeLessThanOrEqual(s.sides[0].resources.stores);
     expect(validatePlan(s.sides[0], plan, s).ok).toBe(true);
     if (plan.raid) expect(plan.raid.squadronIds.some((id) => s.sides[0].squadrons.find((q) => q.id === id)!.kind === 'medium')).toBe(true);
+  });
+
+  it('old HF sets lose part of the radio traffic; VHF sets hear it all', () => {
+    const s = startCampaign({ seed: 'hf' });
+    const lines = Array.from({ length: 200 }, (_, i) => ({ t: i, side: 0 as const, callsign: `Able ${i}`, text: 'Bandits three o\'clock high, here they come.', heardBy: 0 as const }));
+    lines.push({ t: 300, side: 0, callsign: 'Tower', text: '5 of 6 back.', heardBy: 0 });
+    const hf = reception(new Rng({ s: 7 }), s.sides[0], lines);
+    expect(hf.length).toBeLessThan(150);
+    expect(hf.some((l) => l.callsign === 'Tower')).toBe(true);
+    s.sides[0].research.push('radios');
+    expect(reception(new Rng({ s: 7 }), s.sides[0], lines)).toHaveLength(201);
+  });
+
+  it('the radio rarely repeats itself', () => {
+    const s = startCampaign({ seed: 'chatter' });
+    const texts = new Set<string>();
+    let total = 0;
+    for (let w = 0; w < 6 && !s.outcome; w++) {
+      const r = resolveTurn(s, [playerPlan(s), aiPlan(s, 1)]);
+      for (const raid of [...r.raids, ...r.feints]) for (const l of raid?.radio ?? []) { texts.add(l.text); total++; }
+    }
+    expect(texts.size / total).toBeGreaterThan(0.5);
   });
 });

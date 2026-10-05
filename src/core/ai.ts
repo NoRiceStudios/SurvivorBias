@@ -172,6 +172,13 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
     sq.doctrine.breakOff = 0.45;
   }
 
+  // On Green the enemy spends the first three weeks finding its feet: smaller raids, one patrol.
+  if (side.isAI && side.insight < 0.3 && state.turn <= 3) {
+    plan.feint = null;
+    for (const id of plan.defense.slice(1)) delete plan.cover[id];
+    plan.defense = plan.defense.slice(0, 1);
+    if (plan.raid) plan.raid.squadronIds = plan.raid.squadronIds.slice(0, 2);
+  }
   // Trim the plan until it fits the stores available.
   let guard = 0;
   while (!validatePlan(side, plan, state).ok && guard++ < 10) {

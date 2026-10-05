@@ -297,6 +297,8 @@ export function enterTheater(state: GameState, index: number, rng: Rng, headStar
     side.perceived.front = side.id === 0 ? state.front : 0 - state.front;
     // Redeployment: the ground crews catch up on repairs, crews get a breather.
     if (index > 0) {
+      side.requests = side.requests.filter((r) => r.kind !== 'rest');
+      side.requests.forEach((r, i) => (r.n = i + 1));
       for (const sq of side.squadrons) {
         for (const af of sq.airframes) if (af.status === 'repair') {
           af.status = 'ready';

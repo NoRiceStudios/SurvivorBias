@@ -12,6 +12,7 @@ import {
   frontSector,
   reachableSites,
   rollWeather,
+  SECTOR_PRESSURE,
   sectorOwner,
   syncFacilities,
   theaterDecision,
@@ -106,10 +107,15 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
       if (r.fate === 'lost') {
         lost++;
         sq.crews--;
-        // The leader flies callsign 1: if that aircraft is lost, so is he.
+        // The leader flies callsign 1. Old hands get out more often than most: about half bale out and make it back.
         if (r.lead) {
-          leaderLost = true;
-          r.captain = `${sq.leader.rank} ${sq.leader.name}`;
+          if (rng.chance(0.5)) {
+            r.captain = `${sq.leader.rank} ${sq.leader.name} (baled out and made it back; his crew is missing)`;
+            news.push(`${sq.leader.rank} ${sq.leader.name} of ${sq.name} baled out of ${r.serial} and has made his way back to the squadron.`);
+          } else {
+            leaderLost = true;
+            r.captain = `${sq.leader.rank} ${sq.leader.name}`;
+          }
         }
         sq.airframes = sq.airframes.filter((a) => a.id !== r.airframeId);
       } else if (r.fate === 'crashed') {
@@ -136,7 +142,9 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
     }
     if (leaderLost || (lost === mine.length && sq.airframes.length === 0)) {
       const old = sq.leader;
-      sq.leader = makeLeader(rng, side.id, undefined, side.squadrons.map((q) => q.leader.name));
+      // Never reuse a name already heard in this war, so a new CO is never mistaken for the man he replaces.
+      side.usedNames = [...new Set([...(side.usedNames ?? []), old.name])];
+      sq.leader = makeLeader(rng, side.id, undefined, [...side.squadrons.map((q) => q.leader.name), ...side.usedNames]);
       const lostLead = mine.find((r) => r.lead && r.fate === 'lost');
       const line = `${old.rank} ${old.name}, commanding ${sq.name}, is missing${lostLead ? ` with ${lostLead.serial}` : ''}. ${sq.leader.rank} ${sq.leader.name} takes command.`;
       news.push(line);
@@ -214,7 +222,8 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   t.inTraining = 0;
   let pool = graduates;
   const gradSkill = 0.25 + t.level * 0.07 + (t.focus === 'gunnery' || t.focus === 'evasion' ? 0.06 : 0) - (t.focus === 'reporting' ? 0.04 : 0);
-  const needy = [...side.squadrons].sort((a, b) => a.crews - a.airframes.length - (b.crews - b.airframes.length));
+  // Squadrons with no crew at all come first (a new recon flight must not wait for weeks), then the most short-handed.
+  const needy = [...side.squadrons].sort((a, b) => (a.crews <= 0 ? -100 : 0) - (b.crews <= 0 ? -100 : 0) || a.crews - a.airframes.length - (b.crews - b.airframes.length));
   for (const sq of needy) {
     while (pool > 0 && sq.crews < sq.airframes.length) {
       sq.skill = (sq.skill * sq.crews + gradSkill) / (sq.crews + 1);
@@ -291,7 +300,9 @@ function newOrder(rng: Rng, state: GameState, side: SideState, exclude: Order['k
   const lastWeek = state.turn + Math.max(1, def.weeks - t.week);
   const due = (weeks: number) => Math.min(lastWeek, next + weeks - 1);
   const open = new Set(side.orders.filter((o) => !o.done && !o.failed).map((o) => o.kind));
-  const targets = reachableSites(state, side.id, 'medium');
+  // A site just struck to order isn't ordered again straight away.
+  const recentlyStruck = new Set(side.orders.filter((o) => o.kind === 'strike' && o.done && o.deadline >= state.turn - 2).map((o) => o.siteId));
+  const targets = reachableSites(state, side.id, 'medium').filter((x) => !recentlyStruck.has(x.id));
   const w: Partial<Record<Order['kind'], number>> = {
     strike: targets.length && lastWeek > next ? 0.45 : 0,
     kills: 0.3,
@@ -323,9 +334,11 @@ function newOrder(rng: Rng, state: GameState, side: SideState, exclude: Order['k
     const deadline = due(weeks);
     return { id, kind, amount, deadline, text: `Destroy no fewer than ${amount} enemy aircraft ${weeks === 1 ? 'this coming week' : `in the next ${weeks} weeks`} (by week ${deadline}).` };
   }
+  // Sorties over two weeks, so tired squadrons can be rested in one of them.
   const strength = side.squadrons.reduce((x, q) => x + flyable(q).length, 0);
-  const amount = Math.max(6, Math.round(strength * rng.range(0.6, 0.8)));
-  return { id, kind, amount, deadline: next, text: `Mount at least ${amount} sorties this coming week (week ${next}) to maintain pressure on the enemy.` };
+  const weeks = Math.min(2, lastWeek - next + 1);
+  const amount = Math.max(6, Math.round(strength * weeks * rng.range(0.5, 0.65)));
+  return { id, kind, amount, deadline: due(weeks), text: `Mount at least ${amount} sorties ${weeks === 1 ? `this coming week (week ${next})` : `over the next two weeks (by week ${due(weeks)})`} to maintain pressure on the enemy.` };
 }
 
 interface Reported {
@@ -617,6 +630,13 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   const flew = (id: SideId) => !!(raids[id] || feints[id]) || plans[id].defense.length > 0;
   const news = applyPressure(state, [flew(0), flew(1)]);
   for (const id of [0, 1] as SideId[]) news[id].unshift(...lossNews[id]);
+  // The Army warns a week ahead when a line is close to giving way, on either side.
+  for (const id of [0, 1] as SideId[]) {
+    const f = id === 0 ? state.front : 0 - state.front;
+    const names = theaterDef(state).sectors;
+    if (f <= -(SECTOR_PRESSURE - 8)) news[id].push(`Army liaison: the line at ${names[frontSector(t, other(id))] ?? 'the front'} is cracking. Another week like this one and it will give way.`);
+    else if (f >= SECTOR_PRESSURE - 8) news[id].push(`Army liaison: the enemy line at ${names[frontSector(t, id)] ?? 'the front'} is wavering. One more good week could break it.`);
+  }
   syncFacilities(state);
 
   // Debriefs.

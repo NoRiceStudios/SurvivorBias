@@ -1,3 +1,4 @@
+import { reception } from './radio';
 import { AIRCRAFT, ARCHETYPE_BIAS, TARGETS, ZONE_LABEL } from './data';
 import type { Rng } from './rng';
 import { captainName } from './setup';
@@ -100,29 +101,36 @@ export function squadronReport(
   const lostN = sent - survivors.length;
   const role = recs[0].role;
   const defending = role === 'defense';
+  const sweep = raid?.target === 'sweep';
+  const escort = sq.kind === 'fighter' && !defending && !sweep;
+  const hard = lostN > 0;
   const remarks: Record<typeof sq.leader.archetype, [string[], string[]]> = {
     braggart: [
-      [`${L}: "They scattered like pigeons. Put us up again tomorrow."`, `${L}: "Best day's shooting this squadron has had."`],
-      [`${L}: "They never got near the works. Not while we were up."`, `${L}: "Sent them home with their tails on fire."`],
+      [`${L}: "They scattered like pigeons. Put us up again tomorrow."`, `${L}: "Best day's shooting this squadron has had."`, `${L}: "Tell the papers. They'll want a photograph."`, hard ? `${L}: "Lost a couple, but you should see what we did to them."` : `${L}: "Not a scratch on us. Not one."`, `${L}: "Easy. Too easy, really."`],
+      [`${L}: "They never got near the works. Not while we were up."`, `${L}: "Sent them home with their tails on fire."`, `${L}: "Like shooting rabbits, sir."`, `${L}: "They won't try that again in a hurry."`],
     ],
     pessimist: [
-      [`${L}: "There were more of them than last time. There are always more."`, `${L}: "We were lucky. Luck runs out."`],
-      [`${L}: "More of them every day. We can't stop them all."`, `${L}: "They got through. They'll be back tomorrow."`],
+      [`${L}: "There were more of them than last time. There are always more."`, `${L}: "We were lucky. Luck runs out."`, hard ? `${L}: "We left good men out there again."` : `${L}: "Nobody lost. Don't get used to it."`, `${L}: "Same route, same flak. They know our habits."`, `${L}: "Ask me again how it went in a month."`],
+      [`${L}: "More of them every day. We can't stop them all."`, `${L}: "They got through. They'll be back tomorrow."`, `${L}: "We were scrambled late. We're always scrambled late."`, `${L}: "For every one we stop, two get through."`],
     ],
     gloryHunter: [
-      [`${L} requests the squadron be given the lead next time.`, `${L}: "Give us the deep targets, sir. We can take it."`],
-      [`${L}: "Let us go after them over their own fields, sir."`, `${L} asks to be taken off defence and given an offensive role.`],
+      [`${L} requests the squadron be given the lead next time.`, `${L}: "Give us the deep targets, sir. We can take it."`, `${L}: "We went in lower than anyone. Put that in the record."`, `${L} asks that his crews be considered for decorations.`],
+      [`${L}: "Let us go after them over their own fields, sir."`, `${L} asks to be taken off defence and given an offensive role.`, `${L}: "Waiting for them to come to us is no way to win a war."`],
     ],
     byTheBook: [
-      [`${L} declines to confirm claims not witnessed by two crews.`, `${L}: "Report attached. Several items marked unconfirmed."`],
-      [`${L}: "Interception report attached. Claims marked unconfirmed where not seen to crash."`, `${L} declines to confirm claims not witnessed by two pilots.`],
+      [`${L} declines to confirm claims not witnessed by two crews.`, `${L}: "Report attached. Several items marked unconfirmed."`, `${L}: "Times, heights and headings are in the attached log, sir."`, `${L} notes two crews disagree on the bombing results and has recorded both.`],
+      [`${L}: "Interception report attached. Claims marked unconfirmed where not seen to crash."`, `${L} declines to confirm claims not witnessed by two pilots.`, `${L}: "Scramble to contact took eleven minutes. That can be improved."`],
     ],
     timid: [
-      [`${L}: "The flak was the worst I have seen."`, sq.kind === 'fighter' ? `${L}: "We were spread too thin to cover the bombers."` : `${L} recommends the target be given to the heavies.`],
-      [`${L}: "We were heavily outnumbered, sir."`, `${L}: "The boys need a rest. They're seeing bandits in every cloud."`],
+      [`${L}: "The flak was the worst I have seen."`, escort ? `${L}: "We were spread too thin to cover the bombers."` : sweep ? `${L}: "We were bounced from above before we saw them."` : `${L} recommends the target be given to the heavies.`, `${L}: "We kept together. That's the main thing."`, hard ? `${L}: "I can't keep sending them out like this, sir."` : `${L}: "Everyone home, thank God."`],
+      [`${L}: "We were heavily outnumbered, sir."`, `${L}: "The boys need a rest. They're seeing bandits in every cloud."`, `${L}: "We engaged as best we could, sir."`],
     ],
   };
-  report.remarks.push(rng.pick(remarks[sq.leader.archetype][defending ? 1 : 0]));
+  // A leader doesn't say the same thing two debriefs running.
+  const pool = remarks[sq.leader.archetype][defending ? 1 : 0].filter((x) => x !== sq.lastRemark);
+  const said = rng.pick(pool.length ? pool : remarks[sq.leader.archetype][defending ? 1 : 0]);
+  sq.lastRemark = said;
+  report.remarks.push(said);
   if (raid && raid.weather !== 'clear' && !defending) report.remarks.push(raid.weather === 'storm' ? 'Weather: storms and heavy cloud throughout.' : 'Weather: solid cloud over the target area.');
   if (lostN > 0 && report.enemyFightersReported === 0) {
     report.remarks.push(defending
@@ -166,14 +174,15 @@ export function buildDebrief(
 ): Debrief {
   const mine = allRecs.filter((p) => p.side === side.id);
   const returned = mine.filter((p) => p.fate !== 'lost');
-  const radioLines = [
+  // What our sets pick up: without VHF, old HF equipment loses much of the traffic.
+  const radioLines = reception(rng, side, [
     ...myRaids.flatMap((r) => r.radio.filter((l) => l.heardBy === side.id)),
     ...enemyRaids.flatMap((r) => r.radio.filter((l) => l.heardBy === side.id)).map((l) => ({ ...l, t: l.t + 200 })),
     ...landing.filter((l) => l.heardBy === side.id),
-  ];
+  ]);
   const missing = mine
     .filter((p) => p.fate === 'lost')
-    .map((p) => ({ serial: p.serial, squadronId: p.squadronId, kind: p.kind, lastWords: p.lastWords, captain: p.captain ?? captainName(side.id, p.serial, seed) }));
+    .map((p) => ({ serial: p.serial, squadronId: p.squadronId, kind: p.kind, lastWords: p.lastWords, witnessed: p.witnessed, captain: p.captain ?? captainName(side.id, p.serial, seed) }));
 
   const mainRaid = myRaids.find((r) => r.target !== 'feint') ?? null;
   const reports: SquadronReport[] = [];
