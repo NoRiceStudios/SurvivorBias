@@ -2,6 +2,7 @@ import { aiPlan } from './ai';
 import { emptyPlan } from './actions';
 import { Rng } from './rng';
 import { newGame, SAVE_VERSION, type NewGameOptions } from './setup';
+import { depthFor } from './theaters';
 import { resolveTurn } from './turn';
 import type { GameState, SideId, TurnPlan } from './types';
 
@@ -11,13 +12,16 @@ export function startCampaign(opts: NewGameOptions = {}): GameState {
   const rng = new Rng(state.rng);
   for (const side of state.sides) {
     const enemy = state.sides[(1 - side.id) as SideId];
+    const t = state.theater;
+    const first = t.sites.find((x) => x.owner !== side.id && depthFor(t.held0, side.id, x.sector) === 1)!;
     side.orders.push({
       id: `o${state.nextId++}`,
       kind: 'strike',
-      target: 'industry',
+      target: first.type,
+      siteId: first.id,
       amount: 12,
       deadline: 2,
-      text: `Inflict at least 12% damage on the enemy aircraft works by week 2.`,
+      text: `Inflict at least 12% damage on the ${first.name} by week 2.`,
     });
     side.memos.push(
       {
@@ -25,7 +29,7 @@ export function startCampaign(opts: NewGameOptions = {}): GameState {
         from: 'Air Ministry',
         kind: 'order',
         subject: 'Assumption of command',
-        body: `You are hereby appointed to command the ${side.id === 0 ? 'No. 7 Composite Wing' : 'Kampfgeschwader Nord'}. The ${enemy.short} air force in this sector is of unknown strength. You will strike at its industry and defend our own. Returns are to be submitted after every operation. Accuracy is expected.`,
+        body: `You are hereby appointed to command the ${side.id === 0 ? 'No. 7 Composite Wing' : 'Kampfgeschwader Nord'}. The war will be fought across three theaters, beginning with ${state.theater.id === 'narrow-sea' ? 'the Narrow Sea' : 'the front'}. The ${enemy.short} air force is of unknown strength. Returns are to be submitted after every operation. Accuracy is expected.`,
       },
       {
         turn: 1,

@@ -296,7 +296,7 @@ export function enterTheater(state: GameState, index: number, rng: Rng, headStar
       from: 'Air Ministry',
       kind: 'order',
       subject: `Theater of operations: ${def.name}`,
-      body: `${def.blurb} You are to win air superiority over the ${def.name} and support the Army in taking ${DECISIVE_GAIN} sectors from the enemy. Secondary objective: ${obj.text}`,
+      body: `${def.blurb} You are to win air superiority over ${def.name} and support the Army in taking ${DECISIVE_GAIN} sectors from the enemy. Secondary objective: ${obj.text}`,
     });
   }
   syncFacilities(state);

@@ -34,6 +34,20 @@ for (const [i, t] of dtabs.entries()) {
 }
 await page.evaluate(() => window.sb.go({ kind: 'hq', side: 0, tab: 'hangar' }));
 await shot('40-hangar-after');
+// Play until a theater is decided and capture the redeployment briefing.
+await page.evaluate(async () => {
+  let g = 0;
+  while (!window.sb.state.outcome && g++ < 40) {
+    await window.sb.launch(0);
+    const st = window.sb.state;
+    if (st.archive[st.archive.length - 1].theater !== st.theater.index) break;
+  }
+  window.sb.afterDebrief(0);
+});
+await shot('45-theater-change');
+await page.evaluate(() => window.sb.continueAfterTheater?.());
+await page.evaluate(() => window.sb.go({ kind: 'hq', side: 0, tab: 'briefing' }));
+await shot('46-briefing-theater2');
 // Play to the end.
 await page.evaluate(async () => { let g = 0; while (!window.sb.state.outcome && g++ < 40) await window.sb.launch(0); });
 for (const t of ['summary', 'archive', 'ledger']) {

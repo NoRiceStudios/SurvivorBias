@@ -26,7 +26,7 @@ import {
   ZONE_LABEL,
 } from '../core/data';
 import { flyable } from '../core/sim';
-import { act } from '../core/turn';
+import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTORS, THEATERS, WEATHER_LABEL } from '../core/theaters';
 import type { AircraftKind, FighterApproach, Hit, SideId, SideState, Squadron, TargetId, TrainingFocus } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
@@ -34,6 +34,7 @@ import { sfxClick } from './audio';
 import { h, meter, pct, slider } from './dom';
 import { icon } from './icons';
 import { aircraftCanvas } from './sprites';
+import { believed, depthLabel, mapLegend, theaterMap } from './theaterui';
 
 const TABS: [string, string][] = [
   ['briefing', 'Briefing'],
@@ -46,7 +47,6 @@ const TABS: [string, string][] = [
   ['intel', 'Intelligence'],
 ];
 
-export const ACT_NAME = ['', 'Act I — The Early War', 'Act II — Attrition', 'Act III — The Decision'];
 
 export function topBar(app: App, side: SideState): HTMLElement {
   const st = app.state!;
@@ -57,14 +57,19 @@ export function topBar(app: App, side: SideState): HTMLElement {
     'header',
     { class: 'topbar' },
     h('div', { class: `crest side${side.id}` }, h('div', { class: 'crest-name' }, side.id === 0 ? 'No. 7 Composite Wing' : 'Kampfgeschwader Nord'), h('div', { class: 'crest-sub' }, side.name)),
-    h('div', { class: 'week' }, icon('week', 18), h('span', null, `Week ${st.turn} / ${st.maxTurns}`), h('span', { class: 'act' }, ACT_NAME[act(st.turn, st.maxTurns)])),
+    h('div', { class: 'week' }, icon('week', 18),
+      h('span', null, `Week ${st.turn}`),
+      h('span', { class: 'act' }, `${THEATERS[st.theater.index].name} · week ${st.theater.week + 1}/${THEATERS[st.theater.index].weeks}`),
+      h('span', { class: 'forecast', title: 'Meteorological Office forecast for the coming operation. Usually right.' }, `Forecast: ${WEATHER_LABEL[st.forecast[side.id]]}`)),
     h('div', { class: 'resources' },
       res('supplies', r.supplies, 'Supplies: upgrades, repairs, production, research'),
       res('fuel', r.fuel, 'Fuel: every aircraft that flies burns it'),
       res('munitions', r.munitions, 'Munitions: bombs and ammunition'),
       res('crew', r.replacements, 'Replacement aircrew awaiting training'),
       h('div', { class: 'res', title: 'Confidence of High Command in your leadership' }, icon('trust', 18), meter(side.trust, 100, 10, side.trust < 25 ? 'bad' : '')),
-      h('div', { class: 'res', title: 'Front line as reported by Army liaison (+ favours us)' }, icon('front', 18), h('span', { class: front >= 0 ? 'good' : 'bad' }, `${front >= 0 ? '+' : ''}${front}`)),
+      h('div', { class: 'res', title: 'Sectors we hold in this theater, and the pressure on the front as reported by Army liaison' }, icon('front', 18),
+        h('span', null, `${side.id === 0 ? st.theater.held0 : SECTORS - st.theater.held0}/${SECTORS}`),
+        h('span', { class: front >= 0 ? 'good' : 'bad' }, ` ${front >= 0 ? '▲' : '▼'}`)),
     ),
   );
 }
@@ -98,7 +103,7 @@ export function renderHq(app: App, sideId: SideId, tab: string): HTMLElement {
     'div',
     { class: 'launchbar' },
     h('div', { class: 'launch-summary' },
-      plan.raid && plan.raid.squadronIds.length ? `${TARGETS[plan.raid.target].name}: ${countPlanes(side, plan.raid.squadronIds)} aircraft` : 'No raid planned',
+      plan.raid && plan.raid.squadronIds.length ? `${missionLabel(app, plan.raid)}: ${countPlanes(side, plan.raid.squadronIds)} aircraft` : 'No raid planned',
       ' · ',
       `Defence: ${countPlanes(side, plan.defense)} fighters`,
       ' · ',
@@ -132,7 +137,7 @@ function stampFor(kind: string): HTMLElement {
 function briefing(app: App, side: SideState): HTMLElement {
   const st = app.state!;
   const orders = side.orders.map((o) =>
-    h('li', { class: 'order' }, h('span', { class: 'order-text' }, o.text), h('span', { class: 'order-due' }, o.deadline <= st.turn ? 'DUE THIS WEEK' : `due week ${o.deadline}`)),
+    h('li', { class: 'order-item' }, h('span', { class: 'order-text' }, o.text), h('span', { class: 'order-due' }, o.deadline <= st.turn ? 'DUE THIS WEEK' : `due week ${o.deadline}`)),
   );
   const memos = side.memos.slice(0, 12).map((m) =>
     h('article', { class: `memo memo-${m.kind}` },
@@ -141,88 +146,106 @@ function briefing(app: App, side: SideState): HTMLElement {
       h('div', { class: 'memo-body' }, m.body),
     ),
   );
-  return h('div', { class: 'grid2' },
-    h('div', { class: 'col' },
-      panel('Standing Orders from High Command', orders.length ? h('ul', { class: 'orders' }, orders) : h('p', { class: 'muted' }, 'No outstanding directives.')),
-      panel('War Map (as reported)', warMap(side)),
-      panel('Returns Policy',
-        h('p', { class: 'muted' }, 'How your adjutant presents results to High Command. Optimistic returns raise confidence, until someone checks.'),
-        h('div', { class: 'choice-row' },
-          [['Accurate', 0], ['Optimistic', 0.4], ['Creative', 0.9]].map(([label, v]) =>
-            h('button', { class: `btn choice ${Math.abs(app.plans[side.id].embellish - (v as number)) < 0.05 ? 'on' : ''}`, onclick: () => app.act(() => { app.plans[side.id].embellish = v as number; }) }, label as string),
+  return h('div', { class: 'col' },
+    theaterPanel(app, side),
+    h('div', { class: 'grid2' },
+      h('div', { class: 'col' },
+        panel('Standing Orders from High Command', orders.length ? h('ul', { class: 'orders' }, orders) : h('p', { class: 'muted' }, 'No outstanding directives.')),
+        panel('Returns Policy',
+          h('p', { class: 'muted' }, 'How your adjutant presents results to High Command. Optimistic returns raise confidence, until someone checks.'),
+          h('div', { class: 'choice-row' },
+            [['Accurate', 0], ['Optimistic', 0.4], ['Creative', 0.9]].map(([label, v]) =>
+              h('button', { class: `btn choice ${Math.abs(app.plans[side.id].embellish - (v as number)) < 0.05 ? 'on' : ''}`, onclick: () => app.act(() => { app.plans[side.id].embellish = v as number; }) }, label as string),
+            ),
           ),
         ),
       ),
+      h('div', { class: 'col' }, panel('Correspondence', h('div', { class: 'memos' }, memos))),
     ),
-    h('div', { class: 'col' }, panel('Correspondence', h('div', { class: 'memos' }, memos))),
   );
 }
 
-function warMap(side: SideState): HTMLElement {
-  const W = 200;
-  const H = 90;
-  const c = document.createElement('canvas');
-  c.width = W;
-  c.height = H;
-  c.className = 'pix warmap';
-  const g = c.getContext('2d')!;
-  // Our territory left, theirs right. Front x by reported value.
-  const fx = Math.round(W / 2 + (side.perceived.front / 100) * (W / 2 - 10));
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const wob = Math.round(Math.sin(y / 7) * 3 + Math.sin(y / 3) * 1);
-      const ours = x < fx + wob;
-      const n = ((x * 13 + y * 7) % 11) / 11;
-      g.fillStyle = ours ? (n > 0.8 ? '#cfc39c' : '#d8cca6') : n > 0.8 ? '#bfae88' : '#c7b690';
-      if (Math.abs(x - (fx + wob)) < 1) g.fillStyle = '#b0302a';
-      g.fillRect(x, y, 1, 1);
-    }
-  // Coast and markers
-  g.fillStyle = '#2a2620';
-  g.fillRect(14, 40, 3, 3);
-  g.fillRect(W - 18, 22, 3, 3);
-  g.fillRect(W - 30, 62, 3, 3);
-  g.fillRect(W - 46, 44, 3, 3);
-  c.style.width = `${W * 2}px`;
-  c.style.height = `${H * 2}px`;
-  return h('div', { class: 'warmap-wrap' }, c,
-    h('div', { class: 'map-legend' }, h('span', null, '■ Base'), h('span', null, 'Enemy works · airfields · depots →'), h('span', { class: 'red' }, '| Front')),
-    h('div', { class: 'muted small' }, `Reported enemy facility condition — Works ${side.perceived.enemyFacilities.industry}% · Airfields ${side.perceived.enemyFacilities.airfield}% · Depots ${side.perceived.enemyFacilities.fuel}%`),
-    h('div', { class: 'muted small' }, `Our facilities — Works ${side.facilities.industry}% · Airfields ${side.facilities.airfield}% · Depots ${side.facilities.fuel}%`),
+/** The theater: map, stage, objectives and the record of theaters so far. */
+function theaterPanel(app: App, side: SideState): HTMLElement {
+  const st = app.state!;
+  const t = st.theater;
+  const def = THEATERS[t.index];
+  const stage = currentStage(st);
+  const obj = t.objectives.find((o) => o.side === side.id)!;
+  const gain = (side.id === 0 ? t.held0 - t.start0 : t.start0 - t.held0);
+  const objStatus = { open: 'OPEN', claimed: 'CLAIMED', confirmed: 'CONFIRMED', discredited: 'DISCREDITED' }[obj.status];
+  const record = THEATERS.map((th, i) => {
+    const r = st.theaterResults.find((x) => x.index === i);
+    const label = r ? (r.winner === side.id ? 'WON' : r.winner === null ? 'DRAWN' : 'LOST') : i === t.index ? 'IN PROGRESS' : 'AHEAD';
+    return h('div', { class: `theater-step ${r ? (r.winner === side.id ? 'won' : r.winner === null ? 'drawn' : 'lost') : i === t.index ? 'current' : ''}` },
+      h('b', null, th.name), h('span', null, `${th.season}`), h('span', { class: 'step-label' }, label));
+  });
+  return h('section', { class: 'paper panel theater-panel' },
+    h('div', { class: 'theater-head' },
+      h('div', null,
+        h('h2', null, `Theater of Operations: ${def.name}`),
+        h('div', { class: 'muted' }, `${def.season} · week ${t.week + 1} of ${def.weeks} · Stage: ${stage.title}`),
+      ),
+      h('div', { class: 'theater-record' }, record),
+    ),
+    theaterMap(st, { viewer: side.id, patrols: Object.values(app.plans[side.id].cover), scale: 2 }),
+    mapLegend(),
+    h('div', { class: 'theater-goals' },
+      h('div', null, h('h3', null, 'Primary objective'),
+        h('p', null, `Gain ${DECISIVE_GAIN} sectors from the enemy. Gained so far: `, h('b', { class: gain > 0 ? 'good' : gain < 0 ? 'bad' : '' }, `${gain >= 0 ? '+' : ''}${gain}`), '.'),
+        h('p', { class: 'muted small' }, `If neither side breaks through by week ${def.weeks}, the theater goes to whoever holds the advantage.`)),
+      h('div', null, h('h3', null, 'Secondary objective'), h('p', null, obj.text, ' ', h('span', { class: `stamp ${obj.status === 'discredited' ? 'reprimand' : obj.status === 'open' ? 'order' : 'notice'}` }, objStatus))),
+      h('div', null, h('h3', null, `Stage: ${stage.title}`), h('p', { class: 'small' }, stage.text)),
+    ),
   );
 }
 
 /* ---------------- Operations ---------------- */
+export function missionLabel(app: App, raid: { target: TargetId; siteId?: string }): string {
+  if (raid.target === 'support' || raid.target === 'sweep') return TARGETS[raid.target].name;
+  return app.state!.theater.sites.find((x) => x.id === raid.siteId)?.name ?? TARGETS[raid.target].name;
+}
+
 function operations(app: App, side: SideState): HTMLElement {
+  const st = app.state!;
+  const t = st.theater;
+  const def = THEATERS[t.index];
   const plan = app.plans[side.id];
-  const target = plan.raid?.target ?? 'industry';
-  const targets = (Object.keys(TARGETS) as TargetId[]).map((t) =>
-    h('button', {
-      class: `target-card ${plan.raid && target === t ? 'on' : ''}`,
-      onclick: () => app.act(() => {
-        if (!plan.raid) plan.raid = { target: t, squadronIds: [] };
-        plan.raid.target = t;
-        if (t === 'sweep') plan.raid.squadronIds = plan.raid.squadronIds.filter((id) => side.squadrons.find((s) => s.id === id)?.kind === 'fighter');
-      }),
-    },
-      h('div', { class: 'target-name' }, TARGETS[t].name),
-      h('div', { class: 'target-desc' }, TARGETS[t].desc),
-      t !== 'sweep' ? h('div', { class: 'target-cond' }, `Believed condition: ${side.perceived.enemyFacilities[t]}%`) : null,
-    ),
-  );
+  const bomberKinds = side.squadrons.filter((q) => q.kind === 'medium' || q.kind === 'heavy');
+  const longest = Math.max(0, ...bomberKinds.map((q) => bomberRange(q.kind)));
+  const reach = escortRange(side);
+  const enemySites = t.sites.filter((x) => x.owner !== side.id).sort((a, b) => depthFor(t.held0, side.id, a.sector) - depthFor(t.held0, side.id, b.sector));
+  const pick = (target: TargetId, siteId?: string) => app.act(() => {
+    const ids = plan.raid?.squadronIds ?? [];
+    plan.raid = { target, siteId, squadronIds: target === 'sweep' ? ids.filter((id) => side.squadrons.find((q) => q.id === id)?.kind === 'fighter') : ids };
+  });
+  const siteCards = enemySites.map((site) => {
+    const depth = depthFor(t.held0, side.id, site.sector);
+    const cond = believed(st, side.id, site);
+    const inRange = depth <= longest;
+    const on = plan.raid?.siteId === site.id;
+    return h('button', { class: `target-card site ${on ? 'on' : ''} ${inRange ? '' : 'locked'}`, disabled: !inRange, onclick: () => pick(site.type, site.id) },
+      h('div', { class: 'target-name' }, site.name),
+      h('div', { class: 'target-desc' }, `${def.sectors[site.sector]} · ${depthLabel(st, side.id, site)}`),
+      h('div', { class: 'target-cond' }, `Believed: ${cond}%${side.perceived.photographed.includes(site.id) ? ' (photographed)' : ''}`),
+      h('div', { class: 'small muted' }, !inRange ? 'Out of range of our bombers' : depth > reach ? 'Beyond escort range: bombers go on alone' : 'Within escort range'),
+    );
+  });
   const assign = (sq: Squadron, role: 'raid' | 'defense' | 'rest' | 'recon') => {
     plan.defense = plan.defense.filter((i) => i !== sq.id);
+    delete plan.cover[sq.id];
     if (plan.raid) plan.raid.squadronIds = plan.raid.squadronIds.filter((i) => i !== sq.id);
     if (plan.recon?.squadronId === sq.id) plan.recon = null;
     if (role === 'raid') {
-      if (!plan.raid) plan.raid = { target: sq.kind === 'fighter' ? 'sweep' : 'industry', squadronIds: [] };
-      if (plan.raid.target === 'sweep' && sq.kind !== 'fighter') return { ok: false, reason: 'Only fighters fly sweeps. Choose a bombing target first.' };
+      if (!plan.raid) plan.raid = sq.kind === 'fighter' ? { target: 'sweep', squadronIds: [] } : { target: 'support', squadronIds: [] };
+      if (plan.raid.target === 'sweep' && sq.kind !== 'fighter') return { ok: false, reason: 'Only fighters fly sweeps. Choose a bombing mission first.' };
       plan.raid.squadronIds.push(sq.id);
     }
     if (role === 'defense') plan.defense.push(sq.id);
-    if (role === 'recon') plan.recon = { squadronId: sq.id, target: target === 'sweep' ? 'industry' : target };
+    if (role === 'recon') plan.recon = { squadronId: sq.id, siteId: plan.raid?.siteId ?? enemySites[0].id };
     return { ok: true };
   };
+  const ownSectors = Array.from({ length: SECTORS }, (_, i) => i).filter((i) => (i < t.held0 ? 0 : 1) === side.id).sort((a, b) => depthFor(t.held0, (1 - side.id) as SideId, a) - depthFor(t.held0, (1 - side.id) as SideId, b));
   const rows = side.squadrons.map((sq) => {
     const role = plan.raid?.squadronIds.includes(sq.id) ? 'raid' : plan.defense.includes(sq.id) ? 'defense' : plan.recon?.squadronId === sq.id ? 'recon' : 'rest';
     const ready = flyable(sq).length;
@@ -230,26 +253,41 @@ function operations(app: App, side: SideState): HTMLElement {
       sq.kind === 'fighter' ? [['raid', plan.raid?.target === 'sweep' ? 'Sweep' : 'Escort'], ['defense', 'Defend'], ['rest', 'Stand down']]
       : sq.kind === 'recon' ? [['recon', 'Photograph'], ['rest', 'Stand down']]
       : [['raid', 'Bomb'], ['rest', 'Stand down']];
+    const coverRow = role === 'defense' ? h('div', { class: 'cover-row' }, h('span', { class: 'small muted' }, 'Patrol: '),
+      h('button', { class: `btn choice ${plan.cover[sq.id] === undefined ? 'on' : ''}`, onclick: () => app.act(() => { delete plan.cover[sq.id]; }) }, 'Reserve'),
+      ownSectors.map((sec) => h('button', { class: `btn choice ${plan.cover[sq.id] === sec ? 'on' : ''}`, onclick: () => app.act(() => { plan.cover[sq.id] = sec; }) }, def.sectors[sec])),
+    ) : null;
     return h('tr', { class: role !== 'rest' ? 'active' : '' },
-      h('td', { class: 'sq-cell' }, aircraftCanvas(sq.kind, { side: side.id, seed: sq.insignia }, 1), h('div', null, h('div', { class: 'sq-name' }, sq.name), h('div', { class: 'muted small' }, `${AIRCRAFT[sq.kind].name[side.id]} · ${sq.leader.rank} ${sq.leader.name}`))),
+      h('td', { class: 'sq-cell' }, aircraftCanvas(sq.kind, { side: side.id, seed: sq.insignia }, 1), h('div', null, h('div', { class: 'sq-name' }, sq.name), h('div', { class: 'muted small' }, `${AIRCRAFT[sq.kind].name[side.id]} · range ${sq.kind === 'fighter' ? reach : bomberRange(sq.kind)} sectors`))),
       h('td', null, `${ready}`, h('span', { class: 'muted small' }, ` / ${sq.airframes.length}`)),
       h('td', null, meter(sq.morale, 1, 6, sq.morale < 0.3 ? 'bad' : '')),
       h('td', null, meter(1 - sq.fatigue, 1, 6, sq.fatigue > 0.6 ? 'bad' : '')),
-      h('td', { class: 'roles' }, roles.map(([r, label]) => h('button', { class: `btn choice ${role === r ? 'on' : ''}`, onclick: () => app.act(() => assign(sq, r)) }, label))),
+      h('td', { class: 'roles' }, roles.map(([r, label]) => h('button', { class: `btn choice ${role === r ? 'on' : ''}`, onclick: () => app.act(() => assign(sq, r)) }, label)), coverRow),
     );
   });
   const appr = side.approach;
   const setAppr = (k: FighterApproach, v: number) => app.act(() => setApproach(side, { ...appr, [k]: Math.max(0.01, v) }));
   return h('div', { class: 'col' },
-    panel('Target for this week\'s operation', h('div', { class: 'targets' }, targets),
-      plan.raid ? h('button', { class: 'btn small', onclick: () => app.act(() => { plan.raid = null; }) }, 'Cancel raid (defensive week)') : null),
+    panel('Mission',
+      theaterMap(st, { viewer: side.id, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), scale: 2 }),
+      h('div', { class: 'targets three' },
+        (['support', 'sweep'] as const).map((m) => h('button', { class: `target-card ${plan.raid?.target === m ? 'on' : ''}`, onclick: () => pick(m) },
+          h('div', { class: 'target-name' }, TARGETS[m].name), h('div', { class: 'target-desc' }, TARGETS[m].desc),
+          h('div', { class: 'small muted' }, `Over ${def.sectors[frontSector(t, side.id)]}`))),
+        h('button', { class: `target-card ${!plan.raid ? 'on' : ''}`, onclick: () => app.act(() => { plan.raid = null; }) },
+          h('div', { class: 'target-name' }, 'No operation'), h('div', { class: 'target-desc' }, 'A defensive week. Bombers rest; fighters may still patrol.')),
+      ),
+      h('h3', null, 'Strike a site'),
+      h('div', { class: 'targets' }, siteCards),
+    ),
     panel('Squadron Assignments',
+      h('p', { class: 'muted small' }, 'Fighters on defence either patrol one sector (they will almost certainly meet a raid there, and rarely anywhere else) or wait in central reserve (they meet most raids, given warning).'),
       h('table', { class: 'sq-table' },
         h('thead', null, h('tr', null, h('th', null, 'Squadron'), h('th', null, 'Ready'), h('th', null, 'Morale'), h('th', null, 'Rested'), h('th', null, 'Assignment'))),
         h('tbody', null, rows),
       ),
-      plan.recon ? h('div', { class: 'recon-row' }, 'Photo target: ',
-        (['industry', 'airfield', 'fuel'] as const).map((t) => h('button', { class: `btn choice ${plan.recon!.target === t ? 'on' : ''}`, onclick: () => app.act(() => { plan.recon!.target = t; }) }, TARGETS[t].name))) : null,
+      plan.recon ? h('div', { class: 'recon-row' }, 'Photograph: ',
+        enemySites.map((x) => h('button', { class: `btn choice ${plan.recon!.siteId === x.id ? 'on' : ''}`, onclick: () => app.act(() => { plan.recon!.siteId = x.id; }) }, x.name))) : null,
     ),
     panel('Interceptor Tactics',
       h('p', { class: 'muted' }, 'How your fighters are briefed to attack enemy bombers. Gunners cover the tail best; a head-on pass is brief but meets fewer guns.'),
@@ -475,9 +513,12 @@ function intel(app: App, side: SideState): HTMLElement {
       ),
     ),
     h('div', { class: 'col' },
-      panel('Enemy facilities (our estimate)',
-        (['industry', 'airfield', 'fuel'] as const).map((k) => h('div', { class: 'bar-row' }, h('span', null, TARGETS[k].name), h('span', { class: 'bar' }, h('i', { style: `width:${p.enemyFacilities[k]}%` })), h('span', null, `${p.enemyFacilities[k]}%`))),
-        h('p', { class: 'muted small' }, 'Estimates are built from crews\' bombing reports and photo-reconnaissance, where available.'),
+      panel('Enemy sites (our estimate)',
+        st.theater.sites.filter((x) => x.owner !== side.id).map((x) => {
+          const b = believed(st, side.id, x);
+          return h('div', { class: 'bar-row wide' }, h('span', null, x.name), h('span', { class: 'bar' }, h('i', { style: `width:${b}%` })), h('span', null, `${b}%${p.photographed.includes(x.id) ? ' 📷' : ''}`));
+        }),
+        h('p', { class: 'muted small' }, 'Estimates are built from crews\' bombing reports; a camera symbol marks figures from photographs.'),
       ),
       panel('Claims per week',
         claims.length ? h('div', { class: 'chart' }, claims.map((c, i) => h('div', { class: 'col-bar', title: `Week ${i + 1}: ${c}` }, h('i', { style: `height:${Math.round((c / maxC) * 100)}%` }), h('span', null, String(i + 1))))) : h('p', { class: 'muted' }, 'No operations flown yet.'),

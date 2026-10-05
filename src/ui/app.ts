@@ -2,6 +2,7 @@ import { aiPlan } from '../core/ai';
 import { emptyPlan, validatePlan } from '../core/actions';
 import { deserialize, serialize, startCampaign } from '../core/game';
 import { resolveTurn } from '../core/turn';
+import { depthFor, reachableSites } from '../core/theaters';
 import type { GameState, SideId, TurnPlan } from '../core/types';
 import { sfxClick, sfxStamp, stopDrone } from './audio';
 import { clear, h } from './dom';
@@ -9,6 +10,7 @@ import { renderEnd } from './end';
 import { renderHq } from './hq';
 import { renderDebrief, renderRadio } from './battle';
 import { renderTitle } from './title';
+import { renderTheaterChange } from './theaterui';
 import { storage } from './storage';
 
 export type Screen =
@@ -17,7 +19,8 @@ export type Screen =
   | { kind: 'handover'; side: SideId; next: Screen; message: string }
   | { kind: 'radio'; side: SideId }
   | { kind: 'debrief'; side: SideId; tab: string }
-  | { kind: 'end'; side: SideId; tab: string };
+  | { kind: 'end'; side: SideId; tab: string }
+  | { kind: 'theater'; side: SideId; next: Screen };
 
 export const AUTOSAVE = 'autosave';
 
@@ -60,6 +63,9 @@ export class App {
         break;
       case 'end':
         view = renderEnd(this, s.side, s.tab);
+        break;
+      case 'theater':
+        view = renderTheaterChange(this, s.side, s.next);
         break;
     }
     this.root.append(view);
@@ -130,7 +136,7 @@ export class App {
   /** Player confirms orders for a side. */
   async launch(side: SideId) {
     const st = this.state!;
-    const v = validatePlan(st.sides[side], this.plans[side]);
+    const v = validatePlan(st.sides[side], this.plans[side], st);
     if (!v.ok) {
       this.toast(v.reason, true);
       return;
@@ -154,6 +160,21 @@ export class App {
 
   /** After a side has read its debrief. */
   afterDebrief(side: SideId) {
+    const st = this.state!;
+    // A theater was decided this week: show the redeployment briefing first.
+    const last = st.archive[st.archive.length - 1];
+    if (last && last.theater !== st.theater.index && this.screen.kind !== 'theater') {
+      const resume = () => this.afterDebriefContinue(side);
+      this.continueAfterTheater = resume;
+      this.go({ kind: 'theater', side, next: { kind: 'title' } });
+      return;
+    }
+    this.afterDebriefContinue(side);
+  }
+
+  continueAfterTheater: (() => void) | null = null;
+
+  afterDebriefContinue(side: SideId) {
     const st = this.state!;
     if (st.mode === 'hotseat' && side === 0) {
       this.go({ kind: 'handover', side: 1, next: { kind: 'radio', side: 1 }, message: `${st.sides[1].name} — Operations report` });
@@ -186,22 +207,34 @@ export function defaultPlan(state: GameState, side: SideId): TurnPlan {
   const s = state.sides[side];
   const fighters = s.squadrons.filter((q) => q.kind === 'fighter');
   const bombers = s.squadrons.filter((q) => q.kind === 'medium' || q.kind === 'heavy');
-  const plan: TurnPlan = {
-    raid: { target: 'industry', squadronIds: [...bombers.map((q) => q.id), ...fighters.slice(1, 2).map((q) => q.id)] },
+  const site = reachableSites(state, side, 'medium').find((x) => depthFor(state.theater.held0, side, x.sector) === 1);
+  const squadronIds = [...bombers.map((q) => q.id), ...fighters.slice(1, 2).map((q) => q.id)];
+  return {
+    raid: site ? { target: site.type, siteId: site.id, squadronIds } : { target: 'support', squadronIds },
     defense: fighters.slice(0, 1).map((q) => q.id),
+    cover: {},
     recon: null,
     embellish: 0,
   };
-  return plan;
 }
 
 /** Keep the previous plan's assignments, dropping squadrons that no longer exist. */
 export function carryPlan(state: GameState, side: SideId, prev: TurnPlan): TurnPlan {
   const ids = new Set(state.sides[side].squadrons.map((q) => q.id));
+  const t = state.theater;
+  const enemySite = (id?: string) => t.sites.find((x) => x.id === id && x.owner !== side);
+  let raid = prev.raid ? { ...prev.raid, squadronIds: prev.raid.squadronIds.filter((i) => ids.has(i)) } : null;
+  // A target that changed hands (or a new theater) falls back to the default target.
+  if (raid && raid.target !== 'support' && raid.target !== 'sweep' && !enemySite(raid.siteId)) {
+    const d = defaultPlan(state, side).raid!;
+    raid = { ...d, squadronIds: raid.squadronIds };
+  }
+  const cover = Object.fromEntries(Object.entries(prev.cover).filter(([id, sec]) => ids.has(id) && (sec < t.held0 ? 0 : 1) === side));
   return {
-    raid: prev.raid ? { target: prev.raid.target, squadronIds: prev.raid.squadronIds.filter((i) => ids.has(i)) } : null,
+    raid,
     defense: prev.defense.filter((i) => ids.has(i)),
-    recon: prev.recon && ids.has(prev.recon.squadronId) ? prev.recon : null,
+    cover,
+    recon: prev.recon && ids.has(prev.recon.squadronId) && enemySite(prev.recon.siteId) ? prev.recon : null,
     embellish: prev.embellish,
   };
 }

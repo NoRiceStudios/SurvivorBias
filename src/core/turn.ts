@@ -515,6 +515,11 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       const next = THEATERS[t.index + 1];
       for (const id of [0, 1] as SideId[]) news[id].push(`The wing is redeploying to ${next.name}.`);
       enterTheater(state, t.index + 1, rng, decision.winner);
+      // Orders from the old theater lapse; High Command issues fresh ones.
+      for (const side of state.sides) {
+        side.orders = [newOrder(rng, state, side)];
+        memo(side, state.turn + 1, 'order', 'Operational directive', side.orders[0].text);
+      }
     } else {
       state.outcome = warOutcome(state);
     }

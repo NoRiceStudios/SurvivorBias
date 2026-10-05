@@ -216,3 +216,15 @@ describe('theaters', () => {
     expect(maxTheater).toBeGreaterThan(1);
   });
 });
+
+describe('theater transitions', () => {
+  it('orders after a theater change only name sites in the new theater', () => {
+    for (let g = 0; g < 6; g++) {
+      const s = startCampaign({ seed: `orders${g}` });
+      while (!s.outcome && s.theater.index === 0) endTurnSingle(s, playerPlan(s));
+      if (s.outcome) continue;
+      for (const side of s.sides)
+        for (const o of side.orders) if (o.siteId) expect(s.theater.sites.some((x) => x.id === o.siteId)).toBe(true);
+    }
+  });
+});

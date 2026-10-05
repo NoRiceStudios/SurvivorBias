@@ -4,7 +4,7 @@ A pixel-art strategy game about commanding a WWII-style air wing, using only the
 
 You armor, train, build and send your squadrons out. You never see the battle itself. You hear a broken radio log, then debrief the survivors. Every report is filtered through a squadron leader's personality and shock. The damage you see on returning aircraft is real, but planes that were shot down never show you theirs. When the war ends, the archives are declassified and you find out what really happened.
 
-See [DESIGN.md](DESIGN.md) for the full design.
+The war is fought across three theaters: the Narrow Sea, the Kessel Basin and the Northern Approaches. Each is a strip of sectors holding named airfields, works and depots. You win a theater by pushing the front forward sector by sector. Strikes, close support and air superiority all build pressure, deeper targets come into range as you advance, and every theater has its own weather, stages and secondary objective. Missions are sector-based and the same for both sides, so they work identically against the AI and against another player. See [DESIGN.md](DESIGN.md), especially §6.6 War theaters and §10.3 How missions work in multiplayer.
 
 ![Title](docs/screenshots/title.png)
 ![Debrief](docs/screenshots/debrief.png)
@@ -27,6 +27,8 @@ See [DESIGN.md](DESIGN.md) for the full design.
 | `node scripts/screenshots.mjs` | Drive the real UI in Chromium and screenshot every screen (after `npm run build`) |
 | `npm run balance -- 40` | Play 40 headless campaigns and print outcome statistics |
 | `xvfb-run -a node scripts/electron-smoke.mjs` | Launch the Electron app headlessly and check that saving works |
+| `node scripts/hotseat-smoke.mjs` | Play a two-commander hotseat campaign through the real UI, across theater changes |
+| `npm run balance -- 40 --mirror` | AI against AI with symmetric rules: theater results and length |
 
 ### Layout
 

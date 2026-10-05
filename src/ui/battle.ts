@@ -171,7 +171,7 @@ export function renderDebrief(app: App, sideId: SideId, tab: string): HTMLElemen
   let body: HTMLElement;
   if (tab === 'reports') body = reportsView(app, d);
   else if (tab === 'missing') body = missingView(app, d);
-  else if (tab === 'home') body = homeView(d);
+  else if (tab === 'home') body = homeView(app, d);
   else body = aircraftView(app, d);
   const sent = d.reports.reduce((a, r) => a + r.sent, 0);
   const back = d.reports.reduce((a, r) => a + r.returned, 0);
@@ -202,6 +202,7 @@ function aircraftView(app: App, d: Debrief): HTMLElement {
     );
   });
   return h('div', { class: 'col' },
+    d.theaterNews.length ? h('section', { class: 'paper panel news' }, h('h2', null, 'From the Front'), d.theaterNews.map((x) => h('p', { class: 'typed' }, x))) : null,
     bombersBack.length ? h('section', { class: 'paper panel' },
       h('h2', null, 'Ground Crew Damage Plot — this operation'),
       h('div', { class: 'composite-row' },
@@ -279,10 +280,11 @@ function missingView(app: App, d: Debrief): HTMLElement {
   );
 }
 
-function homeView(d: Debrief): HTMLElement {
+function homeView(app: App, d: Debrief): HTMLElement {
+  const siteName = (id: string) => app.state!.theater.sites.find((x) => x.id === id)?.name ?? 'target';
   return h('div', { class: 'grid2' },
     h('section', { class: 'paper panel' }, h('h2', null, 'Home Front'), d.defenseSummary.map((x) => h('p', null, x)),
-      d.recon ? h('div', { class: 'recon-photo' }, h('span', { class: 'stamp intel' }, 'PHOTOGRAPHIC INTERPRETATION'), h('p', null, `Photographs of the enemy ${TARGETS[d.recon.target].name.toLowerCase()} show the facility at ${d.recon.condition}% of capacity.`)) : null,
+      d.recon ? h('div', { class: 'recon-photo' }, h('span', { class: 'stamp intel' }, 'PHOTOGRAPHIC INTERPRETATION'), h('p', null, `Photographs of the ${siteName(d.recon.siteId)} show the facility at ${d.recon.condition}% of capacity.`)) : null,
     ),
     h('section', { class: 'paper panel' }, h('h2', null, 'Signal from High Command'), d.hqResponse.length ? d.hqResponse.map((x) => h('p', { class: 'typed' }, x)) : h('p', { class: 'muted' }, 'Returns acknowledged. No comment.'),
       h('p', { class: 'muted small' }, 'High Command judges you on the returns you send, not on what happened.'),

@@ -35,7 +35,7 @@ game never points this out. Whether you notice is up to you.
 | Battle presentation | Fragmentary radio log plus map-table plots; the battle is never shown directly |
 | Art | Pixel art (sprites drawn in code or as small PNGs), dossier-flavoured UI |
 | Tech | TypeScript; game logic as a pure, headless-testable core; Electron shell packaged as a Windows `.exe` |
-| Campaign | Fixed campaign with several endings, about 3–5 hours; save/load between sessions |
+| Campaign | Three war theaters fought in sequence, each with sector-by-sector progression; several endings; about 3–5 hours; save/load between sessions |
 | Multiplayer | Single player vs AI, **plus** PvP by hotseat (hidden screens) and LAN/direct IP; simultaneous planning, then the battle resolves |
 | Crew model | Squadron-level abstraction; notable individuals (aces, problem cases, squadron leaders) surface by name |
 | Economy | Four resources: **Supplies**, **Fuel**, **Munitions**, **Replacements** |
@@ -153,12 +153,60 @@ The crew is modelled at squadron level:
 | **Munitions** | Bomb loads, ammunition | High Command; local production upgrade |
 | **Replacements** | New airmen into training | High Command; scarce |
 
-### 6.6 The war theatre
+### 6.6 War theaters
 
-A map table with a front line made of sectors. Your bombing lowers the enemy's
-production and supply, and theirs lowers yours. Air superiority affects how well
-the ground war goes. The front moves every turn, based on the *true* balance of
-air power and industry. What you are shown is the *reported* front.
+The war is fought across **three theaters in sequence**. Squadrons, research,
+veterans and losses carry over from one theater to the next. *(Implemented.)*
+
+| # | Theater | Season | Character |
+|---|---|---|---|
+| 1 | **The Narrow Sea** | Autumn | Coastal plains either side of a strait. Balanced sites, worsening weather, radar chains complete late. |
+| 2 | **The Kessel Basin** | Winter | An industrial valley. Most sites are aircraft works, flak is heavy and storms hide bombing results. |
+| 3 | **The Northern Approaches** | Spring | Open country before the capitals. The armies move, close support counts for 1.6× pressure, and losing it decisively ends the war. |
+
+**The map.** Each theater is a strip of six sectors, three per side at the
+start. Every sector holds named sites: airfields, aircraft works and fuel
+depots. The frontline sector, second line and rear area each hold different
+site types, so where things sit differs between theaters. A side's facility
+condition (production, repair, fuel income) is the sum of the sites it holds.
+
+**How progression works within a theater:**
+
+- **The front moves sector by sector.** True pressure builds on the contested
+  boundary each week from losses inflicted vs suffered, close-support damage,
+  strategic damage and the industrial balance. Every 24 points of pressure
+  captures the next sector, and its sites change hands at 30% condition.
+  Captured airfields and works become yours.
+- **Range opens up as you advance.** Medium bombers reach two sectors deep and
+  heavies reach three. Escorts reach two sectors deep, or three with drop tanks,
+  and past that the bombers go on alone. Pushing the front forward brings the
+  enemy's rear-area industry into range.
+- **Stages.** Weeks 1, 4 and 8 open a new stage with symmetric environmental
+  changes, for example "Autumn gales" (worse weather), "Box barrages" (more flak)
+  and "Spring offensive" (close support counts for more).
+- **Weather** is rolled each week. Cloud and storms cut accuracy and detection
+  and leave bombing results "unobserved". Each commander gets a Met Office
+  forecast that is right 70% of the time.
+- **Secondary objective** per side and theater: wreck a named enemy site. It
+  counts as achieved when *you believe* the site is below 25%. If the belief came
+  only from crews' reports, the reward is paid as a "claim", and High Command may
+  later photograph the site working normally and withdraw it, with a trust
+  penalty. A recon photograph or capturing the sector confirms it.
+- **HQ orders** follow the theater: strikes on specific named sites, kill
+  quotas, sortie quotas, and "advance" orders that are judged on the Army's own
+  map and cannot be talked up.
+- **The theater ends** when one side gains two sectors (decisive), or after 10
+  weeks. A timeout goes to whoever holds the advantage, otherwise it is a
+  deadlock.
+
+**Between theaters:** the winner gets a 15-point pressure head start in the next
+theater, +15 trust and 100 supplies, and the loser loses 12 trust. Aircraft in
+repair are made serviceable during the move and squadrons are rested. A
+redeployment briefing shows the result, the new map and the new objective.
+
+What you see of a theater is mostly true: sector ownership and your own sites.
+The **condition of enemy sites** and the **pressure on the front** are beliefs,
+built from crews' reports and an optimistic Army liaison.
 
 ## 7. Doctrine (behaviour settings per squadron)
 
@@ -245,10 +293,90 @@ Each human player is the other's "unknown force". Both plan at the same time
 and commit. The simulation resolves both sides together, and each player gets
 their own distorted debrief.
 
-- **Hotseat:** one PC, with a "pass the controls" screen between planning phases.
-- **LAN / direct IP:** one player hosts and the other connects. The host runs the
-  authoritative simulation and sends each client only their perceived state, so
-  the opponent's real state can never be read from memory or network traffic.
+- **Hotseat** *(implemented)*: one PC, with a "pass the controls" screen between
+  each planning, radio, debrief and redeployment phase.
+- **LAN / direct IP** *(not built yet)*: one player hosts and the other
+  connects. The host runs the authoritative simulation and sends each client
+  only their perceived state, so the opponent's real state can never be read from
+  memory or network traffic.
+
+### 10.3 How missions work in multiplayer
+
+The mission system is designed for two humans first, and the AI plays by
+exactly the same rules. The design goal is a **guessing game with incomplete
+information on both sides**, never a race to react first.
+
+**1. Sealed, simultaneous orders.** Both commanders plan, then seal their
+orders. Nobody reacts to the other's moves within a week. Both raids fly on the
+same day, so every fighter squadron has to be committed in advance: escorting
+your own raid, patrolling, held in reserve, or resting. Fighters sent as escorts
+are not home to defend.
+
+**2. Every mission has a counter, and every counter has a cost.**
+
+| Mission | What it does | How the opponent counters it | The counter's cost |
+|---|---|---|---|
+| **Strike** a named site | Lowers enemy production, repair or fuel. Slow pressure on the front. | Fighters **patrolling that sector** (95% chance to meet the raid) or the **reserve** (55%, +25% with radar). Flak. | A patrol in the wrong sector almost never arrives (5%, or 30% from the next sector). |
+| **Close support** | Pushes the front directly, the main lever on theater progress. | Patrols over your own frontline sector. Low-level raids take heavy flak. | Patrolling the front leaves the rear exposed. |
+| **Fighter sweep** | Kills fighters and wins air superiority, which is pressure in its own right. | Meet it in strength, or deny the fight by keeping fighters elsewhere. | Fighters on sweeps are not escorting or defending. |
+| **Defend** (patrol or reserve) | Intercepts raids. | Strike where they aren't. Go deep where the patrols don't reach. | Deep targets lose their escort beyond range 2. |
+| **Recon** a site | The truth about one site. Confirms objectives and exposes your own crews' exaggerations. | *(Next step: patrols in that sector intercept recon.)* | A recon aircraft and a week's fuel. |
+
+The key choice is **patrol vs reserve**. A patrol concentrates and gambles on one
+sector; the reserve hedges at lower odds. Against a human, both sides try to read
+the other's habits: which sectors you patrol, which site types you hit, and
+whether you hit the frontline or reach deep.
+
+**3. Fog on both sides, and it's asymmetric.** Each player sees only their own
+perceived state:
+
+- **Seen truthfully:** sector ownership (the Army's map), your own sites'
+  condition, your own losses and the damage on your own returning aircraft.
+- **Seen through crews:** enemy site condition, enemy fighter strength, how the
+  enemy attacks, and what your raid achieved.
+- **Seen through ground observers:** the size of the enemy raid on you, which
+  observers inflate, and flak claims.
+- **Never seen:** the opponent's plan, their reports, their returns policy or
+  their High Command's opinion of them. These are revealed only in the
+  end-of-war archive, which in multiplayer shows **both** sides' claims next to
+  the truth.
+
+Each player's *beliefs* about the other are distorted, so patterns are learnable
+but never certain. A player who seems to be ignoring your aircraft works may
+simply believe it is already destroyed.
+
+**4. Separate High Commands.** Each player has their own orders and trust. Both
+commanders can be "winning" in their own returns at the same time. Being relieved
+of command loses the war for that player, so embellishment is a real risk in
+PvP, not just flavour.
+
+**5. Fairness.** In PvP there is no AI escalation bonus. Theater stage effects
+(weather, flak, radar, close-support weight) apply to both sides. Each player
+sees the map from their own side. The Aldmere and Directorate sides are mirror
+images in rules, and differ only in names and paint.
+
+**6. Turn protocol (shared by hotseat and LAN).** Each turn has five steps:
+
+1. Both clients get the public theater state (sector ownership, weather
+   forecast) plus their own private state.
+2. Each player submits a `TurnPlan`. The host validates it against the rules
+   (range, roles, fuel), exactly as `validatePlan` does for hotseat.
+3. The host resolves the turn deterministically from the seeded RNG.
+4. Each client receives only its own radio log, debrief and updated state.
+5. The host autosaves. A dropped player rejoins from the host's save.
+
+**7. Ideas for later:**
+
+- **Diversions:** a small feint at one sector to draw the reserve, so the main
+  raid can hit another.
+- **Meeting engagements:** when both sides sweep the same front sector in the
+  same week, the fighters fight each other first.
+- **Recon interception** by patrols, and a **"spoofing"** research that sends
+  fake radio traffic to inflate the enemy's estimate of your strength.
+- **Agents' reports:** a low-reliability tip-off about which sector the enemy is
+  planning to hit, worth acting on only sometimes.
+- **Turn timer** for LAN games, and **asymmetric scenarios** (one side starts a
+  sector ahead but with a low-trust High Command).
 
 ## 11. Battle simulation
 
@@ -267,16 +395,19 @@ replayed, and verified identically on both machines in PvP.
 
 ## 12. Campaign structure & endings
 
-- **Length:** about 30 sortie cycles in three acts (Early War, Attrition, Decision).
-- **Acts:** each act brings new enemy capabilities, new R&D tiers, and a change in
-  High Command's demands.
-- **Endings** depend on the true front line, Command Trust, and how many of your
-  people survived:
-  - *Victory:* the enemy's industry breaks.
+- **Length:** three theaters of up to 10 weeks each. A decisive breakthrough ends
+  a theater early (about 7 weeks on average in AI-vs-AI balance runs).
+- **Escalation:** the single-player AI gets more supplies and becomes more
+  aggressive with each theater. New R&D tiers (heavy bombers, drop tanks)
+  matter more as targets get deeper.
+- **Endings** depend on the theater results, Command Trust, and how many of
+  your people survived:
+  - *Victory:* win more theaters than you lose, or break through decisively in
+    the last one.
   - *Pyrrhic victory:* you won, but almost no one who started the war is left.
   - *Stalemate / armistice*
   - *Relieved of command* (trust reaches zero)
-  - *Collapse* (the front line reaches your airfield)
+  - *Collapse* (your front breaks in the final theater)
   - *Mutiny* (morale collapses)
   - *Grounded* (no fleet left to fly)
 - **Declassified archive:** after any ending, the truth opens up, sortie by sortie:

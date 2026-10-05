@@ -1,4 +1,5 @@
 import { ZONE_LABEL, ZONE_LETHALITY } from '../core/data';
+import { SECTORS, THEATERS } from '../core/theaters';
 import type { Outcome, SideId } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
@@ -59,11 +60,11 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
     body = h('section', { class: 'paper panel' },
       h('h2', null, 'Claims against the truth, week by week'),
       h('table', { class: 'ledger' },
-        h('thead', null, h('tr', null, ['Week', 'Crews claimed', 'Reported to HQ', 'Actually destroyed', 'Our losses', 'Front'].map((x) => h('th', null, x)))),
+        h('thead', null, h('tr', null, ['Week', 'Theater', 'Crews claimed', 'Reported to HQ', 'Actually destroyed', 'Our losses', 'Sectors held'].map((x) => h('th', null, x)))),
         h('tbody', null, st.archive.map((e) => h('tr', null,
-          h('td', null, String(e.turn)), h('td', null, String(e.claimed[sideId])), h('td', null, String(e.reportedToHq[sideId])),
+          h('td', null, String(e.turn)), h('td', null, THEATERS[e.theater].name), h('td', null, String(e.claimed[sideId])), h('td', null, String(e.reportedToHq[sideId])),
           h('td', { class: 'truth' }, String(e.trueKills[sideId])), h('td', null, String(e.trueLosses[sideId])),
-          h('td', null, String(sideId === 0 ? e.front : -e.front)),
+          h('td', null, `${sideId === 0 ? e.sectors0 : SECTORS - e.sectors0} / ${SECTORS}`),
         ))),
       ),
     );
@@ -78,6 +79,9 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
         h('div', null, h('span', null, 'Enemy aircraft reported to High Command'), h('b', null, String(toHq))),
         h('div', null, h('span', null, 'Enemy aircraft actually destroyed'), h('b', { class: 'truth' }, String(trueKills))),
       ),
+      h('div', { class: 'theater-record end-record' }, st.theaterResults.map((r) =>
+        h('div', { class: `theater-step ${r.winner === sideId ? 'won' : r.winner === null ? 'drawn' : 'lost'}` },
+          h('b', null, r.name), h('span', null, `${r.weeks} weeks`), h('span', { class: 'step-label' }, r.winner === null ? 'DRAWN' : r.winner === sideId ? (r.decisive ? 'BROKE THROUGH' : 'WON') : r.decisive ? 'BROKEN' : 'LOST')))),
       h('p', { class: 'muted' }, 'The archives are open. See "Declassified" for what your returning aircraft could never tell you.'),
     );
   }
