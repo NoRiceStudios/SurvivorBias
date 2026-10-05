@@ -55,3 +55,8 @@ export function slider(value: number, onChange: (v: number) => void, left: strin
   input.addEventListener('change', () => onChange(Number(input.value)));
   return h('div', { class: 'slider' }, h('span', { class: 'lbl' }, left), input, h('span', { class: 'lbl' }, right));
 }
+
+/** "1 hole", "3 holes". */
+export function plural(n: number, word: string, many = `${word}s`): string {
+  return `${n} ${n === 1 ? word : many}`;
+}

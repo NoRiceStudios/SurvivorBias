@@ -170,7 +170,7 @@ export function setupTheater(state: GameState, index: number, rng: Rng, headStar
   }
   void rng;
   const t: TheaterState = { index, id: def.id, week: 0, held0, start0: held0, sites, baseline, stage: 0, objectives };
-  state.front = headStart === 0 ? 15 : headStart === 1 ? -15 : 0;
+  state.front = headStart === 0 ? HEAD_START : headStart === 1 ? -HEAD_START : 0;
   return t;
 }
 
@@ -214,7 +214,9 @@ export function theaterMods(state: GameState): { flak: number; detection: number
 export function rollWeather(state: GameState, rng: Rng) {
   const w = rng.weighted(theaterMods(state).weather) as Weather;
   state.weather = w;
-  const fc = (): Weather => (rng.chance(0.7) ? w : rng.pick(['clear', 'cloud', 'storm'] as const));
+  // Forecasts are right about three times in four; when wrong, they are off by one step, never clear-for-storm.
+  const near: Record<Weather, Weather[]> = { clear: ['cloud'], cloud: ['clear', 'storm'], storm: ['cloud'] };
+  const fc = (): Weather => (rng.chance(0.75) ? w : rng.pick(near[w]));
   state.forecast = [fc(), fc()];
 }
 
@@ -227,13 +229,19 @@ export const WEATHER_EFFECT: Record<Weather, { accuracy: number; detection: numb
 export const WEATHER_LABEL: Record<Weather, string> = { clear: 'Clear', cloud: 'Overcast', storm: 'Storms' };
 
 /** Move the front if pressure has built up. Returns news lines per side. */
-export function applyPressure(state: GameState): [string[], string[]] {
+export function applyPressure(state: GameState, flew: [boolean, boolean] = [true, true]): [string[], string[]] {
   const t = state.theater;
   const def = theaterDef(state);
   const news: [string[], string[]] = [[], []];
   // At most one sector falls per week; the defenders regroup behind it.
   if (Math.abs(state.front) >= SECTOR_PRESSURE) {
     const winner: SideId = state.front > 0 ? 0 : 1;
+    // The Army won't go over the top without air cover overhead: no operation, no capture.
+    if (!flew[winner]) {
+      state.front = winner === 0 ? SECTOR_PRESSURE - 1 : 1 - SECTOR_PRESSURE;
+      news[winner].push('The Army is ready to attack but will not move without our aircraft overhead. The push waits for a week we fly.');
+      return news;
+    }
     const sector = frontSector(t, winner);
     if (sector < 0 || sector >= SECTORS) return news;
     t.held0 += winner === 0 ? 1 : -1;
@@ -274,6 +282,9 @@ export function reachableSites(state: GameState, side: SideId, kind: AircraftKin
   return t.sites.filter((s) => s.owner !== side && depthFor(t.held0, side, s.sector) <= bomberRange(kind));
 }
 
+/** Pressure the winner of the last theater carries into the next one (it is shown to both sides). */
+export const HEAD_START = 8;
+
 /** Move the war into a theater: lay out its sites, reset beliefs, brief both commanders. */
 export function enterTheater(state: GameState, index: number, rng: Rng, headStart: SideId | null) {
   state.theater = setupTheater(state, index, rng, headStart);
@@ -281,7 +292,7 @@ export function enterTheater(state: GameState, index: number, rng: Rng, headStar
   for (const side of state.sides) {
     side.perceived.sites = Object.fromEntries(state.theater.sites.filter((x) => x.owner !== side.id).map((x) => [x.id, 100]));
     side.perceived.photographed = [];
-    side.perceived.front = 0;
+    side.perceived.front = side.id === 0 ? state.front : 0 - state.front;
     // Redeployment: the ground crews catch up on repairs, crews get a breather.
     if (index > 0) {
       for (const sq of side.squadrons) {
@@ -299,7 +310,7 @@ export function enterTheater(state: GameState, index: number, rng: Rng, headStar
       from: 'Air Ministry',
       kind: 'order',
       subject: `Theater of operations: ${def.name}`,
-      body: `${def.blurb} You are to win air superiority over ${def.name} and support the Army in taking ${DECISIVE_GAIN} sectors from the enemy. Secondary objective: ${obj.text}`,
+      body: `${def.blurb} You are to win air superiority over ${def.name} and support the Army in taking ${DECISIVE_GAIN} sectors from the enemy. Secondary objective: ${obj.text}${headStart === null ? '' : headStart === side.id ? ` The momentum of the last campaign carries over: the front opens at +${HEAD_START} in our favour.` : ` The enemy arrives with the momentum of the last campaign: the front opens at −${HEAD_START}.`}`,
     });
   }
   syncFacilities(state);

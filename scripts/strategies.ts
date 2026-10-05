@@ -42,7 +42,22 @@ const waldSupportFeint: Strategy = (s) => {
   return supportFeint(s);
 };
 
+/** Round-2 recipe: close support with an escort, and one fighter squadron patrolling our side of the front. */
+const escortPatrol: Strategy = (s) => {
+  const side = s.sides[0];
+  const f = side.squadrons.filter((q) => q.kind === 'fighter' && flyable(q).length > 0);
+  const b = side.squadrons.filter((q) => (q.kind === 'medium' || q.kind === 'heavy') && flyable(q).length > 0);
+  const p = emptyPlan();
+  p.raid = { target: 'support', squadronIds: [...b.map((q) => q.id), ...f.slice(1).map((q) => q.id)] };
+  if (f[0]) {
+    p.defense = [f[0].id];
+    p.cover[f[0].id] = s.theater.held0 - 1;
+  }
+  return p;
+};
+
 const strategies: Record<string, Strategy> = {
+  'escort+patrol': escortPatrol,
   'support+feint': supportFeint,
   'wald+sup+feint': waldSupportFeint,
   'AI-as-player': (s) => aiPlan(s, 0),
@@ -62,14 +77,16 @@ const games = Number(process.argv[2] ?? 30);
 for (const [name, strat] of Object.entries(strategies)) {
   for (const [diff, insight] of [['green', 0.15], ['seasoned', 0.45], ['wald', 0.9]] as const) {
     let wins = 0, weeks = 0, lostBombers = 0, lostAll = 0;
+    const theaterWeeks: number[][] = [[], [], []];
     for (let g = 0; g < games; g++) {
       const s = startCampaign({ seed: `strat-${name}-${diff}-${g}`, aiInsight: insight });
       while (!s.outcome) endTurnSingle(s, trim(s, strat(s)));
       if (s.outcome![0] === 'victory' || s.outcome![0] === 'pyrrhic') wins++;
       weeks += s.archive.length;
+      for (const r of s.theaterResults) theaterWeeks[r.index].push(r.weeks);
       lostBombers += s.archive.reduce((a, e) => a + e.lostHits[0].filter((h) => h.lethal && (h.kind === 'medium' || h.kind === 'heavy')).length, 0);
       lostAll += s.archive.reduce((a, e) => a + e.trueLosses[0], 0);
     }
-    console.log(`${name.padEnd(14)} ${diff.padEnd(9)} win ${Math.round((wins / games) * 100)}% · avg weeks ${(weeks / games).toFixed(1)} · bombers lost ${(lostBombers / games).toFixed(1)} · all aircraft lost ${(lostAll / games).toFixed(1)}`);
+    console.log(`${name.padEnd(14)} ${diff.padEnd(9)} win ${Math.round((wins / games) * 100)}% · avg weeks ${(weeks / games).toFixed(1)} · bombers lost ${(lostBombers / games).toFixed(1)} · all aircraft lost ${(lostAll / games).toFixed(1)} · weeks per theater ${theaterWeeks.map((w) => (w.length ? (w.reduce((x, y) => x + y, 0) / w.length).toFixed(1) : '-')).join('/')}`);
   }
 }

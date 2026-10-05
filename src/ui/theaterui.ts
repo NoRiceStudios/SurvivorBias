@@ -171,6 +171,15 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
         ? 'Neither air force could break the other. The armies dig in where they stand.'
         : won ? (res.decisive ? 'The enemy front has broken. The Army is through.' : 'The season ends with the advantage ours.')
         : res.decisive ? 'Our front has broken. The Army is falling back.' : 'The season ends with the advantage theirs.'),
+      (() => {
+        const weeks = st.archive.filter((e) => e.theater === res.index);
+        const lost = weeks.reduce((a, e) => a + e.trueLosses[side], 0);
+        const claimed = weeks.reduce((a, e) => a + e.claimed[side], 0);
+        return h('div', { class: 'theater-ledger' },
+          h('div', null, h('span', null, 'Our aircraft lost'), h('b', null, String(lost))),
+          h('div', null, h('span', null, 'Enemy aircraft claimed by our crews'), h('b', null, String(claimed))),
+          h('div', null, h('span', null, 'Sectors taken'), h('b', null, String(Math.max(0, (side === 0 ? 1 : -1) * (res.gain ?? 0))))));
+      })(),
       nextDef ? h('div', { class: 'next-theater' },
         h('h2', null, `Redeployment: ${nextDef.name}`),
         h('div', { class: 'muted' }, `${nextDef.season} · ${nextDef.weeks} weeks`),

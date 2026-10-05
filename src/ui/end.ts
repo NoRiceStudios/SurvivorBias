@@ -5,7 +5,7 @@ import type { AircraftKind, Hit, Outcome, SideId } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
 import { sfxClick } from './audio';
-import { h } from './dom';
+import { h, plural } from './dom';
 import { aircraftCanvas } from './sprites';
 
 const OUTCOME_TEXT: Record<Outcome, [string, string]> = {
@@ -55,8 +55,8 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
           i === 0 ? h('div', { class: 'stamp big declass-stamp' }, 'DECLASSIFIED') : null,
           h('h2', null, `Where our ${NAMES[k]} were hit — ${AIRCRAFT[k].name[sideId]}`),
           h('div', { class: 'composite-row three' },
-            h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: sv, dots: true }, scale), h('figcaption', null, `What you saw: ${sv.length} holes on aircraft that returned.`)),
-            h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: ls, dots: true, dotColor: '#5a5040' }, scale), h('figcaption', null, `What you never saw: ${ls.length} holes on aircraft that did not return.`)),
+            h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: sv, dots: true }, scale), h('figcaption', null, `What you saw: ${plural(sv.length, 'hole')} on aircraft that returned.`)),
+            h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: ls, dots: true, dotColor: '#5a5040' }, scale), h('figcaption', null, `What you never saw: ${plural(ls.length, 'hole')} on aircraft that did not return.`)),
             h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: fatal, dots: true, dotColor: '#d02020' }, scale), h('figcaption', null, `The ${fatal.length} hits that brought them down.`)),
           ),
           h('h3', null, `This war's ${AIRCRAFT[k].name[sideId]}: chance that one hit brings her down (unarmored)`),

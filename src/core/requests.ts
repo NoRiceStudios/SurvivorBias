@@ -27,6 +27,8 @@ export function generateRequests(rng: Rng, state: GameState, side: SideState, d:
     candidates.push({ ...req, id: '', squadronId: sq.id, kind, weight: base * (LEANING[sq.leader.archetype][kind] ?? 1) });
 
   for (const sq of side.squadrons) {
+    // Recon pilots fly alone and unarmed; they have no doctrine or tactics to argue about.
+    if (sq.kind === 'recon') continue;
     const recs = [...d.returned.filter((r) => r.squadronId === sq.id)];
     const lost = d.missing.filter((m) => m.squadronId === sq.id).length;
     const sent = recs.length + lost;
@@ -93,7 +95,11 @@ export function generateRequests(rng: Rng, state: GameState, side: SideState, d:
 
   // Up to two requests a week, from different squadrons and of different kinds, chosen by weight.
   const out: LeaderRequest[] = [];
-  const pool = candidates.filter((c) => c.weight > 0);
+  // A leader who raised something recently won't raise it again for a few weeks.
+  const pool = candidates.filter((c) => {
+    const last = side.squadrons.find((q) => q.id === c.squadronId)?.asked?.[c.kind];
+    return c.weight > 0 && (last === undefined || state.turn - last >= 4);
+  });
   for (let i = 0; i < 2 && pool.length; i++) {
     if (!rng.chance(i === 0 ? 0.85 : 0.5)) break;
     const w: Record<string, number> = {};
@@ -101,7 +107,9 @@ export function generateRequests(rng: Rng, state: GameState, side: SideState, d:
     const k = Number(rng.weighted(w));
     const [pick] = pool.splice(k, 1);
     const { weight: _w, ...req } = pick;
-    out.push({ ...req, id: `r${state.nextId++}` });
+    out.push({ ...req, id: `r${state.nextId++}`, n: out.length + 1 });
+    const sq = side.squadrons.find((q) => q.id === pick.squadronId)!;
+    sq.asked = { ...sq.asked, [pick.kind]: state.turn };
     for (let j = pool.length - 1; j >= 0; j--) if (pool[j].squadronId === pick.squadronId || pool[j].kind === pick.kind) pool.splice(j, 1);
   }
   return out;
@@ -118,6 +126,11 @@ export function approveRequest(side: SideState, id: string, plan?: TurnPlan): { 
   switch (req.kind) {
     case 'rest':
       if (plan) {
+        // Stand down for one week; next week the squadron returns to the duties it had.
+        const r = plan.raid?.squadronIds.includes(sq.id) ?? false;
+        const f = plan.feint?.squadronIds.includes(sq.id) ?? false;
+        const def = plan.defense.includes(sq.id);
+        if (r || f || def) plan.rested = [...(plan.rested ?? []), { id: sq.id, raid: r, feint: f, defense: def, cover: plan.cover[sq.id] }];
         plan.defense = plan.defense.filter((x) => x !== sq.id);
         delete plan.cover[sq.id];
         if (plan.raid) plan.raid.squadronIds = plan.raid.squadronIds.filter((x) => x !== sq.id);

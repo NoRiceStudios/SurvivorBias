@@ -40,6 +40,13 @@ export function startCampaign(opts: NewGameOptions & { commanders?: [string, str
         subject: 'Enemy order of battle',
         body: 'Little is known of the enemy order of battle. Your crews are your eyes. Debrief them carefully.',
       },
+      {
+        turn: 1,
+        from: 'Operational Research Section',
+        kind: 'intel',
+        subject: 'Battle damage: a caution',
+        body: 'Every type is built differently, and every war is flown with new marks of aircraft against new enemy guns. What proved true for one type, or in one war, may not hold for the next. Judge each on its own evidence.',
+      },
     );
   }
   state.rng = rng.state;

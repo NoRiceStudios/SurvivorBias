@@ -21,7 +21,7 @@ import type { AircraftKind, FighterApproach, Hit, SideId, SideState, Squadron, T
 import { ZONES } from '../core/types';
 import type { App } from './app';
 import { sfxClick } from './audio';
-import { h, meter, pct, slider } from './dom';
+import { h, meter, pct, plural, slider } from './dom';
 import { icon } from './icons';
 import { aircraftCanvas } from './sprites';
 import { believed, depthLabel, mapLegend, theaterMap } from './theaterui';
@@ -38,7 +38,7 @@ const TABS: [string, string][] = [
 ];
 
 
-export function topBar(app: App, side: SideState, debriefWeek?: number): HTMLElement {
+export function topBar(app: App, side: SideState, debriefWeek?: number, what = 'debrief'): HTMLElement {
   const st = app.state!;
   const r = side.resources;
   const front = side.perceived.front;
@@ -56,7 +56,7 @@ export function topBar(app: App, side: SideState, debriefWeek?: number): HTMLEle
     { class: 'topbar' },
     h('div', { class: `crest side${side.id}` }, h('div', { class: 'crest-name' }, side.id === 0 ? 'No. 7 Composite Wing' : 'Kampfgeschwader Nord'), h('div', { class: 'crest-sub' }, side.name)),
     h('div', { class: 'week' }, icon('week', 18),
-      h('span', null, debriefWeek !== undefined ? `Week ${debriefWeek} debrief` : `Week ${st.turn}`),
+      h('span', null, debriefWeek !== undefined ? `Week ${debriefWeek} ${what}` : `Week ${st.turn}`),
       debriefWeek !== undefined ? null : h('span', { class: 'act' }, `${THEATERS[st.theater.index].name} · week ${st.theater.week + 1}/${THEATERS[st.theater.index].weeks}`),
       debriefWeek !== undefined ? null : h('span', { class: 'forecast', title: 'Meteorological Office forecast for the coming operation. Usually right.' }, `Forecast: ${WEATHER_LABEL[st.forecast[side.id]]}`)),
     lanChip,
@@ -192,6 +192,10 @@ export function adjutantNotes(app: App, side: SideState): string[] {
     const idleAircraft = sq.airframes.filter((a) => a.status === 'ready').length - Math.max(0, sq.crews);
     if (idleAircraft >= 2) notes.push(`${sq.name} has ${idleAircraft} serviceable aircraft with no crews to fly them. The training school fills gaps as crews graduate.`);
   }
+  // Squadrons with aircraft ready but no job this week.
+  const busy = new Set([...(plan.raid?.squadronIds ?? []), ...plan.defense, ...(plan.feint?.squadronIds ?? []), plan.recon?.squadronId, ...(plan.rested ?? []).map((r) => r.id)]);
+  const idle = side.squadrons.filter((q) => !busy.has(q.id) && flyable(q).length > 0);
+  if (idle.length) notes.push(`${idle.map((q) => q.name).join(', ')} ${idle.length > 1 ? 'have' : 'has'} no task this week. Unassigned squadrons rest (fatigue falls) but do not fight (Operations).`);
   const spareCrews = side.squadrons.reduce((a, q) => a + Math.max(0, q.crews - q.airframes.length), 0) + side.resources.replacements;
   if (spareCrews >= 8) notes.push(`${spareCrews} trained or waiting aircrew have no aircraft. The aircraft works can build more (Factory).`);
   const c = planCost(side, plan);
@@ -215,9 +219,9 @@ function theaterPanel(app: App, side: SideState): HTMLElement {
   const objStatus = { open: 'OPEN', claimed: 'CLAIMED', confirmed: 'CONFIRMED', discredited: 'DISCREDITED' }[obj.status];
   const record = THEATERS.map((th, i) => {
     const r = st.theaterResults.find((x) => x.index === i);
-    const label = r ? (r.winner === side.id ? 'WON' : r.winner === null ? 'DRAWN' : 'LOST') : i === t.index ? 'IN PROGRESS' : 'AHEAD';
+    const label = r ? (r.winner === side.id ? 'WON' : r.winner === null ? 'DRAWN' : 'LOST') : i === t.index ? 'IN PROGRESS' : 'TO COME';
     return h('div', { class: `theater-step ${r ? (r.winner === side.id ? 'won' : r.winner === null ? 'drawn' : 'lost') : i === t.index ? 'current' : ''}` },
-      h('b', null, th.name), h('span', null, `${th.season}`), h('span', { class: 'step-label' }, label));
+      h('b', null, th.name), h('span', null, `${i + 1}. ${th.season}`), h('span', { class: 'step-label' }, label));
   });
   return h('section', { class: 'paper panel theater-panel' },
     h('div', { class: 'theater-head' },
@@ -325,16 +329,18 @@ function operations(app: App, side: SideState): HTMLElement {
   return h('div', { class: 'col' },
     panel('Mission',
       theaterMap(st, { viewer: side.id, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), feint: plan.feint?.sector, scale: 2 }),
-      h('div', { class: 'targets three' },
+      h('div', { class: 'mission-grid' },
+      h('div', { class: 'targets mission-cards' },
         (['support', 'sweep'] as const).map((m) => h('button', { class: `target-card ${plan.raid?.target === m ? 'on' : ''}`, onclick: () => pick(m) },
           h('div', { class: 'target-name' }, TARGETS[m].name), h('div', { class: 'target-desc' }, TARGETS[m].desc),
           h('div', { class: 'small muted' }, `Over ${def.sectors[frontSector(t, side.id)]}`))),
         h('button', { class: `target-card ${!plan.raid ? 'on' : ''}`, onclick: () => app.act(() => { plan.raid = null; }) },
           h('div', { class: 'target-name' }, 'No operation'), h('div', { class: 'target-desc' }, 'A defensive week. Bombers rest; fighters may still patrol.')),
       ),
-      h('h3', null, 'Or strike a site (believed condition)'),
-      h('table', { class: 'site-table' }, h('tbody', null, siteRows)),
-    ),
+      h('div', null,
+        h('h3', null, 'Or strike a site (believed condition)'),
+        h('table', { class: 'site-table' }, h('tbody', null, siteRows))),
+    )),
     panel('Squadron Assignments',
       h('p', { class: 'muted small' }, 'A feint sends a squadron over another enemy sector first, to draw their reserve away from the real raid. Fighters on defence either patrol one sector (they will almost certainly meet a raid there, and rarely anywhere else) or wait in central reserve (they meet most raids, given warning).'),
       h('table', { class: 'sq-table' },
@@ -427,7 +433,7 @@ function hangar(app: App, side: SideState): HTMLElement {
         h('button', { class: 'btn tiny', onclick: () => app.cmd(side.id, { k: 'armor', sq: sq.id, zone: z, value: sq.armor[z] - 1 }) }, '−'),
         h('button', { class: 'btn tiny', onclick: () => app.cmd(side.id, { k: 'armor', sq: sq.id, zone: z, value: sq.armor[z] + 1 }) }, '+'),
       ),
-      h('td', { class: 'muted' }, comp.length ? `${compCount[z] ?? 0} holes (${Math.round(((compCount[z] ?? 0) / total) * 100)}%)` : '—'),
+      h('td', { class: 'muted' }, comp.length ? `${plural(compCount[z] ?? 0, 'hole')} (${Math.round(((compCount[z] ?? 0) / total) * 100)}%)` : '—'),
     ),
   );
   const fleet = sq.airframes.map((af) =>

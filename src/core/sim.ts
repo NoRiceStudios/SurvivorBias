@@ -187,6 +187,8 @@ function makeFlier(sq: Squadron, af: Airframe, side: SideState, role: PlaneRecor
       claims: 0,
       sawApproach: emptyApproach(),
       enemiesSeen: 0,
+      // The squadron leader flies the first aircraft and answers to callsign 1.
+      lead: index === 0 && role !== 'recon' ? true : undefined,
     },
     af,
     sq,

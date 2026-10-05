@@ -205,7 +205,8 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
   and "Spring offensive" (close support counts for more).
 - **Weather** is rolled each week. Cloud and storms cut accuracy and detection
   and leave bombing results "unobserved". Each commander gets a Met Office
-  forecast that is right 70% of the time.
+  forecast that is right about 75% of the time. When it is wrong it is off by one
+  step (clear↔overcast↔storms), never clear for storms.
 - **Secondary objective** per side and theater: wreck a named enemy site. It
   counts as achieved when *you believe* the site is below 25%. If the belief came
   only from crews' reports, the reward is paid as a "claim", and High Command may
@@ -213,13 +214,25 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
   penalty. A recon photograph or capturing the sector confirms it.
 - **HQ orders** follow the theater: strikes on specific named sites, kill
   quotas, sortie quotas, and "advance" orders that are judged on the Army's own
-  map and cannot be talked up.
+  map and cannot be talked up. Strike orders always allow at least two weeks.
+  Kill quotas follow the median of the wing's recent returns, so one inflated
+  week doesn't set an impossible target. HQ only calls enemy fighter strength
+  "broken" after a run of big claims.
+- **No capture without air cover.** A sector cannot fall in a week in which the
+  side that would take it flew no operation, feint or defensive patrol. The
+  pressure waits just short of the threshold.
+- **Army liaison ledger.** Each debrief explains in words, not numbers, what
+  moved the front: the air fighting (losses on both sides, with the fortunes of
+  war folded in), close support, bombing of works, factory and fuel output, and
+  enemy reinforcements. It is deliberately qualitative, so it can't be used to
+  work out true kills.
 - **The theater ends** when one side gains two sectors (decisive), or after 10
   weeks. A timeout goes to whoever holds the advantage, otherwise it is a
   deadlock.
 
-**Between theaters:** the winner gets a 15-point pressure head start in the next
-theater, +15 trust and 100 supplies, and the loser loses 12 trust. Aircraft in
+**Between theaters:** the winner gets an 8-point pressure head start in the next
+theater (stated in the theater orders, and the Army liaison's estimate starts
+from it), +15 trust and 100 supplies, and the loser loses 12 trust. Aircraft in
 repair are made serviceable during the move and squadrons are rested. A
 redeployment briefing shows the result, the new map and the new objective.
 
@@ -299,6 +312,14 @@ Approving applies the change in one click and lifts the squadron's morale a
 little; declining costs a little morale. This is how the game teaches doctrine,
 tactics, QC and training. Advice depends on the leader's character, and the
 plate request is the survivorship trap in person.
+
+Recon pilots make no requests. A leader who has raised something waits at
+least four weeks before raising it again. A stand-down lasts one week: the
+following week the squadron goes back to the raid or patrol it was taken off.
+Requests keep their numbers (R1, R2) while the commander answers them. The
+squadron leader flies as callsign 1, and when he is lost he appears by name in
+the Missing list. Crew names come from a large pool and differ from campaign to
+campaign.
 
 ## 9. Verification tools
 

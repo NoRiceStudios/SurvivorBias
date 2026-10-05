@@ -141,11 +141,11 @@ function brief() {
     `Army liaison puts the pressure on the front at ${side.perceived.front >= 0 ? '+' : ''}${side.perceived.front} (a sector usually falls at about ±${SECTOR_PRESSURE}, at most one a week; liaison figures run a little optimistic).`,
     `Primary objective: gain ${DECISIVE_GAIN} sectors from the enemy (so far ${gain >= 0 ? '+' : ''}${gain}). If neither side breaks through by week ${def.weeks}, the theater goes to whoever holds the advantage.`,
     `Secondary objective: ${obj.text} [${obj.status.toUpperCase()}]`,
-    `Theater record: ${THEATERS.map((th, i) => { const res = st.theaterResults.find((x) => x.index === i); return `${th.name}: ${res ? (res.winner === 0 ? 'WON' : res.winner === null ? 'DRAWN' : 'LOST') : i === t.index ? 'in progress' : 'ahead'}`; }).join(' | ')}`,
+    `Theater record: ${THEATERS.map((th, i) => { const res = st.theaterResults.find((x) => x.index === i); return `${th.name}: ${res ? (res.winner === 0 ? 'WON' : res.winner === null ? 'DRAWN' : 'LOST') : i === t.index ? 'in progress' : 'to come'}`; }).join(' | ')}`,
     'Standing orders:',
     ...(side.orders.length ? side.orders.map((o) => `  - ${o.text}${o.deadline <= st.turn ? ' [DUE THIS WEEK]' : ''}`) : ['  (none)']),
     ...(adjutant().length ? ['Adjutant\'s notes:', ...adjutant().map((n) => `  ! ${n}`)] : []),
-    ...(side.requests.length ? ['Requests from the squadrons (approve R# / decline R#):', ...side.requests.map((r, i) => `  R${i + 1} ${r.text}\n       If approved: ${r.effect}${r.cost ? ` Cost: ${r.cost} supplies.` : ''}`)] : []),
+    ...(side.requests.length ? ['Requests from the squadrons (approve R# / decline R#):', ...side.requests.map((r, i) => `  R${r.n ?? i + 1} ${r.text}\n       If approved: ${r.effect}${r.cost ? ` Cost: ${r.cost} supplies.` : ''}`)] : []),
     'Correspondence this week:',
     ...side.memos.filter((m) => m.turn >= st.turn).map((m) => `  [${m.kind.toUpperCase()}] ${m.from} — ${m.subject}: ${m.body}`),
   );
@@ -319,6 +319,7 @@ function launch() {
   const v = validatePlan(me(), plan!, st);
   if (!v.ok) throw new Error(`Cannot launch: ${v.reason}`);
   const week = st.turn;
+  const theatersBefore = st.theaterResults.length;
   resolveTurn(st, [plan!, aiPlan(st, 1)]);
   plan = carryPlan(st, 0, plan!);
   const d = st.lastDebriefs[0]!;
@@ -342,7 +343,7 @@ function launch() {
     const mostly = tot ? (Object.keys(r.approachReported) as ('tail' | 'headOn' | 'beam')[]).sort((a, b) => r.approachReported[b] - r.approachReported[a])[0] : null;
     const results = r.targetDamageReported === null ? (r.mission === 'sweep' || r.mission === 'feint' || !r.mission ? 'n/a' : 'unobserved')
       : r.mission === 'support' ? `enemy positions ${r.targetDamageReported > 25 ? 'heavily' : r.targetDamageReported > 10 ? 'well' : 'lightly'} hit` : r.targetDamageReported < 3 ? 'bombs fell wide' : `est. ${r.targetDamageReported}% destroyed`;
-    say(`  ${r.squadronName} (${r.leader.rank} ${r.leader.name}): returned ${r.returned}/${r.sent} · claims ${r.claims} destroyed · enemy fighters ${r.enemyFightersReported ? `~${r.enemyFightersReported}` : 'none seen'} · attacks mostly ${mostly ? APPROACH_LABEL[mostly].toLowerCase() : '—'} · flak ${r.flakReported} · results: ${results}`);
+    say(`  ${r.squadronName} (${r.leader.rank} ${r.leader.name}): returned ${r.returned}/${r.sent} · claims ${r.claims} destroyed · ${r.mission ? 'enemy fighters' : 'escorts seen'} ${r.enemyFightersReported ? `~${r.enemyFightersReported}` : 'none seen'} · attacks mostly ${mostly ? APPROACH_LABEL[mostly].toLowerCase() : '—'} · flak ${r.flakReported} · results: ${results}`);
     for (const x of r.remarks) say(`      ${x}`);
   }
   if (d.missing.length) {
@@ -351,8 +352,17 @@ function launch() {
   }
   say('Home front:', ...d.defenseSummary.map((x) => `  ${x}`));
   if (d.recon) say(`  PHOTOGRAPHIC INTERPRETATION: ${st.theater.sites.find((x) => x.id === d.recon!.siteId)?.name} at ${d.recon.condition}% capacity.`);
+  if (d.pressure?.length) say('Army liaison, the front this week:', ...d.pressure.map((p) => `  ${p.label}: ${p.effect}`));
   say('Signal from High Command:', ...(d.hqResponse.length ? d.hqResponse.map((x) => `  ${x}`) : ['  Returns acknowledged.']));
   say('');
+  if (st.theaterResults.length > theatersBefore) {
+    const res = st.theaterResults[st.theaterResults.length - 1];
+    const weeks = st.archive.filter((e) => e.theater === res.index);
+    say(`######## THEATER DECIDED: ${res.name.toUpperCase()} — ${res.winner === 0 ? 'VICTORY' : res.winner === null ? 'DEADLOCK' : 'DEFEAT'}${res.decisive ? ' (decisive)' : ''} after ${res.weeks} weeks ########`,
+      `Our aircraft lost in this theater: ${weeks.reduce((a, e) => a + e.trueLosses[0], 0)} · enemy aircraft claimed by our crews: ${weeks.reduce((a, e) => a + e.claimed[0], 0)}`);
+    if (!st.outcome) say(`The wing redeploys to ${THEATERS[st.theater.index].name}. ${me().memos[0]?.body ?? ''}`);
+    say('');
+  }
   if (st.outcome) endView();
   else brief();
 }
@@ -408,7 +418,7 @@ function run(cmd: string) {
     return;
   }
   if (!state || !plan) throw new Error('No campaign. Start one with: new green|seasoned|wald');
-  if (state.outcome && !['end', 'screenshot', 'brief'].includes(verb)) {
+  if (state.outcome && !['end', 'screenshot'].includes(verb)) {
     endView();
     return;
   }
@@ -478,7 +488,8 @@ function run(cmd: string) {
     case 'launch': return launch();
     case 'approve':
     case 'decline': {
-      const req = side.requests[Number(a[0]?.replace(/^R/i, '')) - 1];
+      const num = Number(a[0]?.replace(/^R/i, ''));
+      const req = side.requests.find((r, i) => (r.n ?? i + 1) === num);
       if (!req) throw new Error(`No request ${a[0]}. Requests are listed in the brief.`);
       if (verb === 'approve') check(approveRequest(side, req.id, plan));
       else declineRequest(side, req.id);

@@ -95,6 +95,8 @@ export interface Squadron {
   armor: ZoneMap<number>;
   notables: string[];
   insignia: number;
+  /** Week each kind of request was last put to the commander (leaders don't nag every week). */
+  asked?: Partial<Record<RequestKind, number>>;
 }
 
 export interface Resources {
@@ -223,6 +225,8 @@ export interface TurnPlan {
   feint: { squadronIds: string[]; sector: number } | null;
   /** 0 = honest, 1 = heavily embellished report to High Command. */
   embellish: number;
+  /** Squadrons stood down this week at their leader's request, and the duties they return to next week. */
+  rested?: { id: string; raid: boolean; feint: boolean; defense: boolean; cover?: number }[];
 }
 
 /** --- Battle records --- */
@@ -244,6 +248,10 @@ export interface PlaneRecord {
   lastWords?: string;
   /** Turned back with a mechanical fault before contact. */
   mechanical?: boolean;
+  /** The squadron leader's own aircraft (callsign 1). */
+  lead?: boolean;
+  /** Captain, when known for certain (the leader). */
+  captain?: string;
 }
 
 export interface RadioLine {
@@ -306,6 +314,8 @@ export interface Debrief {
   defenseSummary: string[];
   facilityDamageTaken: Partial<Facilities>;
   hqResponse: string[];
+  /** Army liaison's rough account of what moved the front this week (words, not numbers). */
+  pressure?: { label: string; effect: string; sign: number }[];
 }
 
 /** Archived truth per turn, for the end-of-war declassification. */
@@ -400,6 +410,8 @@ export interface TheaterResult {
   winner: SideId | null;
   weeks: number;
   decisive: boolean;
+  /** Sectors side 0 gained in the theater (negative: lost). */
+  gain?: number;
 }
 
 /** --- Squadron leaders' requests --- */
@@ -418,6 +430,8 @@ export type RequestKind =
 
 export interface LeaderRequest {
   id: string;
+  /** Number shown on the desk this week (R1, R2…); stays put when another request is answered. */
+  n?: number;
   squadronId: string;
   kind: RequestKind;
   /** What the leader says. */

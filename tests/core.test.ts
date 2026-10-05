@@ -5,6 +5,8 @@ import {
   redactFor,
   type Command,
   approveRequest,
+  carryPlan,
+  HEAD_START,
   gatherFliers,
   newDay,
   resolveRecon,
@@ -537,5 +539,107 @@ describe('LAN: redaction and command replay', () => {
     const s = played();
     s.sides[1].resources.supplies = 0;
     expect(applyCommands(s, 1, [{ k: 'build', kind: 'medium' }]).ok).toBe(false);
+  });
+});
+
+describe('playtest round 2 fixes', () => {
+  it('no sector falls in a week the winning side flew nothing', () => {
+    const s = startCampaign({ seed: 'idle' });
+    const before = s.theater.held0;
+    s.front = SECTOR_PRESSURE + 5;
+    applyPressure(s, [false, true]);
+    expect(s.theater.held0).toBe(before);
+    expect(s.front).toBe(SECTOR_PRESSURE - 1);
+    applyPressure(s, [true, true]);
+    expect(s.theater.held0).toBe(before);
+    s.front = SECTOR_PRESSURE;
+    applyPressure(s, [true, false]);
+    expect(s.theater.held0).toBe(before + 1);
+  });
+
+  it('strike orders are never due in the week they are issued', () => {
+    for (let g = 0; g < 8; g++) {
+      const s = startCampaign({ seed: `lead${g}` });
+      const seen = new Set<string>(s.sides[0].orders.map((o) => o.id));
+      while (!s.outcome) {
+        endTurnSingle(s, playerPlan(s));
+        for (const o of s.sides[0].orders) {
+          if (seen.has(o.id)) continue;
+          seen.add(o.id);
+          if (o.kind === 'strike') expect(o.deadline).toBeGreaterThan(s.turn);
+        }
+      }
+    }
+  });
+
+  it('a new theater opens with the head start visible to both sides', () => {
+    for (let g = 0; g < 12; g++) {
+      const s = startCampaign({ seed: `head${g}` });
+      let index = 0;
+      while (!s.outcome && s.theater.index === index) endTurnSingle(s, playerPlan(s));
+      if (s.outcome) continue;
+      if (s.theater.week !== 0) continue;
+      expect(Math.abs(s.front)).toBeLessThanOrEqual(HEAD_START);
+      expect(s.sides[0].perceived.front).toBe(s.front);
+      expect(s.sides[1].perceived.front).toBe(0 - s.front);
+      index++;
+      return;
+    }
+  });
+
+  it('a stand-down lasts one week, then the squadron returns to its duties', () => {
+    const s = startCampaign({ seed: 'rest' });
+    const plan = playerPlan(s);
+    const sq = s.sides[0].squadrons.find((q) => plan.raid!.squadronIds.includes(q.id))!;
+    s.sides[0].requests = [{ id: 'rx', n: 1, squadronId: sq.id, kind: 'rest', text: '', effect: '', cost: 0 }];
+    expect(approveRequest(s.sides[0], 'rx', plan).ok).toBe(true);
+    expect(plan.raid!.squadronIds).not.toContain(sq.id);
+    endTurnSingle(s, plan);
+    const next = carryPlan(s, 0, plan);
+    expect(next.raid!.squadronIds).toContain(sq.id);
+  });
+
+  it('request numbers stay put and leaders do not repeat themselves for a few weeks', () => {
+    for (let g = 0; g < 10; g++) {
+      const s = startCampaign({ seed: `nag${g}` });
+      const lastAsked = new Map<string, number>();
+      for (let w = 0; w < 10 && !s.outcome; w++) {
+        endTurnSingle(s, playerPlan(s));
+        s.sides[0].requests.forEach((r, i) => expect(r.n).toBe(i + 1));
+        for (const r of s.sides[0].requests) {
+          expect(s.sides[0].squadrons.find((q) => q.id === r.squadronId)!.kind).not.toBe('recon');
+          const key = `${r.squadronId}:${r.kind}`;
+          const prev = lastAsked.get(key);
+          if (prev !== undefined) expect(s.turn - prev).toBeGreaterThanOrEqual(4);
+          lastAsked.set(key, s.turn);
+        }
+        s.sides[0].requests = [];
+      }
+    }
+  });
+
+  it('a strike needs at least one bomber squadron', () => {
+    const s = startCampaign({ seed: 'nobomb' });
+    const plan = playerPlan(s);
+    plan.raid!.squadronIds = s.sides[0].squadrons.filter((q) => q.kind === 'fighter').slice(1, 2).map((q) => q.id);
+    plan.defense = plan.defense.filter((id) => !plan.raid!.squadronIds.includes(id));
+    const v = validatePlan(s.sides[0], plan, s);
+    expect(v.ok).toBe(false);
+  });
+
+  it('the archive counts aircraft written off on landing as losses', () => {
+    let checked = 0;
+    for (let g = 0; g < 30 && checked < 3; g++) {
+      const s = startCampaign({ seed: `wo${g}` });
+      for (let w = 0; w < 4 && !s.outcome; w++) {
+        endTurnSingle(s, playerPlan(s));
+        const d = s.lastDebriefs[0]!;
+        const crashed = d.returned.filter((r) => r.fate === 'crashed').length;
+        if (crashed === 0) continue;
+        expect(s.archive[s.archive.length - 1].trueLosses[0]).toBe(d.missing.length + crashed);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });

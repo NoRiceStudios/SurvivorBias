@@ -393,3 +393,15 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
   .crest-sub { display: none; }
 }
 .btn.launch, .launchbar .btn { white-space: nowrap; }
+
+/* Operations: mission cards beside the site list, so the assignments sit higher on the page. */
+.mission-grid { display: grid; grid-template-columns: minmax(200px, 0.8fr) minmax(0, 1.6fr); gap: 14px; align-items: start; margin-top: 10px; }
+.mission-grid .mission-cards { display: flex; flex-direction: column; gap: 6px; }
+.mission-grid .target-card { padding: 6px 8px; text-align: left; }
+.mission-grid h3 { margin-top: 0; }
+@media (max-width: 1000px) { .mission-grid { grid-template-columns: 1fr; } }
+
+.theater-ledger { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin: 8px 0 12px; }
+.theater-ledger div { display: flex; flex-direction: column; align-items: center; }
+.theater-ledger span { font-size: 12px; opacity: 0.75; }
+.theater-ledger b { font-size: 22px; }

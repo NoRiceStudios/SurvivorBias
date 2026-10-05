@@ -67,3 +67,66 @@ Measured with `scripts/strategies.ts` (30 games per cell): the "close support + 
 - **Strategic bombing:** left as it is.
 - **Theater pacing:** kept as it is (at most one sector per week).
 - **Teaching:** squadron leaders' requests. Implemented.
+
+## Round 2
+
+Build `92661a0`. Reports: [Marta](round2-marta-report.md), [Jonas](round2-jonas-report.md).
+
+| | Fun | Weight of decisions | Balancing | UI | Complexity |
+|---|---|---|---|---|---|
+| Marta (round 1 → 2) | 6 → 7 | 4 → 6 | 2 → 4 | 7 → 8 | 5 → 6 |
+| Jonas (round 1 → 2) | 7 → 7 | 7 → 7 | 4 → 4 | 7 → 8 | 6 → 7 |
+
+### Fixed after round 2 (small changes)
+
+- **Names and leaders:**
+  - The squadron leader flies callsign 1. When he is lost he is listed by name among the Missing, and his replacement never shares his name.
+  - Crew names come from a large pool, seeded per campaign, instead of being tied to the serial number.
+- **Requests:**
+  - Recon pilots make none.
+  - A leader waits four weeks before repeating a request.
+  - Numbers stay stable while you answer them.
+  - A stand-down lasts exactly one week.
+- **Orders and HQ:**
+  - Strike orders allow at least two weeks.
+  - Kill quotas follow the median of recent returns.
+  - "Enemy fighter strength is broken" only follows a run of big claims.
+- **Theaters:**
+  - The head start is 8 instead of 15. It is stated in the theater orders, and the Army liaison's figure starts from it, so the display no longer shows "+0".
+  - No sector falls in a week the capturing side flew nothing.
+  - A theater-decided summary shows our losses, claims and sectors taken (in the game and the text interface).
+- **Debrief:**
+  - The Army liaison gives a qualitative ledger of what moved the front.
+  - The Form 541 says when losses were to flak or return fire rather than "none seen".
+  - The archive counts aircraft written off on landing as losses.
+  - Pluralisation is fixed ("1 hole", "a single enemy aircraft").
+- **Plans:**
+  - A strike with no bombers is refused.
+  - The adjutant lists squadrons with no task.
+- **UI:**
+  - The radio screen shows the operation's week.
+  - Mission cards sit beside the site list, so the assignments are visible without scrolling.
+  - "AHEAD" now reads "TO COME".
+  - Theaters are numbered in the record.
+- **Weather and teaching:**
+  - Forecasts are right about 75% of the time and never confuse clear with storms.
+  - A campaign-start memo warns that what held for one type or one war may not hold for the next.
+
+### Measured after the fixes
+
+Measured with `scripts/strategies.ts` (30 games per cell; win rate on Green, Seasoned and Wald, then average weeks per theater):
+
+| Strategy | Win rate | Weeks per theater |
+|---|---|---|
+| Round-2 recipe: support + escort + front patrol, every week, no rotation | 10% / 7% / 7% | 5–9 |
+| Round-1 recipe: support + feint | 7% / 0% / 0% | — |
+| Mixed AI-level player | 60% / 47% / 30% | 7.4–8.9 |
+
+The testers' fast wins came from playing the combination well (rotation, armor, rest), not from the combination alone.
+
+### Open questions for the designer (big changes)
+
+- Should the strategic layer (works, fuel, heavy bombers) feed the front more directly?
+- Should winning on advantage require at least one captured sector?
+- Should fuel, munitions and training be restructured?
+- Should theaters be longer?

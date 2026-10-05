@@ -2,7 +2,7 @@ import { AIRCRAFT, APPROACH_LABEL, TARGETS } from '../core/data';
 import type { Debrief, FighterApproach, SideId, SquadronReport } from '../core/types';
 import type { App } from './app';
 import { sfxClick, sfxKey, sfxStamp, sfxStatic, startDrone, stopDrone } from './audio';
-import { h, meter } from './dom';
+import { h, meter, plural } from './dom';
 import { topBar } from './hq';
 import { aircraftCanvas } from './sprites';
 
@@ -80,7 +80,7 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
   if (lines.length === 0) log.append(h('div', { class: 'radio-line dead' }, h('span', { class: 'tx' }, 'Radio silence. No operations reported this week.')));
 
   return h('div', { class: 'radio-screen' },
-    topBar(app, side),
+    topBar(app, side, d.turn, 'operations'),
     h('div', { class: 'radio-body' },
       h('div', { class: 'radio-left' },
         h('div', { class: 'radio-title' }, 'OPERATIONS ROOM — R/T LOG'),
@@ -208,8 +208,11 @@ function aircraftView(app: App, d: Debrief): HTMLElement {
       h('div', { class: 'composite-row' },
         aircraftCanvas(bombersBack[0].kind, { side: d.side, style: 'blueprint', hits: allHits, dots: true }, 4),
         h('div', null,
-          h('p', null, `${allHits.length} holes counted on ${bombersBack.length} returning bombers.`),
-          h('p', { class: 'muted' }, `${d.missing.filter((m) => m.kind !== 'fighter').length} bombers did not return. Their damage was not recorded.`),
+          h('p', null, `${plural(allHits.length, 'hole')} counted on ${plural(bombersBack.length, 'returning bomber')}.`),
+          h('p', { class: 'muted' }, (() => {
+            const n = d.missing.filter((m) => m.kind !== 'fighter').length;
+            return n === 0 ? 'Every bomber came back.' : `${plural(n, 'bomber')} did not return. ${n === 1 ? 'Its' : 'Their'} damage was not recorded.`;
+          })()),
           h('p', { class: 'handwritten' }, 'Chief Fitter: "Wings and fuselage again, sir. Like a pepper pot."'),
         ),
       ),
@@ -229,7 +232,7 @@ function reportForm(r: SquadronReport, isDefense: boolean): HTMLElement {
       h('span', null, 'Role'), h('b', null, isDefense ? 'Interception' : 'Offensive operation'),
       ...(r.noReport ? [] : [
         h('span', null, 'Enemy aircraft claimed'), h('b', null, `${r.claims} destroyed`),
-        h('span', null, 'Enemy fighters encountered'), h('b', null, r.enemyFightersReported > 0 ? `approx. ${r.enemyFightersReported}` : 'none seen'),
+        h('span', null, isDefense ? 'Escorting fighters seen' : 'Enemy fighters encountered'), h('b', null, r.enemyFightersReported > 0 ? `approx. ${r.enemyFightersReported}` : 'none seen'),
         h('span', null, 'Attacks came mostly'), h('b', null, mostly ? APPROACH_LABEL[mostly].toLowerCase() : '—'),
         h('span', null, 'Flak'), h('b', null, isDefense ? '—' : r.flakReported),
         h('span', null, r.mission === 'support' ? 'Results at the front' : 'Bombing results'), h('b', null, isDefense || r.mission === 'sweep' || r.mission === 'feint' ? '—' : r.targetDamageReported === null ? 'unobserved'
@@ -290,6 +293,11 @@ function homeView(app: App, d: Debrief): HTMLElement {
     h('section', { class: 'paper panel' }, h('h2', null, 'Home Front'), d.defenseSummary.map((x) => h('p', null, x)),
       d.recon ? h('div', { class: 'recon-photo' }, h('span', { class: 'stamp intel' }, 'PHOTOGRAPHIC INTERPRETATION'), h('p', null, `Photographs of the ${siteName(d.recon.siteId)} show the facility at ${d.recon.condition}% of capacity.`)) : null,
     ),
+    d.pressure?.length ? h('section', { class: 'paper panel' }, h('h2', null, 'Army Liaison: the Front This Week'),
+      h('table', { class: 'ledger pressure-ledger' }, h('tbody', null, d.pressure.map((p) => h('tr', null,
+        h('td', null, p.label), h('td', { class: p.sign > 0 ? 'good' : p.sign < 0 ? 'bad' : 'muted' }, p.effect))))),
+      h('p', { class: 'muted small' }, 'The Army\'s impression, not a measurement. Weather and the fortunes of war are folded into the fighting in the air.'),
+    ) : null,
     h('section', { class: 'paper panel' }, h('h2', null, 'Signal from High Command'), d.hqResponse.length ? d.hqResponse.map((x) => h('p', { class: 'typed' }, x)) : h('p', { class: 'muted' }, 'Returns acknowledged. No comment.'),
       h('p', { class: 'muted small' }, 'High Command judges you on the returns you send, not on what happened.'),
     ),

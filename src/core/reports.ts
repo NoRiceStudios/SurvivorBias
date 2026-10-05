@@ -124,6 +124,11 @@ export function squadronReport(
   };
   report.remarks.push(rng.pick(remarks[sq.leader.archetype][defending ? 1 : 0]));
   if (raid && raid.weather !== 'clear' && !defending) report.remarks.push(raid.weather === 'storm' ? 'Weather: storms and heavy cloud throughout.' : 'Weather: solid cloud over the target area.');
+  if (lostN > 0 && report.enemyFightersReported === 0) {
+    report.remarks.push(defending
+      ? `${lostN === 1 ? 'One aircraft' : `${lostN} aircraft`} lost to the bombers' return fire.`
+      : `No fighters seen. ${lostN === 1 ? 'The aircraft lost is' : `The ${lostN} aircraft lost are`} believed to have fallen to flak.`);
+  }
   if (lostN > 0 && lostN / sent > 0.3) report.remarks.push(`${lostN} crews missing. Morale in the squadron is shaken.`);
   // What the ground crews say about the holes.
   const holes: Record<string, number> = {};
@@ -157,6 +162,7 @@ export function buildDebrief(
   damageTaken: Partial<Record<'industry' | 'airfield' | 'fuel', number>>,
   landing: RadioLine[] = [],
   sectorNames: string[] = [],
+  seed = '',
 ): Debrief {
   const mine = allRecs.filter((p) => p.side === side.id);
   const returned = mine.filter((p) => p.fate !== 'lost');
@@ -167,7 +173,7 @@ export function buildDebrief(
   ];
   const missing = mine
     .filter((p) => p.fate === 'lost')
-    .map((p) => ({ serial: p.serial, squadronId: p.squadronId, kind: p.kind, lastWords: p.lastWords, captain: captainName(side.id, p.serial) }));
+    .map((p) => ({ serial: p.serial, squadronId: p.squadronId, kind: p.kind, lastWords: p.lastWords, captain: p.captain ?? captainName(side.id, p.serial, seed) }));
 
   const mainRaid = myRaids.find((r) => r.target !== 'feint') ?? null;
   const reports: SquadronReport[] = [];
@@ -188,6 +194,7 @@ export function buildDebrief(
   }
 
   const defenseSummary: string[] = [];
+  const about = (n: number) => (n <= 1 ? 'a single enemy aircraft' : n === 2 ? 'a pair of enemy aircraft' : `a formation of about ${n} enemy aircraft`);
   const sectorName = (n: number) => sectorNames[n] ?? `sector ${n + 1}`;
   for (const enemyRaid of enemyRaids) {
     const enemyPlanes = enemyRaid.planes.filter((p) => p.side !== side.id);
@@ -197,15 +204,15 @@ export function buildDebrief(
     const groundClaims = Math.round(enemyLost * rng.range(0.4, 1.0) + rng.poisson(1.5));
     const ourSquadrons = [...new Set(enemyRaid.planes.filter((p) => p.side === side.id && p.role === 'defense').map((p) => side.squadrons.find((q) => q.id === p.squadronId)?.name).filter(Boolean))];
     if (enemyRaid.target === 'feint') {
-      defenseSummary.push(`Observers report a formation of about ${seen} aircraft over ${sectorName(enemyRaid.sector)}. It turned away without bombing.${ourSquadrons.length ? ` ${ourSquadrons.join(' and ')} went after it.` : ''}`);
+      defenseSummary.push(`Observers report ${about(seen)} over ${sectorName(enemyRaid.sector)}. It turned away without bombing.${ourSquadrons.length ? ` ${ourSquadrons.join(' and ')} went after it.` : ''}`);
       continue;
     }
     if (enemyRaid.target === 'sweep') {
-      defenseSummary.push(`Enemy fighter sweep of roughly ${seen} aircraft over the front.`);
+      defenseSummary.push(seen <= 2 ? 'A few enemy fighters swept over the front.' : `Enemy fighter sweep of roughly ${seen} aircraft over the front.`);
     } else {
       defenseSummary.push(enemyRaid.target === 'support'
-        ? `Army reports about ${seen} enemy aircraft attacking our forward positions.`
-        : `Observer Corps reports an enemy formation of about ${seen} aircraft attacking our ${TARGETS[enemyRaid.target].name.toLowerCase()}.`);
+        ? `Army reports ${seen <= 2 ? about(seen) : `about ${seen} enemy aircraft`} attacking our forward positions.`
+        : `Observer Corps reports ${about(seen)} attacking our ${TARGETS[enemyRaid.target].name.toLowerCase()}.`);
       defenseSummary.push(`Flak batteries claim ${groundClaims} destroyed.`);
     }
     if (enemyRaid.planes.some((p) => p.side === side.id && p.role === 'raid')) {

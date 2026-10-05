@@ -29,10 +29,20 @@ export function carryPlan(state: GameState, side: SideId, prev: TurnPlan): TurnP
     const d = defaultPlan(state, side).raid!;
     raid = { ...d, squadronIds: raid.squadronIds };
   }
-  const cover = Object.fromEntries(Object.entries(prev.cover).filter(([id, sec]) => ids.has(id) && (sec < t.held0 ? 0 : 1) === side));
+  const cover: Record<string, number> = Object.fromEntries(Object.entries(prev.cover).filter(([id, sec]) => ids.has(id) && (sec < t.held0 ? 0 : 1) === side));
+  const defense = prev.defense.filter((i) => ids.has(i));
+  // Squadrons stood down last week go back to the duties they had before (a feint is planned afresh).
+  for (const r of prev.rested ?? []) {
+    if (!ids.has(r.id)) continue;
+    if (r.raid && raid && !raid.squadronIds.includes(r.id)) raid.squadronIds.push(r.id);
+    if (r.defense && !defense.includes(r.id)) {
+      defense.push(r.id);
+      if (r.cover !== undefined && (r.cover < t.held0 ? 0 : 1) === side) cover[r.id] = r.cover;
+    }
+  }
   return {
     raid,
-    defense: prev.defense.filter((i) => ids.has(i)),
+    defense,
     cover,
     recon: prev.recon && ids.has(prev.recon.squadronId) && enemySite(prev.recon.siteId) ? prev.recon : null,
     // Feints are planned week by week.

@@ -168,6 +168,8 @@ export function validatePlan(side: SideState, plan: TurnPlan, state?: GameState)
     if (r.target !== 'sweep' && r.target !== 'support') {
       const site = t.sites.find((x) => x.id === r.siteId);
       if (!site || site.owner === side.id) return fail('Choose an enemy site to strike');
+      const bombers = raidIds.filter((id) => ['medium', 'heavy'].includes(side.squadrons.find((s) => s.id === id)?.kind ?? ''));
+      if (bombers.length === 0) return fail('No bombers are assigned to the strike. Fighters can escort it, but they carry no bombs');
       const depth = depthFor(t.held0, side.id, site.sector);
       for (const id of raidIds) {
         const sq = side.squadrons.find((s) => s.id === id);

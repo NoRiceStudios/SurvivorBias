@@ -49,7 +49,17 @@ await page.evaluate(() => window.sb.continueAfterTheater?.());
 await page.evaluate(() => window.sb.go({ kind: 'hq', side: 0, tab: 'briefing' }));
 await shot('46-briefing-theater2');
 // Play to the end.
-await page.evaluate(async () => { let g = 0; while (!window.sb.state.outcome && g++ < 40) await window.sb.launch(0); });
+await page.evaluate(async () => {
+  let g = 0;
+  while (!window.sb.state.outcome && g++ < 60) {
+    const week = window.sb.state.turn;
+    await window.sb.launch(0);
+    // A plan the game refuses (e.g. the whole strike force shot down) is replaced by a quiet week.
+    if (window.sb.state.turn === week && !window.sb.state.outcome) window.sb.plans[0].raid = null;
+    window.sb.afterDebrief(0);
+    if (window.sb.screen.kind === 'theater') window.sb.continueAfterTheater?.();
+  }
+});
 for (const t of ['summary', 'archive', 'ledger']) {
   await page.evaluate((tab) => window.sb.go({ kind: 'end', side: 0, tab }), t);
   await shot(`5-end-${t}`);

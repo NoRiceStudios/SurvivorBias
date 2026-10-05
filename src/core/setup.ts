@@ -1,4 +1,4 @@
-import { AIRCRAFT, FIRST_NAMES, LAST_NAMES, RANKS, SIDE_NAMES, SQUADRON_NAMES } from './data';
+import { AIRCRAFT, CREW_FIRST, CREW_LAST, FIRST_NAMES, LAST_NAMES, RANKS, SIDE_NAMES, SQUADRON_NAMES } from './data';
 import { Rng } from './rng';
 import { rollLethality } from './lethality';
 import { enterTheater } from './theaters';
@@ -237,10 +237,11 @@ const CREW_RANKS: [string[], string[]] = [
   ['Leutnant', 'Oberleutnant', 'Feldwebel', 'Unteroffizier', 'Oberfeldwebel'],
 ];
 
-/** A deterministic name for the captain of an aircraft, from its serial. */
-export function captainName(side: SideId, serial: string): string {
+/** The captain of an aircraft: drawn per campaign (seed) and airframe, from the aircrew name pool. */
+export function captainName(side: SideId, serial: string, seed = ''): string {
   let h = 2166136261;
-  for (const ch of serial) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  for (const ch of `${seed}|${serial}`) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  h = Math.imul(h ^ (h >>> 15), 2246822507);
   const u = h >>> 0;
-  return `${CREW_RANKS[side][u % CREW_RANKS[side].length]} ${FIRST_NAMES[side][(u >>> 4) % FIRST_NAMES[side].length]} ${LAST_NAMES[side][(u >>> 9) % LAST_NAMES[side].length]}`;
+  return `${CREW_RANKS[side][u % CREW_RANKS[side].length]} ${CREW_FIRST[side][(u >>> 3) % CREW_FIRST[side].length]} ${CREW_LAST[side][(u >>> 11) % CREW_LAST[side].length]}`;
 }
