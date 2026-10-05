@@ -86,9 +86,9 @@ export function upgradeTraining(side: SideState): ActionResult {
 export function upgradeFlak(side: SideState): ActionResult {
   const c = COSTS.flakUpgrade(side.flak);
   if (side.flak >= 1.5) return fail('Flak defences at maximum');
-  if (side.resources.supplies < c || side.resources.munitions < 20) return fail('Not enough supplies or munitions');
+  if (side.resources.supplies < c || side.resources.stores < 20) return fail('Not enough supplies or stores');
   side.resources.supplies -= c;
-  side.resources.munitions -= 20;
+  side.resources.stores -= 20;
   side.flak = Math.round((side.flak + 0.25) * 100) / 100;
   return ok;
 }
@@ -142,21 +142,17 @@ export function researchTurns(cost: number): number {
   return Math.max(1, Math.round(cost / 45));
 }
 
-export function planCost(side: SideState, plan: TurnPlan): { fuel: number; munitions: number } {
-  let fuel = 0;
-  let munitions = 0;
+export function planCost(side: SideState, plan: TurnPlan): { stores: number } {
+  let stores = 0;
   const ids = new Set([...(plan.raid?.squadronIds ?? []), ...plan.defense, ...(plan.feint?.squadronIds ?? [])]);
   for (const id of ids) {
     const sq = side.squadrons.find((s) => s.id === id);
     if (!sq) continue;
     const n = flyable(sq).length;
-    fuel += n * AIRCRAFT[sq.kind].fuelCost;
-    munitions += n * AIRCRAFT[sq.kind].munitionsCost;
+    stores += n * AIRCRAFT[sq.kind].storesCost;
   }
-  if (plan.recon) {
-    fuel += AIRCRAFT.recon.fuelCost;
-  }
-  return { fuel, munitions };
+  if (plan.recon) stores += AIRCRAFT.recon.storesCost;
+  return { stores };
 }
 
 /** Check a plan against the rules. Pass the game state to also check ranges and sites. */
@@ -216,8 +212,7 @@ export function validatePlan(side: SideState, plan: TurnPlan, state?: GameState)
     if (!sq || sq.kind !== 'recon') return fail('Recon needs a recon aircraft');
   }
   const c = planCost(side, plan);
-  if (c.fuel > side.resources.fuel) return fail(`Not enough fuel (${c.fuel} needed)`);
-  if (c.munitions > side.resources.munitions) return fail(`Not enough munitions (${c.munitions} needed)`);
+  if (c.stores > side.resources.stores) return fail(`Not enough stores (${c.stores} needed, ${side.resources.stores} held)`);
   return ok;
 }
 

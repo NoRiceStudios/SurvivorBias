@@ -4,7 +4,7 @@ import { Rng } from './rng';
 import { newGame, SAVE_VERSION, type NewGameOptions } from './setup';
 import { DEFAULT_LETHALITY } from './lethality';
 import { depthFor } from './theaters';
-import { resolveTurn } from './turn';
+import { resolveTurn, STORES_CAP } from './turn';
 import type { GameState, SideId, TurnPlan } from './types';
 
 /** Create a new campaign with opening orders and memos. */
@@ -77,6 +77,16 @@ export function deserialize(json: string): GameState {
     s.lethality = JSON.parse(JSON.stringify(DEFAULT_LETHALITY));
     for (const side of s.sides) side.perceived.survivorHitsByKind ??= {};
     s.version = 4;
+  }
+  // Version 4 saves keep fuel and munitions apart; version 5 holds them as one stock of stores.
+  if (s.version === 4) {
+    for (const side of s.sides) {
+      const r = side.resources as unknown as { fuel?: number; munitions?: number; stores?: number };
+      r.stores = Math.min(STORES_CAP, Math.round(((r.fuel ?? 0) + (r.munitions ?? 0)) * 0.75));
+      delete r.fuel;
+      delete r.munitions;
+    }
+    s.version = 5;
   }
   if (s.version !== SAVE_VERSION) throw new Error(`Save version ${s.version} is not supported (expected ${SAVE_VERSION})`);
   for (const p of s.sealed) if (p) p.feint ??= null;

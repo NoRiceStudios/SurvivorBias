@@ -38,7 +38,7 @@ game never points this out. Whether you notice is up to you.
 | Campaign | Three war theaters fought in sequence, each with sector-by-sector progression; several endings; about 3–5 hours; save/load between sessions |
 | Multiplayer | Single player vs AI, **plus** PvP by hotseat (hidden screens) and LAN/direct IP; simultaneous planning, then the battle resolves |
 | Crew model | Squadron-level abstraction; notable individuals (aces, problem cases, squadron leaders) surface by name |
-| Economy | Four resources: **Supplies**, **Fuel**, **Munitions**, **Replacements** |
+| Economy | Three resources: **Supplies**, **Stores** (fuel and munitions), **Replacements** |
 | Aircraft | Per-zone armor placement, modular loadouts, several aircraft types, factory R&D tree |
 | Enemy | Adaptive and escalating, but imperfect: it reacts to *its own* unreliable intel |
 | Information distortion | Crew personality biases, trauma/memory distortion, verification tools, unreliable High Command |
@@ -156,9 +156,19 @@ The crew is modelled at squadron level:
 | Resource | Used for | Comes from |
 |---|---|---|
 | **Supplies** | Upgrades, R&D, repairs, armor (4 per plate fitted; removal free) | High Command deliveries (scaled by trust and our works) |
-| **Fuel** | Each sortie, scaled by aircraft type | Rationed: a full effort every week burns more than arrives. Depots hold at most 320. Bombing our fuel depots cuts it. |
-| **Munitions** | Bomb loads, ammunition | Rationed. Depots hold at most 260. |
-| **Replacements** | New airmen into training | Posted only while the pool is under 8 |
+| **Stores** (fuel and munitions, merged after playtest round 2) | Each sortie: fighter 3, medium 5, heavy 8, recon 2; flak batteries 20 | Rationed. Deliveries are about 80% of a full effort, so the wing must stand squadrons down from time to time. Depots hold at most 240. Bombing our fuel depots cuts deliveries. A "Fit to stores" button trims a plan that is too big. |
+| **Replacements** | New airmen into training | Posted, and taken into the school, only for aircraft the wing has or has on order. Crews follow aircraft, so none sit idle. |
+
+**What bombing does** (one rule set, `effects.ts`, for both sides):
+- **Airfields:** cratered runways keep part of each operation on the ground,
+  up to half at 0%. Patrols scramble from dispersal strips and are not affected.
+- **Fuel depots:** cut stores deliveries, down to 30%.
+- **Aircraft works:** cut production, down to 40%, and weaken flak.
+
+Wrecked works also push the front, week after week. The Intelligence tab shows
+the effect on our works as known fact and on the enemy's as an estimate built
+from our own beliefs about their sites. In hotseat and LAN each commander sees
+only that view, so no hidden information leaks.
 
 Between theaters the Ministry partly makes good a depleted wing: about 30–70%
 of the shortfall below 28 aircraft, depending on trust. Difficulty scales the
@@ -211,7 +221,10 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
   counts as achieved when *you believe* the site is below 25%. If the belief came
   only from crews' reports, the reward is paid as a "claim", and High Command may
   later photograph the site working normally and withdraw it, with a trust
-  penalty. A recon photograph or capturing the sector confirms it.
+  penalty. A recon photograph confirms it. If the Army takes the sector, its
+  engineers report what they find: a site already wrecked (25% or less)
+  confirms the objective, an intact one earns the wing no credit ("taken
+  intact"), and an intact one that was claimed is discredited.
 - **HQ orders** follow the theater: strikes on specific named sites, kill
   quotas, sortie quotas, and "advance" orders that are judged on the Army's own
   map and cannot be talked up. Strike orders always allow at least two weeks.
@@ -223,12 +236,13 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
   pressure waits just short of the threshold.
 - **Army liaison ledger.** Each debrief explains in words, not numbers, what
   moved the front: the air fighting (losses on both sides, with the fortunes of
-  war folded in), close support, bombing of works, factory and fuel output, and
+  war folded in), close support, bombing of works, the state of works, depots
+  and airfields on both sides, and
   enemy reinforcements. It is deliberately qualitative, so it can't be used to
   work out true kills.
 - **The theater ends** when one side gains two sectors (decisive), or after 10
-  weeks. A timeout goes to whoever holds the advantage, otherwise it is a
-  deadlock.
+  weeks. A timeout goes to whoever holds the advantage *and has taken at least
+  one sector*; otherwise it is a stalemate.
 
 **Between theaters:** the winner gets an 8-point pressure head start in the next
 theater (stated in the theater orders, and the Army liaison's estimate starts

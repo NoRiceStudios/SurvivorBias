@@ -65,7 +65,7 @@ await client.w.evaluate(() => window.sb.cmd(1, { k: 'focus', v: 'gunnery' }));
 async function week(order) {
   for (const who of order) {
     const c = who === 'host' ? host : client;
-    await c.w.evaluate((side) => window.sb.launch(side), who === 'host' ? 0 : 1);
+    await c.w.evaluate((side) => (window.sb.fitToStores(side), window.sb.launch(side)), who === 'host' ? 0 : 1);
   }
   await waitFor(host.w, () => window.sb.screen.kind === 'radio', 'host radio');
   await waitFor(client.w, () => window.sb.screen.kind === 'radio', 'client radio');
@@ -88,14 +88,14 @@ const turns = await Promise.all([host.w.evaluate(() => window.sb.state.turn), cl
 check(turns[0] === turns[1] && turns[0] >= 6, `both commanders are in the same week (${turns.join(' / ')})`);
 
 // The client seals, drops out, and rejoins: its orders are safe with the host.
-await client.w.evaluate(() => window.sb.launch(1));
+await client.w.evaluate(() => (window.sb.fitToStores(1), window.sb.launch(1)));
 await waitFor(host.w, () => !!window.sb.state.sealed[1], 'host holds sealed client orders');
 await client.app.close();
 await host.w.waitForTimeout(500);
 client = await open('client2');
 await join(client);
 await waitFor(client.w, () => window.sb.screen.kind === 'lanWait', 'rejoined client waits on its sealed orders');
-await host.w.evaluate(() => window.sb.launch(0));
+await host.w.evaluate(() => (window.sb.fitToStores(0), window.sb.launch(0)));
 await waitFor(client.w, () => window.sb.screen.kind === 'radio', 'rejoined client receives the results');
 await host.w.screenshot({ path: 'screenshots/lan-host-radio.png' });
 

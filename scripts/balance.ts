@@ -46,7 +46,7 @@ for (let g = 0; g < games; g++) {
       const e = s.archive[s.archive.length - 1];
       const planes = s.sides.map((x) => x.squadrons.reduce((a, q) => a + q.airframes.length, 0));
       const crews = s.sides.map((x) => x.squadrons.reduce((a, q) => a + q.crews, 0));
-      console.log(`T${e.turn} th=${e.theater} held0=${e.sectors0} front=${e.front} lost=${e.trueLosses} claimed=${e.claimed} fac0=${JSON.stringify(e.facilities[0])} fac1=${JSON.stringify(e.facilities[1])} planes=${planes} crews=${crews} trust=${s.sides.map((x) => x.trust)} sup=${s.sides.map((x) => x.resources.supplies)} fuel=${s.sides.map((x) => x.resources.fuel)}`);
+      console.log(`T${e.turn} th=${e.theater} held0=${e.sectors0} front=${e.front} lost=${e.trueLosses} claimed=${e.claimed} fac0=${JSON.stringify(e.facilities[0])} fac1=${JSON.stringify(e.facilities[1])} planes=${planes} crews=${crews} trust=${s.sides.map((x) => x.trust)} sup=${s.sides.map((x) => x.resources.supplies)} stores=${s.sides.map((x) => x.resources.stores)}`);
     }
   }
   for (const r of s.theaterResults) {

@@ -3,7 +3,7 @@ import { emptyPlan, validatePlan } from '../core/actions';
 import { deserialize, serialize, startCampaign } from '../core/game';
 import { resolveTurn } from '../core/turn';
 import { applyCommand, type Command } from '../core/commands';
-import { carryPlan, defaultPlan } from '../core/plans';
+import { carryPlan, defaultPlan, fitPlanToStores } from '../core/plans';
 import type { GameState, SideId, TurnPlan } from '../core/types';
 import { sfxClick, sfxStamp, stopDrone } from './audio';
 import { clear, h } from './dom';
@@ -203,6 +203,11 @@ export class App {
   }
 
   /** Player confirms orders for a side. */
+  /** Shrink this side's plan to what the depots can supply. */
+  fitToStores(side: SideId) {
+    if (this.state) fitPlanToStores(this.state, side, this.plans[side]);
+  }
+
   async launch(side: SideId) {
     const st = this.state!;
     const v = validatePlan(st.sides[side], this.plans[side], st);

@@ -1,6 +1,7 @@
 import { planCost, researchTurns } from './actions';
 import { AIRCRAFT, ARCHETYPE_INFO, RESEARCH, SQUADRON_NAMES, TARGETS } from './data';
 import { buildDebrief, updatePerceived } from './reports';
+import { facilityEffects } from './effects';
 import { generateRequests } from './requests';
 import { Rng } from './rng';
 import { makeAirframe, makeLeader, makeSquadron } from './setup';
@@ -45,13 +46,13 @@ function memo(side: SideState, turn: number, kind: Memo['kind'], subject: string
   if (side.memos.length > 40) side.memos.length = 40;
 }
 
-export const FUEL_CAP = 320;
-export const MUNITIONS_CAP = 260;
+/** Depots hold at most this much fuel and munitions. */
+export const STORES_CAP = 240;
 
 /** Production points per week. */
 export function factoryRate(side: SideState): number {
   const f = side.factory;
-  return (3 + f.level * 2.5) * (0.4 + 0.6 * Math.min(1.2, side.facilities.industry / 100)) * (f.qc === 'rushed' ? 1.4 : f.qc === 'strict' ? 0.75 : 1);
+  return (3 + f.level * 2.5) * facilityEffects(side.facilities).production * (f.qc === 'rushed' ? 1.4 : f.qc === 'strict' ? 0.75 : 1);
 }
 
 /** The AI's resource multiplier: difficulty plus escalation through the theaters. */
@@ -154,26 +155,31 @@ function applyDamage(state: GameState, siteId: string | undefined, dmg: number):
   return before - site.condition;
 }
 
+/** Aircraft (built or on order) still without a crew, after counting crews in training. */
+export function crewShortfall(side: SideState): number {
+  const aircraft = side.squadrons.reduce((a, q) => a + q.airframes.length, 0) + side.factory.queue.length;
+  const crews = side.squadrons.reduce((a, q) => a + Math.max(0, q.crews), 0) + side.training.inTraining;
+  return Math.max(0, aircraft - crews);
+}
+
 function economy(rng: Rng, state: GameState, side: SideState) {
   const r = side.resources;
   const trustF = 0.4 + side.trust / 100;
   const bonus = side.isAI ? aiBonus(state, side) : 1;
   const sup = Math.round((45 + 45 * trustF) * (0.55 + 0.45 * Math.min(1.2, side.facilities.industry / 100)) * bonus);
-  // Fuel and munitions are rationed: a full effort every week burns more than arrives.
-  const fuel = Math.round((25 + 30 * trustF) * (0.3 + 0.7 * Math.min(1.2, side.facilities.fuel / 100)) * bonus);
-  const mun = Math.round((18 + 16 * trustF) * bonus);
-  // Replacement aircrew are only posted while the pool is short.
-  const rep = r.replacements >= 8 ? 0 : Math.round((2 + 3 * trustF) * bonus);
+  // Stores are rationed: a full effort every week burns more than arrives, and wrecked fuel depots cut deliveries.
+  const stores = Math.round((26 + 28 * trustF) * facilityEffects(side.facilities).stores * bonus);
+  // Aircrew are posted only for aircraft the wing has or has on order.
+  const rep = Math.min(Math.max(0, crewShortfall(side) - r.replacements), Math.round((2 + 3 * trustF) * bonus));
   r.supplies += sup;
-  r.fuel = Math.min(FUEL_CAP, r.fuel + fuel);
-  r.munitions = Math.min(MUNITIONS_CAP, r.munitions + mun);
+  r.stores = Math.min(STORES_CAP, r.stores + stores);
   r.replacements += rep;
   side.memos.unshift({
     turn: state.turn + 1,
     from: 'Supply Command',
     kind: 'supply',
     subject: 'Deliveries',
-    body: `Delivered this week: ${sup} supplies, ${fuel} fuel, ${mun} munitions, ${rep} replacement aircrew.`,
+    body: `Delivered this week: ${sup} supplies, ${stores} stores (fuel and munitions), ${rep} replacement aircrew.`,
   });
 
   // Factory production.
@@ -219,7 +225,8 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   // Excess graduates wait in the pool as replacements.
   r.replacements += pool;
   const capacity = 1 + t.level * 2;
-  const intake = Math.min(capacity, r.replacements);
+  // The school takes pupils only for aircraft that exist or are on order.
+  const intake = Math.min(capacity, r.replacements, crewShortfall(side));
   r.replacements -= intake;
   t.inTraining = intake;
 
@@ -263,7 +270,7 @@ function pressureLedger(parts: Record<'air' | 'support' | 'strikes' | 'works' | 
     air: 'Fighting in the air (losses on both sides)',
     support: 'Close support over the front',
     strikes: 'Bombing of works and depots',
-    works: 'Output of factories and fuel depots',
+    works: 'State of works, depots and airfields (both sides)',
     escalation: 'Enemy reinforcements arriving',
   };
   const word = (v: number) =>
@@ -449,16 +456,30 @@ function secondaryObjectives(rng: Rng, state: GameState, news: [string[], string
     const believed = side.perceived.sites[o.siteId] ?? 100;
     if (o.status === 'open') {
       const captured = site.owner === o.side;
+      // Taken by the Army: its engineers report what state the works were in. Intact means no credit to the wing.
+      if (captured && !site.takenWrecked) {
+        o.status = 'overrun';
+        news[o.side].push(`The Army has taken the ${site.name} intact. The secondary objective was to wreck it from the air: no credit to the wing.`);
+        continue;
+      }
       if (captured || believed <= 25) {
         const confirmed = captured || side.perceived.photographed.includes(o.siteId);
         o.status = confirmed ? 'confirmed' : 'claimed';
-        // Taking it with the Army counts, but the Air Ministry pays less for it.
-        const r = captured ? { supplies: o.reward.supplies && Math.round(o.reward.supplies / 2), trust: o.reward.trust && Math.round(o.reward.trust / 2), research: o.reward.research } : o.reward;
+        const r = o.reward;
         if (r.supplies) side.resources.supplies += r.supplies;
         if (r.trust) side.trust = Math.min(100, side.trust + r.trust);
         if (r.research && !side.research.includes(r.research)) side.research.push(r.research);
         const rewards = [r.supplies ? `${r.supplies} supplies` : '', r.trust ? 'the confidence of the Air Council' : '', r.research ? `priority delivery of ${RESEARCH.find((x) => x.id === r.research)?.name}` : ''].filter(Boolean).join(', ');
-        news[o.side].push(`Secondary objective achieved${captured ? ' by the Army taking it' : confirmed ? ' and confirmed' : ' (on crews\' reports)'}: ${site.name}. Awarded: ${rewards}.`);
+        news[o.side].push(`Secondary objective achieved${captured ? ': Army engineers confirm the works were wrecked before they arrived' : confirmed ? ' and confirmed' : ' (on crews\' reports)'}: ${site.name}. Awarded: ${rewards}.`);
+      }
+    } else if (o.status === 'claimed' && site.owner === o.side) {
+      // The Army walks into the works and sees for itself.
+      if (site.takenWrecked) o.status = 'confirmed';
+      else {
+        o.status = 'discredited';
+        side.trust = Math.max(side.isAI ? 20 : 0, side.trust - 15);
+        news[o.side].push(`The Army has taken the ${site.name} and found it in working order. Your claim to have destroyed it has been withdrawn.`);
+        memo(side, state.turn + 1, 'reprimand', 'Objective not achieved', `Army engineers found the ${site.name} intact. The award made on the strength of your returns is noted against your record.`);
       }
     } else if (o.status === 'claimed' && site.owner !== o.side) {
       // Unconfirmed claims can come back to haunt a commander.
@@ -491,11 +512,10 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   const t = state.theater;
   const mods = theaterMods(state);
 
-  // Pay for fuel & munitions.
+  // Pay for stores.
   for (const id of [0, 1] as SideId[]) {
     const c = planCost(state.sides[id], plans[id]);
-    state.sides[id].resources.fuel = Math.max(0, state.sides[id].resources.fuel - c.fuel);
-    state.sides[id].resources.munitions = Math.max(0, state.sides[id].resources.munitions - c.munitions);
+    state.sides[id].resources.stores = Math.max(0, state.sides[id].resources.stores - c.stores);
   }
 
   const day = newDay(state.lethality);
@@ -568,6 +588,10 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
 
   // Losses & morale.
   const lossNews: [string[], string[]] = [[], []];
+  for (const id of [0, 1] as SideId[]) {
+    const n = state.sides[id].squadrons.reduce((a, q) => a + (day.grounded.get(q.id) ?? 0), 0);
+    if (n > 0) lossNews[id].push(`Cratered runways kept ${n === 1 ? 'one of our aircraft' : `${n} of our aircraft`} on the ground (airfields at ${state.sides[id].facilities.airfield}%).`);
+  }
   for (const id of [0, 1] as SideId[]) applyLosses(rng, state, state.sides[id], allRecs, lossNews[id]);
 
   // Pressure on the front moves on true results.
@@ -580,9 +604,11 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     air: (lost1 - lost0) * 2 + rng.gauss(3),
     support: (supportPush[0] - supportPush[1]) * 1.15,
     strikes: (strat0 - strat1) * 0.3,
+    // Wrecked works keep telling at the front, week after week.
     works:
-      (Math.min(120, s0.facilities.industry) - Math.min(120, s1.facilities.industry)) * 0.03 +
-      (Math.min(120, s0.facilities.fuel) - Math.min(120, s1.facilities.fuel)) * 0.02,
+      (Math.min(120, s0.facilities.industry) - Math.min(120, s1.facilities.industry)) * 0.06 +
+      (Math.min(120, s0.facilities.fuel) - Math.min(120, s1.facilities.fuel)) * 0.05 +
+      (Math.min(120, s0.facilities.airfield) - Math.min(120, s1.facilities.airfield)) * 0.04,
     escalation: s1.isAI ? -0.8 * (act(state) - 1) : 0,
   };
   const delta = parts.air + parts.support + parts.strikes + parts.works + parts.escalation;

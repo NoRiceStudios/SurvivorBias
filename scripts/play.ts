@@ -66,6 +66,7 @@ import {
   type TrainingFocus,
   type TurnPlan,
   type ZoneId,
+  fitPlanToStores,
 } from '../src/core';
 
 interface SaveFile {
@@ -136,10 +137,10 @@ function brief() {
     `=== Week ${st.turn} · ${def.name} (${def.season}) · theater week ${t.week + 1}/${def.weeks} · Stage: ${stage.title} ===`,
     `${stage.text}`,
     `Weather forecast for this operation: ${WEATHER_LABEL[st.forecast[0]]} (Met Office forecasts are usually right).`,
-    `Resources: supplies ${r.supplies} · fuel ${r.fuel} · munitions ${r.munitions} · replacement aircrew ${r.replacements}`,
+    `Resources: supplies ${r.supplies} · stores ${r.stores} (fuel and munitions) · replacement aircrew ${r.replacements}`,
     `High Command confidence: ${side.trust}/100 (deliveries grow with it; at 0 you are relieved) · Sectors held: ${t.held0}/${SECTORS}`,
     `Army liaison puts the pressure on the front at ${side.perceived.front >= 0 ? '+' : ''}${side.perceived.front} (a sector usually falls at about ±${SECTOR_PRESSURE}, at most one a week; liaison figures run a little optimistic).`,
-    `Primary objective: gain ${DECISIVE_GAIN} sectors from the enemy (so far ${gain >= 0 ? '+' : ''}${gain}). If neither side breaks through by week ${def.weeks}, the theater goes to whoever holds the advantage.`,
+    `Primary objective: gain ${DECISIVE_GAIN} sectors from the enemy (so far ${gain >= 0 ? '+' : ''}${gain}). If neither side breaks through by week ${def.weeks}, the theater goes to whoever holds the advantage, but only if they have taken at least one sector. Otherwise it is a stalemate.`,
     `Secondary objective: ${obj.text} [${obj.status.toUpperCase()}]`,
     `Theater record: ${THEATERS.map((th, i) => { const res = st.theaterResults.find((x) => x.index === i); return `${th.name}: ${res ? (res.winner === 0 ? 'WON' : res.winner === null ? 'DRAWN' : 'LOST') : i === t.index ? 'in progress' : 'to come'}`; }).join(' | ')}`,
     'Standing orders:',
@@ -164,8 +165,7 @@ function adjutant(): string[] {
   const spare = side.squadrons.reduce((a, q) => a + Math.max(0, q.crews - q.airframes.length), 0) + side.resources.replacements;
   if (spare >= 8) notes.push(`${spare} trained or waiting aircrew have no aircraft. The works can build more (build ...).`);
   const c = planCost(side, plan!);
-  if (c.fuel > side.resources.fuel) notes.push(`This week's plan needs ${c.fuel} fuel and we have ${side.resources.fuel}.`);
-  if (c.munitions > side.resources.munitions) notes.push(`This week's plan needs ${c.munitions} munitions and we have ${side.resources.munitions}.`);
+  if (c.stores > side.resources.stores) notes.push(`This week's plan needs ${c.stores} stores and we have ${side.resources.stores}.`);
   if (!side.researching && side.resources.supplies >= 70) notes.push('The engineers are idle (research ...).');
   if (side.factory.queue.length === 0 && side.resources.supplies >= 60) notes.push('Nothing is on order at the aircraft works (build ...).');
   if (side.trust < 30) notes.push(`High Command's confidence is ${side.trust}/100.`);
@@ -225,7 +225,7 @@ function factory() {
   const side = me();
   const f = side.factory;
   say(`Aircraft works level ${f.level}/5, condition ${side.facilities.industry}%, quality control: ${f.qc}. Expand: ${COSTS.factoryUpgrade(f.level)} supplies.`);
-  say(`Flak defences strength ${Math.round(side.flak * 100)}. Add batteries: ${COSTS.flakUpgrade(side.flak)} supplies + 20 munitions.`);
+  say(`Flak defences strength ${Math.round(side.flak * 100)}. Add batteries: ${COSTS.flakUpgrade(side.flak)} supplies + 20 stores.`);
   say('Can build:');
   for (const k of ['fighter', 'medium', 'heavy', 'recon'] as AircraftKind[]) {
     const s = AIRCRAFT[k];
@@ -269,7 +269,7 @@ function planView() {
     target ? `Plan: ${target} with ${name(p.raid?.squadronIds ?? [])}` : 'Plan: no operation this week (a defensive week).',
     `Defence: ${p.defense.map((id) => { const sq = side.squadrons.find((q) => q.id === id)!; const cv = p.cover[id]; return `${sqCode(sq)} ${cv === undefined ? 'in reserve' : `patrolling ${sectorName(cv)} [${cv + 1}]`}`; }).join(', ') || 'none'}`,
     `Feint: ${p.feint ? `${name(p.feint.squadronIds)} over ${sectorName(p.feint.sector)} [${p.feint.sector + 1}]` : 'none'} · Recon: ${p.recon ? `${name([p.recon.squadronId])} photographing ${state!.theater.sites.find((x) => x.id === p.recon!.siteId)?.name}` : 'none'}`,
-    `Returns policy: ${p.embellish === 0 ? 'accurate' : p.embellish < 0.6 ? 'optimistic' : 'creative'} · Cost: fuel ${c.fuel}/${side.resources.fuel}, munitions ${c.munitions}/${side.resources.munitions}`,
+    `Returns policy: ${p.embellish === 0 ? 'accurate' : p.embellish < 0.6 ? 'optimistic' : 'creative'} · Cost: stores ${c.stores}/${side.resources.stores}`,
     v.ok ? 'Orders are valid.' : `PROBLEM: ${v.reason}`,
   );
 }
@@ -358,7 +358,7 @@ function launch() {
   if (st.theaterResults.length > theatersBefore) {
     const res = st.theaterResults[st.theaterResults.length - 1];
     const weeks = st.archive.filter((e) => e.theater === res.index);
-    say(`######## THEATER DECIDED: ${res.name.toUpperCase()} — ${res.winner === 0 ? 'VICTORY' : res.winner === null ? 'DEADLOCK' : 'DEFEAT'}${res.decisive ? ' (decisive)' : ''} after ${res.weeks} weeks ########`,
+    say(`######## THEATER DECIDED: ${res.name.toUpperCase()} — ${res.winner === 0 ? 'VICTORY' : res.winner === null ? 'STALEMATE' : 'DEFEAT'}${res.decisive ? ' (decisive)' : ''} after ${res.weeks} weeks ########`,
       `Our aircraft lost in this theater: ${weeks.reduce((a, e) => a + e.trueLosses[0], 0)} · enemy aircraft claimed by our crews: ${weeks.reduce((a, e) => a + e.claimed[0], 0)}`);
     if (!st.outcome) say(`The wing redeploys to ${THEATERS[st.theater.index].name}. ${me().memos[0]?.body ?? ''}`);
     say('');
@@ -403,6 +403,7 @@ function run(cmd: string) {
       '        build fighter|medium|heavy|recon · cancel <queue#> · research <id> · upgrade factory|training|flak',
       '        qc rushed|standard|strict · focus balanced|gunnery|evasion|reporting',
       'Requests: approve R# · decline R# (squadron leaders\' requests, listed in the brief)',
+      'fit — trim this week\'s plan to the stores we hold (drops the feint, then escorts, then bomber squadrons)',
       'Turn: launch (fly this week\'s operation and read the debrief)',
       'UI: screenshot <screen> <out.png> [S#] — screens: title briefing operations squadrons hangar factory training research intel radio debrief-aircraft debrief-reports debrief-missing debrief-home end-summary end-archive end-ledger',
       'Start: new green|seasoned|wald [seed]. Chain commands with ";".',
@@ -486,6 +487,11 @@ function run(cmd: string) {
     case 'qc': check(setQc(side, a[0] as QcPolicy)); return factory();
     case 'focus': check(setTrainingFocus(side, a[0] as TrainingFocus)); return training();
     case 'launch': return launch();
+    case 'fit': {
+      fitPlanToStores(state, 0, plan);
+      say(`Plan trimmed to the stores we hold: costs ${planCost(side, plan).stores}/${side.resources.stores}.`);
+      return;
+    }
     case 'approve':
     case 'decline': {
       const num = Number(a[0]?.replace(/^R/i, ''));

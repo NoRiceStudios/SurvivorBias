@@ -6,6 +6,11 @@ import {
   type Command,
   approveRequest,
   carryPlan,
+  crewShortfall,
+  facilityEffects,
+  fitPlanToStores,
+  planCost,
+  theaterDecision,
   HEAD_START,
   gatherFliers,
   newDay,
@@ -147,12 +152,19 @@ describe('survivorship bias', () => {
         side.insight = insight;
         for (const sq of side.squadrons) sq.armor = chooseArmor(side, sq);
         const enemy = s.sides[1];
+        // This test is about armor, not stores: let the enemy put up its full defence.
+        enemy.resources.stores = 1000;
         const plan = playerPlan(s);
-        const r = resolveRaid(new Rng({ s: 1234 + g }), s, side, enemy, plan.raid, aiPlan(s, 1));
-        if (!r) continue;
-        const mine = r.planes.filter((p) => p.side === 0 && p.kind !== 'fighter');
-        sent += mine.length;
-        lost += mine.filter((p) => p.fate === 'lost').length;
+        const def = aiPlan(s, 1);
+        // Several engagements per campaign, each from the same starting state.
+        for (let k = 0; k < 4; k++) {
+          const copy = JSON.parse(JSON.stringify(s)) as GameState;
+          const r = resolveRaid(new Rng({ s: 1234 + g * 7 + k }), copy, copy.sides[0], copy.sides[1], plan.raid, def);
+          if (!r) continue;
+          const mine = r.planes.filter((p) => p.side === 0 && p.kind !== 'fighter');
+          sent += mine.length;
+          lost += mine.filter((p) => p.fate === 'lost').length;
+        }
       }
       return 1 - lost / Math.max(1, sent);
     };
@@ -345,8 +357,15 @@ describe('hotseat missions', () => {
     const old = { ...s, version: 2 } as Record<string, unknown>;
     delete old.sealed;
     delete old.lethality;
+    for (const side of old.sides as { resources: Record<string, number> }[]) {
+      delete side.resources.stores;
+      side.resources.fuel = 140;
+      side.resources.munitions = 90;
+    }
     const loaded = deserialize(JSON.stringify(old));
-    expect(loaded.version).toBe(4);
+    expect(loaded.version).toBe(5);
+    expect(loaded.sides[0].resources.stores).toBe(173);
+    expect('fuel' in loaded.sides[0].resources).toBe(false);
     expect(loaded.lethality.medium.cockpit).toBeGreaterThan(0);
     expect(loaded.sealed).toEqual([null, null]);
   });
@@ -604,14 +623,15 @@ describe('playtest round 2 fixes', () => {
       const s = startCampaign({ seed: `nag${g}` });
       const lastAsked = new Map<string, number>();
       for (let w = 0; w < 10 && !s.outcome; w++) {
+        const week = s.turn;
         endTurnSingle(s, playerPlan(s));
         s.sides[0].requests.forEach((r, i) => expect(r.n).toBe(i + 1));
         for (const r of s.sides[0].requests) {
           expect(s.sides[0].squadrons.find((q) => q.id === r.squadronId)!.kind).not.toBe('recon');
           const key = `${r.squadronId}:${r.kind}`;
           const prev = lastAsked.get(key);
-          if (prev !== undefined) expect(s.turn - prev).toBeGreaterThanOrEqual(4);
-          lastAsked.set(key, s.turn);
+          if (prev !== undefined) expect(week - prev).toBeGreaterThanOrEqual(4);
+          lastAsked.set(key, week);
         }
         s.sides[0].requests = [];
       }
@@ -629,9 +649,9 @@ describe('playtest round 2 fixes', () => {
 
   it('the archive counts aircraft written off on landing as losses', () => {
     let checked = 0;
-    for (let g = 0; g < 30 && checked < 3; g++) {
+    for (let g = 0; g < 120 && checked < 2; g++) {
       const s = startCampaign({ seed: `wo${g}` });
-      for (let w = 0; w < 4 && !s.outcome; w++) {
+      for (let w = 0; w < 6 && !s.outcome; w++) {
         endTurnSingle(s, playerPlan(s));
         const d = s.lastDebriefs[0]!;
         const crashed = d.returned.filter((r) => r.fate === 'crashed').length;
@@ -641,5 +661,97 @@ describe('playtest round 2 fixes', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+});
+
+describe('designer decisions after round 2', () => {
+  it('a timeout win needs at least one sector taken; otherwise it is a stalemate', () => {
+    const s = startCampaign({ seed: 'stale' });
+    s.theater.week = THEATERS[s.theater.index].weeks;
+    s.front = 23;
+    expect(theaterDecision(s)).toEqual({ winner: null, decisive: false });
+    s.theater.held0 = s.theater.start0 + 1;
+    expect(theaterDecision(s)).toEqual({ winner: 0, decisive: false });
+    s.theater.held0 = s.theater.start0 - 1;
+    s.front = -23;
+    expect(theaterDecision(s)).toEqual({ winner: 1, decisive: false });
+  });
+
+  it('a secondary objective taken intact by the Army earns the wing nothing', () => {
+    const s = startCampaign({ seed: 'overrun' });
+    const o = s.theater.objectives.find((x) => x.side === 0)!;
+    const site = s.theater.sites.find((x) => x.id === o.siteId)!;
+    // March the front up to the objective's sector, with the site intact.
+    while (s.theater.held0 <= site.sector && !s.outcome) {
+      s.front = SECTOR_PRESSURE;
+      applyPressure(s);
+    }
+    expect(site.owner).toBe(0);
+    expect(site.takenWrecked).toBe(false);
+    endTurnSingle(s, playerPlan(s));
+    expect(o.status).toBe('overrun');
+    expect(s.lastDebriefs[0]!.theaterNews.some((n) => n.includes('no credit'))).toBe(true);
+  });
+
+  it('a wrecked objective taken by the Army is confirmed', () => {
+    const s = startCampaign({ seed: 'wrecked' });
+    const o = s.theater.objectives.find((x) => x.side === 0)!;
+    const site = s.theater.sites.find((x) => x.id === o.siteId)!;
+    site.condition = 10;
+    while (s.theater.held0 <= site.sector) {
+      s.front = SECTOR_PRESSURE;
+      applyPressure(s);
+    }
+    endTurnSingle(s, playerPlan(s));
+    expect(o.status).toBe('confirmed');
+  });
+
+  it('cratered airfields keep part of an operation on the ground', () => {
+    expect(facilityEffects({ industry: 100, airfield: 100, fuel: 100 }).grounded).toBe(0);
+    expect(facilityEffects({ industry: 100, airfield: 40, fuel: 100 }).grounded).toBeCloseTo(0.3);
+    const s = startCampaign({ seed: 'craters' });
+    const bombers = s.sides[0].squadrons.filter((q) => q.kind === 'medium');
+    const before = gatherFliers(s.sides[0], bombers.map((q) => q.id), () => 'raid', newDay()).length;
+    s.sides[0].facilities.airfield = 20;
+    const day = newDay();
+    const after = gatherFliers(s.sides[0], bombers.map((q) => q.id), () => 'raid', day).length;
+    expect(after).toBeLessThan(before);
+    expect([...day.grounded.values()].reduce((a, b) => a + b, 0)).toBe(before - after);
+    // Defensive patrols scramble from dispersal strips.
+    const fighters = s.sides[0].squadrons.filter((q) => q.kind === 'fighter').map((q) => q.id);
+    expect(gatherFliers(s.sides[0], fighters, () => 'defense', newDay()).length).toBeGreaterThan(0);
+  });
+
+  it('the school trains crews only for aircraft that exist or are on order', () => {
+    for (let g = 0; g < 6; g++) {
+      const s = startCampaign({ seed: `crews${g}` });
+      for (let w = 0; w < 12 && !s.outcome; w++) endTurnSingle(s, playerPlan(s));
+      const side = s.sides[0];
+      const aircraft = side.squadrons.reduce((a, q) => a + q.airframes.length, 0) + side.factory.queue.length;
+      const crews = side.squadrons.reduce((a, q) => a + q.crews, 0) + side.training.inTraining;
+      // In training never pushes crews past aircraft by more than one week's graduates.
+      expect(side.training.inTraining).toBeLessThanOrEqual(Math.max(0, aircraft - (crews - side.training.inTraining)));
+      expect(crewShortfall(side)).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('fuel and munitions are one stock of stores', () => {
+    const s = startCampaign({ seed: 'stores' });
+    expect(s.sides[0].resources.stores).toBeGreaterThan(0);
+    expect('fuel' in s.sides[0].resources).toBe(false);
+    const before = s.sides[0].resources.stores;
+    endTurnSingle(s, playerPlan(s));
+    expect(s.sides[0].resources.stores).not.toBe(before);
+  });
+
+  it('a plan can be shrunk to what the depots hold, keeping bombers before escorts', () => {
+    const s = startCampaign({ seed: 'fit' });
+    const plan = playerPlan(s);
+    s.sides[0].resources.stores = Math.floor(planCost(s.sides[0], plan).stores * 0.7);
+    expect(validatePlan(s.sides[0], plan, s).ok).toBe(false);
+    fitPlanToStores(s, 0, plan);
+    expect(planCost(s.sides[0], plan).stores).toBeLessThanOrEqual(s.sides[0].resources.stores);
+    expect(validatePlan(s.sides[0], plan, s).ok).toBe(true);
+    if (plan.raid) expect(plan.raid.squadronIds.some((id) => s.sides[0].squadrons.find((q) => q.id === id)!.kind === 'medium')).toBe(true);
   });
 });

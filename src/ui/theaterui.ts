@@ -160,7 +160,9 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
   const st = app.state!;
   const res = st.theaterResults[st.theaterResults.length - 1];
   const won = res.winner === side;
-  const verdict = res.winner === null ? 'DEADLOCK' : won ? 'VICTORY' : 'DEFEAT';
+  const verdict = res.winner === null ? 'STALEMATE' : won ? 'VICTORY' : 'DEFEAT';
+  const lastFront = [...st.archive].reverse().find((e) => e.theater === res.index)?.front ?? 0;
+  const ourPressure = side === 0 ? lastFront : -lastFront;
   const nextDef = st.outcome ? null : THEATERS[st.theater.index];
   const obj = st.outcome ? null : st.theater.objectives.find((o) => o.side === side);
   return h('div', { class: 'handover' },
@@ -168,7 +170,9 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
       h('div', { class: 'muted' }, `${res.name} · ${res.weeks} weeks`),
       h('div', { class: `stamp big ${won ? 'notice' : res.winner === null ? 'order' : 'reprimand'}` }, verdict),
       h('p', { class: 'typed big' }, res.winner === null
-        ? 'Neither air force could break the other. The armies dig in where they stand.'
+        ? ourPressure > 15 ? 'The pressure was ours, but the Army took no ground. High Command records a stalemate.'
+          : ourPressure < -15 ? 'The enemy held the advantage but took no ground. The armies dig in where they stand.'
+          : 'Neither air force could break the other. The armies dig in where they stand.'
         : won ? (res.decisive ? 'The enemy front has broken. The Army is through.' : 'The season ends with the advantage ours.')
         : res.decisive ? 'Our front has broken. The Army is falling back.' : 'The season ends with the advantage theirs.'),
       (() => {

@@ -124,9 +124,28 @@ Measured with `scripts/strategies.ts` (30 games per cell; win rate on Green, Sea
 
 The testers' fast wins came from playing the combination well (rotation, armor, rest), not from the combination alone.
 
-### Open questions for the designer (big changes)
+## Design decisions after round 2
 
-- Should the strategic layer (works, fuel, heavy bombers) feed the front more directly?
-- Should winning on advantage require at least one captured sector?
-- Should fuel, munitions and training be restructured?
-- Should theaters be longer?
+- **Strategic bombing: visibly effective, also in multiplayer.** Implemented.
+  - Cratered airfields keep part of each operation on the ground.
+  - Wrecked fuel depots cut stores deliveries, and wrecked works cut production.
+  - Wrecked works also push the front week after week.
+  - The Intelligence tab shows the effect: as fact for our works, as an estimate from our beliefs for the enemy's.
+  - Secondary objectives taken by the Army count only if the site was already wrecked.
+- **Winning on advantage needs a sector taken**, otherwise the theater is a stalemate. Implemented.
+- **Economy: fuel and munitions merged into Stores.**
+  - Crews are posted and trained only for aircraft that exist or are on order.
+  - A "Fit to stores" button trims an unaffordable plan.
+  - Measured over 20 games per difficulty:
+    - depots full in 12–16% of weeks (was most weeks after week 11);
+    - a full effort unaffordable in 12–21% of weeks;
+    - idle crews about 2 on average (testers saw 8–13).
+- **Theater pacing:** left as it is.
+
+Measured with `scripts/strategies.ts` after these changes (30 games per cell, win rate on Green, Seasoned and Wald):
+
+| Strategy | Win rate |
+|---|---|
+| Mixed AI-level player | 53% / 53% / 13% |
+| Escort + front patrol, every week | 47% / 27% / 7% |
+| Support + feint | 27% / 10% / 3% |

@@ -14,9 +14,10 @@ import {
   TARGETS,
   ZONE_LABEL,
 } from '../core/data';
+import { facilityEffects } from '../core/effects';
 import { flyable } from '../core/sim';
 import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS, WEATHER_LABEL } from '../core/theaters';
-import { FUEL_CAP, MUNITIONS_CAP } from '../core/turn';
+import { crewShortfall, STORES_CAP } from '../core/turn';
 import type { AircraftKind, FighterApproach, Hit, SideId, SideState, Squadron, TargetId, TrainingFocus } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
@@ -62,8 +63,7 @@ export function topBar(app: App, side: SideState, debriefWeek?: number, what = '
     lanChip,
     h('div', { class: 'resources' },
       res('supplies', r.supplies, 'supplies', 'Supplies: upgrades, repairs, production, research, armor'),
-      res('fuel', r.fuel, 'fuel', `Fuel: every aircraft that flies burns it. Depots hold at most ${FUEL_CAP}.`),
-      res('munitions', r.munitions, 'munitions', `Munitions: bombs and ammunition. Depots hold at most ${MUNITIONS_CAP}.`),
+      res('fuel', r.stores, 'stores', `Stores: fuel, bombs and ammunition. Every aircraft that flies uses them. Depots hold at most ${STORES_CAP}; wrecked fuel depots cut deliveries.`),
       res('crew', r.replacements, 'recruits', 'Replacement aircrew waiting for a place at the training school'),
       res('trust', `${side.trust}`, 'confidence', 'High Command\'s confidence in you (0-100). Supply deliveries grow with it; at 0 you are relieved of command.', side.trust < 25 ? 'bad' : ''),
       res('front', `${side.id === 0 ? st.theater.held0 : SECTORS - st.theater.held0}/${SECTORS} ${front >= 0 ? '▲' : '▼'}${Math.abs(front)}`, 'sectors · pressure',
@@ -108,9 +108,10 @@ export function renderHq(app: App, sideId: SideId, tab: string): HTMLElement {
       `Our defence: ${countPlanes(side, plan.defense)} fighters`,
       plan.feint ? ` · Feint: ${countPlanes(side, plan.feint.squadronIds)}` : '',
       ' · ',
-      h('span', { class: c.fuel > side.resources.fuel ? 'bad' : '' }, `Fuel ${c.fuel}/${side.resources.fuel}`),
-      ' · ',
-      h('span', { class: c.munitions > side.resources.munitions ? 'bad' : '' }, `Munitions ${c.munitions}/${side.resources.munitions}`),
+      h('span', { class: c.stores > side.resources.stores ? 'bad' : '' }, `Stores ${c.stores}/${side.resources.stores}`),
+      c.stores > side.resources.stores
+        ? h('button', { class: 'btn small choice fit-btn', title: 'Drop the feint, then escorts and squadrons from the raid, until the plan fits the stores we hold', onclick: () => app.act(() => app.fitToStores(sideId)) }, 'Fit to stores')
+        : null,
     ),
     h('button', { class: 'btn primary launch', onclick: () => void app.launch(sideId) }, app.state!.mode === 'lan' || (app.state!.mode === 'hotseat' && sideId === 0) ? 'Seal Orders ▸' : 'Launch Operation ▸'),
   );
@@ -199,8 +200,8 @@ export function adjutantNotes(app: App, side: SideState): string[] {
   const spareCrews = side.squadrons.reduce((a, q) => a + Math.max(0, q.crews - q.airframes.length), 0) + side.resources.replacements;
   if (spareCrews >= 8) notes.push(`${spareCrews} trained or waiting aircrew have no aircraft. The aircraft works can build more (Factory).`);
   const c = planCost(side, plan);
-  if (c.fuel > side.resources.fuel) notes.push(`This week's plan needs ${c.fuel} fuel and we have ${side.resources.fuel}. Stand a squadron down or fly a smaller operation.`);
-  if (c.munitions > side.resources.munitions) notes.push(`This week's plan needs ${c.munitions} munitions and we have ${side.resources.munitions}.`);
+  if (c.stores > side.resources.stores) notes.push(`This week's plan needs ${c.stores} stores and we have ${side.resources.stores}. Stand a squadron down or fly a smaller operation.`);
+  else if (side.resources.stores >= STORES_CAP - 20) notes.push(`The depots are full (${side.resources.stores} stores). Deliveries beyond ${STORES_CAP} are lost: we can afford a bigger effort.`);
   if (!side.researching && side.resources.supplies >= 70) notes.push('The engineers are idle. Fund a development project (Research).');
   if (side.factory.queue.length === 0 && side.resources.supplies >= 60) notes.push('Nothing is on order at the aircraft works (Factory).');
   if (side.trust < 30) notes.push(`High Command's confidence is ${side.trust}/100. Deliveries shrink as it falls; at 0 you will be relieved.`);
@@ -216,7 +217,7 @@ function theaterPanel(app: App, side: SideState): HTMLElement {
   const stage = currentStage(st);
   const obj = t.objectives.find((o) => o.side === side.id)!;
   const gain = (side.id === 0 ? t.held0 - t.start0 : t.start0 - t.held0);
-  const objStatus = { open: 'OPEN', claimed: 'CLAIMED', confirmed: 'CONFIRMED', discredited: 'DISCREDITED' }[obj.status];
+  const objStatus = { open: 'OPEN', claimed: 'CLAIMED', confirmed: 'CONFIRMED', discredited: 'DISCREDITED', overrun: 'TAKEN INTACT' }[obj.status];
   const record = THEATERS.map((th, i) => {
     const r = st.theaterResults.find((x) => x.index === i);
     const label = r ? (r.winner === side.id ? 'WON' : r.winner === null ? 'DRAWN' : 'LOST') : i === t.index ? 'IN PROGRESS' : 'TO COME';
@@ -237,8 +238,8 @@ function theaterPanel(app: App, side: SideState): HTMLElement {
       h('div', null, h('h3', null, 'Primary objective'),
         h('p', null, `Gain ${DECISIVE_GAIN} sectors from the enemy. Gained so far: `, h('b', { class: gain > 0 ? 'good' : gain < 0 ? 'bad' : '' }, `${gain >= 0 ? '+' : ''}${gain}`), '.'),
         h('p', { class: 'small' }, `Army liaison puts the pressure on the front at ${side.perceived.front >= 0 ? '+' : ''}${side.perceived.front}. A sector usually falls at about ±${SECTOR_PRESSURE}, and at most one a week. Losses inflicted, close support and damage to enemy works all add pressure.`),
-        h('p', { class: 'muted small' }, `If neither side breaks through by week ${def.weeks}, the theater goes to whoever holds the advantage.`)),
-      h('div', null, h('h3', null, 'Secondary objective'), h('p', null, obj.text, ' ', h('span', { class: `stamp ${obj.status === 'discredited' ? 'reprimand' : obj.status === 'open' ? 'order' : 'notice'}` }, objStatus))),
+        h('p', { class: 'muted small' }, `If neither side breaks through by week ${def.weeks}, the theater goes to whoever holds the advantage, but only if they have taken at least one sector. Otherwise it is a stalemate.`)),
+      h('div', null, h('h3', null, 'Secondary objective'), h('p', null, obj.text, ' ', h('span', { class: `stamp ${obj.status === 'discredited' || obj.status === 'overrun' ? 'reprimand' : obj.status === 'open' ? 'order' : 'notice'}` }, objStatus))),
       h('div', null, h('h3', null, `Stage: ${stage.title}`), h('p', { class: 'small' }, stage.text)),
     ),
   );
@@ -485,7 +486,7 @@ function factory(app: App, side: SideState): HTMLElement {
       ),
       panel('Ground Defences',
         h('p', { class: 'muted' }, `Flak batteries around our works and airfields. Current strength: ${Math.round(side.flak * 100)}.`),
-        h('button', { class: 'btn', onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'flak' }), disabled: side.flak >= 1.5 }, `Add batteries (${COSTS.flakUpgrade(side.flak)} supplies, 20 munitions)`),
+        h('button', { class: 'btn', onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'flak' }), disabled: side.flak >= 1.5 }, `Add batteries (${COSTS.flakUpgrade(side.flak)} supplies, 20 stores)`),
       ),
     ),
     h('div', { class: 'col' },
@@ -523,9 +524,11 @@ function training(app: App, side: SideState): HTMLElement {
         h('div', null, h('span', null, 'Intake per week'), h('b', null, `${1 + t.level * 2} crews`)),
         h('div', null, h('span', null, 'In training'), h('b', null, `${t.inTraining}`)),
         h('div', null, h('span', null, 'Awaiting intake'), h('b', null, `${side.resources.replacements}`)),
+        h('div', null, h('span', null, 'Aircraft without a crew'), h('b', null, `${crewShortfall(side)}`)),
       ),
       h('button', { class: 'btn', disabled: t.level >= 5, onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'training' }) }, `Expand school (${COSTS.trainingUpgrade(t.level)} supplies)`),
       h('p', { class: 'muted' }, 'Graduates fill squadrons that have more aircraft than crews. A squadron without crews cannot fly, however many aircraft it has.'),
+      h('p', { class: 'muted' }, 'The Air Ministry posts aircrew, and the school takes pupils, only for aircraft the wing has or has on order. To grow the wing, order aircraft at the Factory: crews follow.'),
     ),
     panel('Syllabus',
       h('div', { class: 'focus-list' }, focus.map(([id, label, desc]) =>
@@ -554,6 +557,37 @@ function research(app: App, side: SideState): HTMLElement {
 }
 
 /* ---------------- Intelligence ---------------- */
+/** What bombing does to works: ours as the ground staff know it, the enemy's as far as we can estimate. */
+function strategicPanel(app: App, side: SideState): HTMLElement {
+  const st = app.state!;
+  const t = st.theater;
+  const enemy = (1 - side.id) as SideId;
+  const est = (type: 'industry' | 'airfield' | 'fuel') => {
+    const sites = t.sites.filter((x) => x.owner === enemy && x.type === type);
+    return Math.round(sites.reduce((a, x) => a + believed(st, side.id, x), 0) / Math.max(1, t.baseline[enemy][type]));
+  };
+  const theirs = { industry: est('industry'), airfield: est('airfield'), fuel: est('fuel') };
+  const ours = side.facilities;
+  const eo = facilityEffects(ours);
+  const et = facilityEffects(theirs);
+  const pc = (x: number) => `${Math.round(x * 100)}%`;
+  const row = (label: string, a: number, b: number, effA: string, effB: string) =>
+    h('tr', null, h('td', null, label), h('td', null, `${a}%`, h('div', { class: 'small muted' }, effA)), h('td', null, `~${b}%`, h('div', { class: 'small muted' }, effB)));
+  return panel('Effect of the bombing',
+    h('table', { class: 'ledger effects' },
+      h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'Ours (known)'), h('th', null, 'Theirs (our estimate)'))),
+      h('tbody', null,
+        row('Airfields', ours.airfield, theirs.airfield,
+          eo.grounded > 0 ? `${pc(eo.grounded)} of each operation stays on the ground` : 'all aircraft can take off',
+          et.grounded > 0 ? `~${pc(et.grounded)} of their operations grounded` : 'no effect yet'),
+        row('Fuel depots', ours.fuel, theirs.fuel, `stores deliveries at ${pc(eo.stores)}`, `their stores deliveries ~${pc(et.stores)}`),
+        row('Aircraft works', ours.industry, theirs.industry, `production at ${pc(eo.production)}`, `their production ~${pc(et.production)}`),
+      ),
+    ),
+    h('p', { class: 'muted small' }, 'Damage to works also tells at the front, week after week. The enemy figures are only as good as our crews\' bombing reports and photographs.'),
+  );
+}
+
 function intel(app: App, side: SideState): HTMLElement {
   const p = side.perceived;
   const st = app.state!;
@@ -583,6 +617,7 @@ function intel(app: App, side: SideState): HTMLElement {
         }),
         h('p', { class: 'muted small' }, 'Estimates are built from crews\' bombing reports; a camera symbol marks figures from photographs.'),
       ),
+      strategicPanel(app, side),
       panel('Claims per week',
         claims.length ? h('div', { class: 'chart' }, claims.map((c, i) => h('div', { class: 'col-bar', title: `Week ${i + 1}: ${c} claimed` }, h('em', null, String(c)), h('i', { style: `height:${Math.round((c / maxC) * 80)}%` }), h('span', null, `w${i + 1}`)))) : h('p', { class: 'muted' }, 'No operations flown yet.'),
         claims.length ? h('p', { class: 'muted small' }, 'Enemy aircraft claimed destroyed by our crews, by week (number above each bar).') : null,

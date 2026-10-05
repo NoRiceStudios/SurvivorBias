@@ -47,7 +47,7 @@ await p.keyboard.press('Escape');
 check(!(await p.isVisible('#cover')), 'Esc opens the folder again');
 
 // Seal orders, then save and reload: the game must resume with commander 2.
-await p.evaluate(() => window.sb.launch(0));
+await p.evaluate(() => (window.sb.fitToStores(0), window.sb.launch(0)));
 await p.waitForTimeout(200);
 const resumed = await p.evaluate(async () => {
   const sb = window.sb;
@@ -59,7 +59,7 @@ const resumed = await p.evaluate(async () => {
 check(resumed.sealed && resumed.screen === 'handover' && resumed.side === 1 && resumed.feint, `resume after sealing: ${JSON.stringify(resumed)}`);
 await shot('h4-handover-sealed');
 await p.click('text=Open the folder');
-await p.evaluate(() => window.sb.launch(1));
+await p.evaluate(() => (window.sb.fitToStores(1), window.sb.launch(1)));
 await p.waitForTimeout(300);
 await p.click('text=Open the folder');
 await p.evaluate(() => window.sb.go({ kind: 'debrief', side: 0, tab: 'home' }));
@@ -74,8 +74,8 @@ const result = await p.evaluate(async () => {
   sb.afterDebrief(1);
   const screens = new Set();
   for (let w = 0; w < 40 && !sb.state.outcome; w++) {
-    await sb.launch(0); screens.add(sb.screen.kind);
-    await sb.launch(1);
+    await (sb.fitToStores(0), sb.launch(0)); screens.add(sb.screen.kind);
+    await (sb.fitToStores(1), sb.launch(1));
     for (const side of [0, 1]) {
       sb.afterDebrief(side); screens.add(sb.screen.kind);
       if (sb.screen.kind === 'theater') { sb.continueAfterTheater(); screens.add('after:' + sb.screen.kind); }

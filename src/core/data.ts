@@ -78,8 +78,8 @@ export interface AircraftSpec {
   /** Bomb load in arbitrary units. */
   payload: number;
   speed: number;
-  fuelCost: number;
-  munitionsCost: number;
+  /** Stores (fuel and munitions) used per sortie. */
+  storesCost: number;
   /** Supplies cost to build. */
   cost: number;
   /** Production points needed. */
@@ -97,8 +97,7 @@ export const AIRCRAFT: Record<AircraftKind, AircraftSpec> = {
     guns: 4,
     payload: 0,
     speed: 1.0,
-    fuelCost: 2,
-    munitionsCost: 1,
+    storesCost: 3,
     cost: 30,
     build: 3,
     crew: 1,
@@ -111,8 +110,7 @@ export const AIRCRAFT: Record<AircraftKind, AircraftSpec> = {
     guns: 4,
     payload: 3,
     speed: 0.75,
-    fuelCost: 3,
-    munitionsCost: 2,
+    storesCost: 5,
     cost: 55,
     build: 5,
     crew: 5,
@@ -125,8 +123,7 @@ export const AIRCRAFT: Record<AircraftKind, AircraftSpec> = {
     guns: 8,
     payload: 6,
     speed: 0.62,
-    fuelCost: 5,
-    munitionsCost: 3,
+    storesCost: 8,
     cost: 95,
     build: 8,
     crew: 9,
@@ -140,8 +137,7 @@ export const AIRCRAFT: Record<AircraftKind, AircraftSpec> = {
     guns: 0,
     payload: 0,
     speed: 1.15,
-    fuelCost: 2,
-    munitionsCost: 0,
+    storesCost: 2,
     cost: 35,
     build: 3,
     crew: 1,

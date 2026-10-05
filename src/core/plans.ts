@@ -1,4 +1,5 @@
 /** Default and carried-over plans, shared by the UI and the text interface. */
+import { planCost } from './actions';
 import { depthFor, reachableSites } from './theaters';
 import type { GameState, SideId, TurnPlan } from './types';
 
@@ -51,3 +52,23 @@ export function carryPlan(state: GameState, side: SideId, prev: TurnPlan): TurnP
   };
 }
 
+
+/** Shrink a plan until the wing can afford it: the feint goes first, then squadrons from the raid, then patrols. */
+export function fitPlanToStores(state: GameState, side: SideId, plan: TurnPlan): TurnPlan {
+  const s = state.sides[side];
+  const over = () => planCost(s, plan).stores > s.resources.stores;
+  if (over() && plan.feint) plan.feint = null;
+  if (over() && plan.recon) plan.recon = null;
+  while (over() && plan.raid && plan.raid.squadronIds.length > 1) {
+    // Keep the bombers if we can: drop escorts first, then the last bomber squadron.
+    const ids = plan.raid.squadronIds;
+    const fighter = [...ids].reverse().find((id) => s.squadrons.find((q) => q.id === id)?.kind === 'fighter');
+    ids.splice(ids.lastIndexOf(fighter ?? ids[ids.length - 1]), 1);
+  }
+  if (over() && plan.raid) plan.raid = null;
+  while (over() && plan.defense.length) {
+    const id = plan.defense.pop()!;
+    delete plan.cover[id];
+  }
+  return plan;
+}

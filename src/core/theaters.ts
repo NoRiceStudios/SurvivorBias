@@ -251,6 +251,7 @@ export function applyPressure(state: GameState, flew: [boolean, boolean] = [true
     // Captured facilities change hands, wrecked.
     for (const s of t.sites.filter((x) => x.sector === sector)) {
       s.owner = winner;
+      s.takenWrecked = s.condition <= 25;
       s.condition = Math.min(s.condition, 30);
     }
     const name = def.sectors[sector];
@@ -268,9 +269,10 @@ export function theaterDecision(state: GameState): { winner: SideId | null; deci
   if (gain >= DECISIVE_GAIN) return { winner: 0, decisive: true };
   if (gain <= -DECISIVE_GAIN) return { winner: 1, decisive: true };
   if (t.week >= def.weeks) {
+    // Winning on advantage needs ground to show for it: without a sector taken, it is a stalemate.
     const score = gain * SECTOR_PRESSURE + state.front;
-    if (score > 15) return { winner: 0, decisive: false };
-    if (score < -15) return { winner: 1, decisive: false };
+    if (score > 15 && gain >= 1) return { winner: 0, decisive: false };
+    if (score < -15 && gain <= -1) return { winner: 1, decisive: false };
     return { winner: null, decisive: false };
   }
   return null;

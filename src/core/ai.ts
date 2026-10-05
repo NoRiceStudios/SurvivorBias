@@ -172,7 +172,7 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
     sq.doctrine.breakOff = 0.45;
   }
 
-  // Trim the plan until it fits the fuel and munitions available.
+  // Trim the plan until it fits the stores available.
   let guard = 0;
   while (!validatePlan(side, plan, state).ok && guard++ < 10) {
     if (plan.recon) plan.recon = null;

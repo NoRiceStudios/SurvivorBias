@@ -7,6 +7,7 @@ import {
   ZONE_AREA,
   ZONE_DAMAGE,
 } from './data';
+import { facilityEffects } from './effects';
 import { DEFAULT_LETHALITY, type LethalityTable } from './lethality';
 import type { Rng } from './rng';
 import { depthFor, escortRange, frontSector, theaterMods, THEATERS, WEATHER_EFFECT } from './theaters';
@@ -63,10 +64,12 @@ export interface Day {
   /** Sweeps over the front have already met each other today. */
   metFront: boolean;
   landing: RadioLine[];
+  /** Aircraft per squadron kept on the ground by cratered runways today. */
+  grounded: Map<string, number>;
 }
 
 export function newDay(lethality: LethalityTable = DEFAULT_LETHALITY): Day {
-  return { fliers: new Map(), lethality, metFront: false, landing: [] };
+  return { fliers: new Map(), lethality, metFront: false, landing: [], grounded: new Map() };
 }
 
 const CLOCK: Record<FighterApproach, string[]> = {
@@ -214,10 +217,18 @@ export function gatherFliers(side: SideState, ids: string[], role: (sq: Squadron
   for (const id of ids) {
     const sq = side.squadrons.find((s) => s.id === id);
     if (!sq) continue;
-    flyable(sq).forEach((af, i) => {
+    // Cratered runways keep part of an operation on the ground (patrols scramble from dispersal strips).
+    let list = flyable(sq);
+    const r = role(sq);
+    if (r !== 'defense' && list.length > 0) {
+      const n = Math.max(1, Math.round(list.length * (1 - facilityEffects(side.facilities).grounded)));
+      if (n < list.length) day?.grounded.set(sq.id, list.length - n);
+      list = list.slice(0, n);
+    }
+    list.forEach((af, i) => {
       let f = day?.fliers.get(af.id);
       if (!f) {
-        f = makeFlier(sq, af, side, role(sq), i, day?.lethality);
+        f = makeFlier(sq, af, side, r, i, day?.lethality);
         day?.fliers.set(af.id, f);
       }
       out.push(f);

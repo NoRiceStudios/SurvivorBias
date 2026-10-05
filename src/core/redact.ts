@@ -14,7 +14,7 @@ function blankSide(s: SideState): SideState {
     ...s,
     isAI: false,
     insight: 0,
-    resources: { supplies: 0, fuel: 0, munitions: 0, replacements: 0 },
+    resources: { supplies: 0, stores: 0, replacements: 0 },
     squadrons: [],
     factory: { level: 0, qc: 'standard', queue: [], progress: 0 },
     training: { level: 0, focus: 'balanced', inTraining: 0 },

@@ -23,8 +23,8 @@ for (const [i, t] of tabs.entries()) {
   await shot(`1${i}-hq-${t}`);
 }
 // Fly a few weeks so the debrief has history.
-for (let k = 0; k < 3; k++) await page.evaluate(() => window.sb.launch(0));
-await page.evaluate(() => window.sb.launch(0));
+for (let k = 0; k < 3; k++) await page.evaluate(() => (window.sb.fitToStores(0), window.sb.launch(0)));
+await page.evaluate(() => (window.sb.fitToStores(0), window.sb.launch(0)));
 await page.waitForTimeout(6000);
 await shot('20-radio');
 const dtabs = ['aircraft', 'reports', 'missing', 'home'];
@@ -38,7 +38,7 @@ await shot('40-hangar-after');
 await page.evaluate(async () => {
   let g = 0;
   while (!window.sb.state.outcome && g++ < 40) {
-    await window.sb.launch(0);
+    await (window.sb.fitToStores(0), window.sb.launch(0));
     const st = window.sb.state;
     if (st.archive[st.archive.length - 1].theater !== st.theater.index) break;
   }
@@ -53,7 +53,7 @@ await page.evaluate(async () => {
   let g = 0;
   while (!window.sb.state.outcome && g++ < 60) {
     const week = window.sb.state.turn;
-    await window.sb.launch(0);
+    await (window.sb.fitToStores(0), window.sb.launch(0));
     // A plan the game refuses (e.g. the whole strike force shot down) is replaced by a quiet week.
     if (window.sb.state.turn === week && !window.sb.state.outcome) window.sb.plans[0].raid = null;
     window.sb.afterDebrief(0);

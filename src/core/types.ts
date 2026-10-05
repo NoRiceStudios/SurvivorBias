@@ -101,8 +101,8 @@ export interface Squadron {
 
 export interface Resources {
   supplies: number;
-  fuel: number;
-  munitions: number;
+  /** Fuel and munitions: every aircraft that flies uses them. */
+  stores: number;
   replacements: number;
 }
 
@@ -378,6 +378,8 @@ export interface Site {
   sector: number;
   owner: SideId;
   condition: number;
+  /** Set when the site changes hands: was it already wrecked (25% or less) when the Army arrived? */
+  takenWrecked?: boolean;
 }
 
 export interface SecondaryObjective {
@@ -385,7 +387,8 @@ export interface SecondaryObjective {
   siteId: string;
   text: string;
   reward: { supplies?: number; trust?: number; research?: string };
-  status: 'open' | 'claimed' | 'confirmed' | 'discredited';
+  /** overrun: the Army took the site intact before the wing wrecked it, so the wing gets no credit. */
+  status: 'open' | 'claimed' | 'confirmed' | 'discredited' | 'overrun';
 }
 
 export interface TheaterState {

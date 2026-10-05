@@ -17,7 +17,7 @@ import type {
 } from './types';
 import { ZONES } from './types';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export function zoneMap<T>(fn: (z: (typeof ZONES)[number]) => T): ZoneMap<T> {
   return Object.fromEntries(ZONES.map((z) => [z, fn(z)])) as ZoneMap<T>;
@@ -167,7 +167,7 @@ function makeSide(state: GameState, rng: Rng, id: SideId, isAI: boolean): SideSt
     short: SIDE_NAMES[id].short,
     isAI,
     insight: 0.35,
-    resources: { supplies: 160, fuel: 140, munitions: 90, replacements: 6 },
+    resources: { supplies: 160, stores: 220, replacements: 6 },
     squadrons,
     factory: { level: 1, qc: 'standard', queue: [], progress: 0 },
     training: { level: 1, focus: 'balanced', inTraining: 0 },

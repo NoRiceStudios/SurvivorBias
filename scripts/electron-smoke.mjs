@@ -4,7 +4,7 @@ const w = await app.firstWindow();
 await w.waitForTimeout(1500);
 const native = await w.evaluate(() => typeof window.sbNative);
 await w.evaluate(() => window.sb.newGame('single', 0.4));
-await w.evaluate(() => window.sb.launch(0));
+await w.evaluate(() => (window.sb.fitToStores(0), window.sb.launch(0)));
 await w.waitForTimeout(500);
 const saves = await w.evaluate(() => window.sbNative.listSaves());
 await w.screenshot({ path: 'screenshots/electron.png' });
