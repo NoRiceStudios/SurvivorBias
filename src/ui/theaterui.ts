@@ -44,6 +44,8 @@ export interface MapOpts {
   selected?: string;
   /** Sectors patrolled by the viewer's fighters. */
   patrols?: number[];
+  /** Sector the viewer is feinting at. */
+  feint?: number;
   /** Show the viewer's believed condition for enemy sites rather than the truth. */
   scale?: number;
 }
@@ -85,6 +87,12 @@ export function theaterMap(state: GameState, opts: MapOpts): HTMLCanvasElement {
       g.setLineDash([2, 2]);
       g.strokeRect(x0 + 3.5, 3.5, CELL_W - 7, H - 7);
       g.setLineDash([]);
+    }
+    if (opts.feint === s) {
+      g.fillStyle = '#b0302a';
+      for (let k = 4; k < CELL_W - 4; k += 4) { g.fillRect(x0 + k, 4, 2, 1); g.fillRect(x0 + k, H - 16, 2, 1); }
+      g.font = '8px monospace';
+      g.fillText('FEINT', x0 + CELL_W - 30, 12);
     }
     // Sector name
     g.fillStyle = '#2a2620';
@@ -143,7 +151,7 @@ export function depthLabel(state: GameState, viewer: SideId, site: Site): string
 export function mapLegend(): HTMLElement {
   return h('div', { class: 'map-legend' },
     h('span', null, '✈ Airfield'), h('span', null, '▙ Works'), h('span', null, '◘ Fuel'),
-    h('span', { class: 'red' }, '| Front (arrow: pressure)'), h('span', { class: 'blue' }, '┅ Our patrols'),
+    h('span', { class: 'red' }, '| Front (arrow: pressure)'), h('span', { class: 'blue' }, '┅ Our patrols'), h('span', { class: 'red' }, '╌ Feint'),
   );
 }
 

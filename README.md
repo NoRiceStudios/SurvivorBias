@@ -14,7 +14,7 @@ The war is fought across three theaters: the Narrow Sea, the Kessel Basin and th
 
 - **Windows:** run `npm run package:win`, then unzip `release/SurvivorBias-win32-x64.zip` and run `SurvivorBias.exe`. Saves are stored in `%APPDATA%/survivor-bias/saves`.
 - **From source:** run `npm install`, then `npm start` (Electron).
-- **Modes:** single player against an AI commander (three difficulty levels, set by how well the enemy understands survivorship bias), or two commanders in hotseat mode.
+- **Modes:** single player against an AI commander (three difficulty levels, set by how well the enemy understands survivorship bias), or two named commanders in hotseat mode. In hotseat, each commander plans behind a closed folder (Esc hides the screen) and the week is fought once both orders are sealed.
 
 ## Development
 
@@ -27,7 +27,7 @@ The war is fought across three theaters: the Narrow Sea, the Kessel Basin and th
 | `node scripts/screenshots.mjs` | Drive the real UI in Chromium and screenshot every screen (after `npm run build`) |
 | `npm run balance -- 40` | Play 40 headless campaigns and print outcome statistics |
 | `xvfb-run -a node scripts/electron-smoke.mjs` | Launch the Electron app headlessly and check that saving works |
-| `node scripts/hotseat-smoke.mjs` | Play a two-commander hotseat campaign through the real UI, across theater changes |
+| `node scripts/hotseat-smoke.mjs` | Play a two-commander hotseat campaign through the real UI: names, feints, Esc cover, sealed orders across save/load, theater changes, end diaries |
 | `npm run balance -- 40 --mirror` | AI against AI with symmetric rules: theater results and length |
 
 ### Layout

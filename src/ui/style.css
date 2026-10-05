@@ -328,3 +328,17 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .theater-change { max-width: 1240px; text-align: center; }
 .theater-change .typed.big { font-size: 26px; }
 .next-theater { margin: 16px 0; padding-top: 12px; border-top: 2px dashed var(--paper-3); display: flex; flex-direction: column; align-items: center; }
+
+/* ---------- Hotseat ---------- */
+.name-input { font-family: 'VT323'; font-size: 22px; background: var(--paper); color: var(--ink); border: none; padding: 6px 10px; box-shadow: inset 2px 2px 0 var(--paper-3), 0 0 0 2px #16171a; margin: 0 3px 6px; }
+.handover-card { position: relative; }
+.handover-card .crest.big { width: 56px; height: 56px; margin: 18px auto 8px; padding: 0; }
+.handover-card .crest.big::before { width: 56px; height: 56px; top: 0; box-shadow: 0 0 0 3px #16171a; }
+.handover-for { font-family: 'Silkscreen'; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--ink-2); }
+.handover-card h1 { font-size: 26px; margin: 6px 0; }
+.handover-side { color: var(--ink-2); }
+.handover-phase { font-family: 'Silkscreen'; font-size: 14px; letter-spacing: 2px; margin: 14px 0 6px; color: var(--stamp); text-transform: uppercase; }
+#cover { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; cursor: pointer; background-color: var(--table); background-image: repeating-linear-gradient(90deg, rgba(255,255,255,0.015) 0 2px, transparent 2px 6px), repeating-linear-gradient(0deg, rgba(0,0,0,0.12) 0 2px, transparent 2px 4px); }
+#cover .handover-card { padding: 30px 50px; }
+.ledger.diaries th.grp { text-align: center; border-bottom: 2px solid var(--ink); }
+.diaries-totals { max-width: 760px; }

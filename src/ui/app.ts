@@ -16,7 +16,7 @@ import { storage } from './storage';
 export type Screen =
   | { kind: 'title' }
   | { kind: 'hq'; side: SideId; tab: string }
-  | { kind: 'handover'; side: SideId; next: Screen; message: string }
+  | { kind: 'handover'; side: SideId; next: Screen; phase: string; note?: string }
   | { kind: 'radio'; side: SideId }
   | { kind: 'debrief'; side: SideId; tab: string }
   | { kind: 'end'; side: SideId; tab: string }
@@ -36,6 +36,7 @@ export class App {
 
   go(screen: Screen) {
     if (this.screen.kind === 'radio' && screen.kind !== 'radio') stopDrone();
+    if (this.covered) this.toggleCover();
     this.screen = screen;
     this.render();
   }
@@ -98,12 +99,25 @@ export class App {
     this.render();
   }
 
-  newGame(mode: 'single' | 'hotseat', insight = 0.4) {
-    this.state = startCampaign({ mode, aiInsight: insight, seed: `${Date.now()}` });
+  /** Pass the machine to a commander (hotseat only). */
+  handover(side: SideId, next: Screen, phase: string, note?: string) {
+    this.covered = false;
+    this.go({ kind: 'handover', side, next, phase, note });
+  }
+
+  planning(side: SideId) {
+    const st = this.state!;
+    if (st.mode !== 'hotseat') return this.go({ kind: 'hq', side, tab: 'briefing' });
+    const other = st.sides[(1 - side) as SideId];
+    this.handover(side, { kind: 'hq', side, tab: 'briefing' }, `Week ${st.turn} — Planning`, side === 1 && st.sealed[0] ? `${other.commander} has sealed their orders.` : undefined);
+  }
+
+  newGame(mode: 'single' | 'hotseat', insight = 0.4, commanders?: [string, string]) {
+    this.state = startCampaign({ mode, aiInsight: insight, seed: `${Date.now()}`, commanders });
     this.plans = [defaultPlan(this.state, 0), defaultPlan(this.state, 1)];
     this.selected = null;
     if (mode === 'hotseat') {
-      this.go({ kind: 'handover', side: 0, next: { kind: 'hq', side: 0, tab: 'briefing' }, message: `${this.state.sides[0].name} — Week 1` });
+      this.planning(0);
     } else {
       this.go({ kind: 'hq', side: 0, tab: 'briefing' });
     }
@@ -122,9 +136,10 @@ export class App {
       return;
     }
     this.plans = [defaultPlan(this.state, 0), defaultPlan(this.state, 1)];
+    if (this.state.sealed[0]) this.plans[0] = this.state.sealed[0];
     if (this.state.outcome) this.go({ kind: 'end', side: 0, tab: 'summary' });
-    else if (this.state.mode === 'hotseat')
-      this.go({ kind: 'handover', side: 0, next: { kind: 'hq', side: 0, tab: 'briefing' }, message: `${this.state.sides[0].name} — Week ${this.state.turn}` });
+    // A hotseat save made after the first commander sealed their orders resumes with the second.
+    else if (this.state.mode === 'hotseat') this.planning(this.state.sealed[0] ? 1 : 0);
     else this.go({ kind: 'hq', side: 0, tab: 'briefing' });
   }
 
@@ -143,16 +158,18 @@ export class App {
     }
     sfxStamp();
     if (st.mode === 'hotseat' && side === 0) {
-      this.go({ kind: 'handover', side: 1, next: { kind: 'hq', side: 1, tab: 'briefing' }, message: `${st.sides[1].name} — Week ${st.turn}` });
+      st.sealed[0] = JSON.parse(JSON.stringify(this.plans[0])) as TurnPlan;
+      await this.save();
+      this.planning(1);
       return;
     }
-    const plans: [TurnPlan, TurnPlan] = st.mode === 'single' ? [this.plans[0], aiPlan(st, 1)] : this.plans;
+    const plans: [TurnPlan, TurnPlan] = st.mode === 'single' ? [this.plans[0], aiPlan(st, 1)] : [st.sealed[0] ?? this.plans[0], this.plans[1]];
     resolveTurn(st, plans);
     // Carry standing orders (assignments, returns policy) into the next turn.
     this.plans = [carryPlan(st, 0, this.plans[0]), carryPlan(st, 1, this.plans[1])];
     await this.save();
     if (st.mode === 'hotseat') {
-      this.go({ kind: 'handover', side: 0, next: { kind: 'radio', side: 0 }, message: `${st.sides[0].name} — Operations report` });
+      this.handover(0, { kind: 'radio', side: 0 }, `Week ${st.turn - (st.outcome ? 0 : 1)} — Operations report`);
     } else {
       this.go({ kind: 'radio', side: 0 });
     }
@@ -177,29 +194,49 @@ export class App {
   afterDebriefContinue(side: SideId) {
     const st = this.state!;
     if (st.mode === 'hotseat' && side === 0) {
-      this.go({ kind: 'handover', side: 1, next: { kind: 'radio', side: 1 }, message: `${st.sides[1].name} — Operations report` });
+      this.handover(1, { kind: 'radio', side: 1 }, `Week ${st.turn - (st.outcome ? 0 : 1)} — Operations report`);
       return;
     }
     if (st.outcome) {
-      if (st.mode === 'hotseat') this.go({ kind: 'handover', side: 0, next: { kind: 'end', side: 0, tab: 'summary' }, message: 'The war is over' });
+      if (st.mode === 'hotseat') this.go({ kind: 'end', side: 0, tab: 'summary' });
       else this.go({ kind: 'end', side: 0, tab: 'summary' });
       return;
     }
-    if (st.mode === 'hotseat') this.go({ kind: 'handover', side: 0, next: { kind: 'hq', side: 0, tab: 'briefing' }, message: `${st.sides[0].name} — Week ${st.turn}` });
-    else this.go({ kind: 'hq', side: 0, tab: 'briefing' });
+    this.planning(0);
   }
 
   renderHandover(s: Extract<Screen, { kind: 'handover' }>): HTMLElement {
+    const side = this.state!.sides[s.side];
     return h(
       'div',
       { class: 'handover' },
-      h('div', { class: 'handover-card paper' },
+      h('div', { class: `handover-card paper side${s.side}` },
         h('div', { class: 'stamp big' }, 'MOST SECRET'),
-        h('h1', null, s.message),
-        h('p', null, 'Hand the controls to the commander named above. The other commander should look away.'),
-        h('button', { class: 'btn primary', onclick: () => { sfxStamp(); this.go(s.next); } }, 'I am ready'),
+        h('div', { class: `crest big side${s.side}` }),
+        h('div', { class: 'handover-for' }, 'For the eyes of'),
+        h('h1', null, side.commander),
+        h('div', { class: 'handover-side' }, side.id === 0 ? `No. 7 Composite Wing · ${side.name}` : `Kampfgeschwader Nord · ${side.name}`),
+        h('div', { class: 'handover-phase' }, s.phase),
+        s.note ? h('p', { class: 'handwritten' }, s.note) : null,
+        h('p', { class: 'muted' }, 'Hand over the controls. The other commander should look away until this folder is closed again.'),
+        h('button', { class: 'btn primary', onclick: () => { sfxStamp(); this.go(s.next); } }, 'Open the folder'),
       ),
     );
+  }
+
+  /** Privacy cover for hotseat: hides the screen until clicked. */
+  covered = false;
+  toggleCover() {
+    if (!this.state || !['hq', 'debrief', 'radio'].includes(this.screen.kind)) return;
+    this.covered = !this.covered;
+    let el = document.getElementById('cover');
+    if (this.covered) {
+      if (!el) {
+        el = h('div', { id: 'cover', onclick: () => this.toggleCover() },
+          h('div', { class: 'handover-card paper' }, h('div', { class: 'stamp big' }, 'MOST SECRET'), h('p', null, 'Folder closed. Click or press Esc to open it again.')));
+        document.body.append(el);
+      }
+    } else el?.remove();
   }
 }
 
@@ -214,6 +251,7 @@ export function defaultPlan(state: GameState, side: SideId): TurnPlan {
     defense: fighters.slice(0, 1).map((q) => q.id),
     cover: {},
     recon: null,
+    feint: null,
     embellish: 0,
   };
 }
@@ -235,6 +273,8 @@ export function carryPlan(state: GameState, side: SideId, prev: TurnPlan): TurnP
     defense: prev.defense.filter((i) => ids.has(i)),
     cover,
     recon: prev.recon && ids.has(prev.recon.squadronId) && enemySite(prev.recon.siteId) ? prev.recon : null,
+    // Feints are planned week by week.
+    feint: null,
     embellish: prev.embellish,
   };
 }

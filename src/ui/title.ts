@@ -5,7 +5,7 @@ import { h } from './dom';
 import { titleScene } from './scene';
 import { storage } from './storage';
 
-let menu: 'main' | 'new' | 'load' = 'main';
+let menu: 'main' | 'new' | 'load' | 'hotseat' = 'main';
 let saves: { slot: string; modified: number }[] = [];
 
 export function renderTitle(app: App): HTMLElement {
@@ -30,6 +30,18 @@ export function renderTitle(app: App): HTMLElement {
         btn('Back', () => { menu = 'main'; refresh(); }, 'small'),
       ];
     }
+    if (menu === 'hotseat') {
+      const n0 = h('input', { class: 'name-input', maxlength: '40', placeholder: 'Air Commodore …', value: '' }) as HTMLInputElement;
+      const n1 = h('input', { class: 'name-input', maxlength: '40', placeholder: 'Oberst …', value: '' }) as HTMLInputElement;
+      return [
+        h('div', { class: 'menu-head' }, 'Two commanders, one table'),
+        h('label', { class: 'menu-note' }, 'Commanding the Aldmere wing:'), n0,
+        h('label', { class: 'menu-note' }, 'Commanding the Directorate wing:'), n1,
+        h('div', { class: 'menu-note' }, 'You plan in turn behind closed folders; the battle is fought once both orders are sealed. Press Esc at any time to close your folder.'),
+        btn('Begin the war', () => { menu = 'main'; app.newGame('hotseat', 0.4, [n0.value || 'Air Commodore', n1.value || 'Oberst']); }, 'primary'),
+        btn('Back', () => { menu = 'main'; refresh(); }, 'small'),
+      ];
+    }
     if (menu === 'load') {
       const items: HTMLElement[] = [h('div', { class: 'menu-head' }, 'Saved campaigns')];
       if (saves.length === 0) items.push(h('div', { class: 'menu-note' }, 'No saved campaigns.'));
@@ -41,7 +53,7 @@ export function renderTitle(app: App): HTMLElement {
     }
     const items = [
       btn('New Campaign', () => { menu = 'new'; refresh(); }),
-      btn('Two Commanders (Hotseat)', () => app.newGame('hotseat')),
+      btn('Two Commanders (Hotseat)', () => { menu = 'hotseat'; refresh(); }),
     ];
     if (saves.some((s) => s.slot === AUTOSAVE)) items.unshift(btn('Continue', () => void app.loadSlot(AUTOSAVE), 'primary'));
     items.push(btn('Load Campaign', () => { menu = 'load'; refresh(); }));

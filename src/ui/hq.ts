@@ -26,7 +26,7 @@ import {
   ZONE_LABEL,
 } from '../core/data';
 import { flyable } from '../core/sim';
-import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTORS, THEATERS, WEATHER_LABEL } from '../core/theaters';
+import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTORS, sectorAtDepth, THEATERS, WEATHER_LABEL } from '../core/theaters';
 import type { AircraftKind, FighterApproach, Hit, SideId, SideState, Squadron, TargetId, TrainingFocus } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
@@ -83,6 +83,7 @@ export function renderHq(app: App, sideId: SideId, tab: string): HTMLElement {
       h('button', { class: `tab ${tab === id ? 'active' : ''}`, onclick: () => { sfxClick(); app.go({ kind: 'hq', side: sideId, tab: id }); } }, label),
     ),
     h('div', { class: 'tabs-spacer' }),
+    app.state!.mode === 'hotseat' ? h('button', { class: 'tab small', title: 'Hide the screen (Esc)', onclick: () => app.toggleCover() }, 'Close folder') : null,
     h('button', { class: 'tab small', onclick: () => { void app.save(`week${app.state!.turn}`).then(() => app.toast('Campaign saved')); } }, 'Save'),
     h('button', { class: 'tab small', onclick: () => { void app.save().then(() => app.go({ kind: 'title' })); } }, 'Main Menu'),
   );
@@ -106,6 +107,7 @@ export function renderHq(app: App, sideId: SideId, tab: string): HTMLElement {
       plan.raid && plan.raid.squadronIds.length ? `${missionLabel(app, plan.raid)}: ${countPlanes(side, plan.raid.squadronIds)} aircraft` : 'No raid planned',
       ' · ',
       `Defence: ${countPlanes(side, plan.defense)} fighters`,
+      plan.feint ? ` · Feint: ${countPlanes(side, plan.feint.squadronIds)}` : '',
       ' · ',
       h('span', { class: c.fuel > side.resources.fuel ? 'bad' : '' }, `Fuel ${c.fuel}/${side.resources.fuel}`),
       ' · ',
@@ -231,11 +233,22 @@ function operations(app: App, side: SideState): HTMLElement {
       h('div', { class: 'small muted' }, !inRange ? 'Out of range of our bombers' : depth > reach ? 'Beyond escort range: bombers go on alone' : 'Within escort range'),
     );
   });
-  const assign = (sq: Squadron, role: 'raid' | 'defense' | 'rest' | 'recon') => {
+  const mainSector = plan.raid ? (plan.raid.siteId ? t.sites.find((x) => x.id === plan.raid!.siteId)?.sector : frontSector(t, side.id)) : undefined;
+  const feintSectors = [1, 2].map((d) => sectorAtDepth(t.held0, (1 - side.id) as SideId, d)).filter((sec) => sec >= 0 && sec < SECTORS);
+  const assign = (sq: Squadron, role: 'raid' | 'defense' | 'rest' | 'recon' | 'feint') => {
     plan.defense = plan.defense.filter((i) => i !== sq.id);
     delete plan.cover[sq.id];
     if (plan.raid) plan.raid.squadronIds = plan.raid.squadronIds.filter((i) => i !== sq.id);
     if (plan.recon?.squadronId === sq.id) plan.recon = null;
+    if (plan.feint) {
+      plan.feint.squadronIds = plan.feint.squadronIds.filter((i) => i !== sq.id);
+      if (plan.feint.squadronIds.length === 0) plan.feint = null;
+    }
+    if (role === 'feint') {
+      const sector = plan.feint?.sector ?? feintSectors.find((x) => x !== mainSector);
+      if (sector === undefined) return { ok: false, reason: 'No sector left to feint at' };
+      plan.feint = { squadronIds: [...(plan.feint?.squadronIds ?? []), sq.id], sector };
+    }
     if (role === 'raid') {
       if (!plan.raid) plan.raid = sq.kind === 'fighter' ? { target: 'sweep', squadronIds: [] } : { target: 'support', squadronIds: [] };
       if (plan.raid.target === 'sweep' && sq.kind !== 'fighter') return { ok: false, reason: 'Only fighters fly sweeps. Choose a bombing mission first.' };
@@ -247,12 +260,12 @@ function operations(app: App, side: SideState): HTMLElement {
   };
   const ownSectors = Array.from({ length: SECTORS }, (_, i) => i).filter((i) => (i < t.held0 ? 0 : 1) === side.id).sort((a, b) => depthFor(t.held0, (1 - side.id) as SideId, a) - depthFor(t.held0, (1 - side.id) as SideId, b));
   const rows = side.squadrons.map((sq) => {
-    const role = plan.raid?.squadronIds.includes(sq.id) ? 'raid' : plan.defense.includes(sq.id) ? 'defense' : plan.recon?.squadronId === sq.id ? 'recon' : 'rest';
+    const role = plan.raid?.squadronIds.includes(sq.id) ? 'raid' : plan.defense.includes(sq.id) ? 'defense' : plan.recon?.squadronId === sq.id ? 'recon' : plan.feint?.squadronIds.includes(sq.id) ? 'feint' : 'rest';
     const ready = flyable(sq).length;
-    const roles: ['raid' | 'defense' | 'rest' | 'recon', string][] =
-      sq.kind === 'fighter' ? [['raid', plan.raid?.target === 'sweep' ? 'Sweep' : 'Escort'], ['defense', 'Defend'], ['rest', 'Stand down']]
+    const roles: ['raid' | 'defense' | 'rest' | 'recon' | 'feint', string][] =
+      sq.kind === 'fighter' ? [['raid', plan.raid?.target === 'sweep' ? 'Sweep' : 'Escort'], ['defense', 'Defend'], ['feint', 'Feint'], ['rest', 'Stand down']]
       : sq.kind === 'recon' ? [['recon', 'Photograph'], ['rest', 'Stand down']]
-      : [['raid', 'Bomb'], ['rest', 'Stand down']];
+      : [['raid', 'Bomb'], ['feint', 'Feint'], ['rest', 'Stand down']];
     const coverRow = role === 'defense' ? h('div', { class: 'cover-row' }, h('span', { class: 'small muted' }, 'Patrol: '),
       h('button', { class: `btn choice ${plan.cover[sq.id] === undefined ? 'on' : ''}`, onclick: () => app.act(() => { delete plan.cover[sq.id]; }) }, 'Reserve'),
       ownSectors.map((sec) => h('button', { class: `btn choice ${plan.cover[sq.id] === sec ? 'on' : ''}`, onclick: () => app.act(() => { plan.cover[sq.id] = sec; }) }, def.sectors[sec])),
@@ -269,7 +282,7 @@ function operations(app: App, side: SideState): HTMLElement {
   const setAppr = (k: FighterApproach, v: number) => app.act(() => setApproach(side, { ...appr, [k]: Math.max(0.01, v) }));
   return h('div', { class: 'col' },
     panel('Mission',
-      theaterMap(st, { viewer: side.id, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), scale: 2 }),
+      theaterMap(st, { viewer: side.id, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), feint: plan.feint?.sector, scale: 2 }),
       h('div', { class: 'targets three' },
         (['support', 'sweep'] as const).map((m) => h('button', { class: `target-card ${plan.raid?.target === m ? 'on' : ''}`, onclick: () => pick(m) },
           h('div', { class: 'target-name' }, TARGETS[m].name), h('div', { class: 'target-desc' }, TARGETS[m].desc),
@@ -281,11 +294,14 @@ function operations(app: App, side: SideState): HTMLElement {
       h('div', { class: 'targets' }, siteCards),
     ),
     panel('Squadron Assignments',
-      h('p', { class: 'muted small' }, 'Fighters on defence either patrol one sector (they will almost certainly meet a raid there, and rarely anywhere else) or wait in central reserve (they meet most raids, given warning).'),
+      h('p', { class: 'muted small' }, 'A feint sends a squadron over another enemy sector first, to draw their reserve away from the real raid. Fighters on defence either patrol one sector (they will almost certainly meet a raid there, and rarely anywhere else) or wait in central reserve (they meet most raids, given warning).'),
       h('table', { class: 'sq-table' },
         h('thead', null, h('tr', null, h('th', null, 'Squadron'), h('th', null, 'Ready'), h('th', null, 'Morale'), h('th', null, 'Rested'), h('th', null, 'Assignment'))),
         h('tbody', null, rows),
       ),
+      plan.feint ? h('div', { class: 'recon-row' }, 'Feint over: ',
+        feintSectors.map((sec) => h('button', { class: `btn choice ${plan.feint!.sector === sec ? 'on' : ''}`, disabled: sec === mainSector, onclick: () => app.act(() => { plan.feint!.sector = sec; }) }, def.sectors[sec])),
+        h('span', { class: 'small muted' }, ' The feint flies first. Reserve fighters may chase it; patrols over that sector will.')) : null,
       plan.recon ? h('div', { class: 'recon-row' }, 'Photograph: ',
         enemySites.map((x) => h('button', { class: `btn choice ${plan.recon!.siteId === x.id ? 'on' : ''}`, onclick: () => app.act(() => { plan.recon!.siteId = x.id; }) }, x.name))) : null,
     ),

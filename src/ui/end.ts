@@ -24,7 +24,7 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
   const [title, text] = OUTCOME_TEXT[outcome];
   const other = (1 - sideId) as SideId;
   const nav = h('nav', { class: 'tabs' },
-    [['summary', 'Outcome'], ['archive', 'Declassified'], ['ledger', 'The Ledger']].map(([id, label]) =>
+    [['summary', 'Outcome'], ['archive', 'Declassified'], ['ledger', 'The Ledger'], ...(st.mode === 'hotseat' ? [['diaries', 'Both War Diaries']] : [])].map(([id, label]) =>
       h('button', { class: `tab ${tab === id ? 'active' : ''}`, onclick: () => { sfxClick(); app.go({ kind: 'end', side: sideId, tab: id }); } }, label)),
     st.mode === 'hotseat' ? h('button', { class: 'tab', onclick: () => app.go({ kind: 'end', side: other, tab }) }, `View ${st.sides[other].short}`) : null,
     h('div', { class: 'tabs-spacer' }),
@@ -54,6 +54,37 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
         h('h2', null, 'Chance that a single hit brings an aircraft down (unarmored)'),
         ZONES.map((z) => h('div', { class: 'bar-row' }, h('span', null, ZONE_LABEL[z]), h('span', { class: 'bar red' }, h('i', { style: `width:${Math.round((ZONE_LETHALITY[z] / maxL) * 100)}%` })), h('span', null, `${Math.round(ZONE_LETHALITY[z] * 100)}%`))),
         h('p', { class: 'handwritten' }, 'The holes in the returning aircraft show where an aircraft can be hit and still come home.'),
+      ),
+    );
+  } else if (tab === 'diaries') {
+    const [a, b] = st.sides;
+    const sum = (f: (e: (typeof st.archive)[number]) => number) => st.archive.reduce((x, e) => x + f(e), 0);
+    body = h('div', { class: 'col' },
+      h('section', { class: 'paper panel' },
+        h('h2', null, 'Two war diaries, one war'),
+        h('p', null, `${a.commander} (${a.short}) and ${b.commander} (${b.short}) each fought the war they were told about. Here is what each was told, next to what happened.`),
+        h('div', { class: 'stats diaries-totals' },
+          h('div', null, h('span', null, `${a.short} crews claimed`), h('b', null, String(sum((e) => e.claimed[0])))),
+          h('div', null, h('span', null, `${b.short} aircraft actually lost`), h('b', { class: 'truth' }, String(sum((e) => e.trueLosses[1])))),
+          h('div', null, h('span', null, `${b.short} crews claimed`), h('b', null, String(sum((e) => e.claimed[1])))),
+          h('div', null, h('span', null, `${a.short} aircraft actually lost`), h('b', { class: 'truth' }, String(sum((e) => e.trueLosses[0])))),
+          h('div', null, h('span', null, `${a.short} told High Command`), h('b', null, String(sum((e) => e.reportedToHq[0])))),
+          h('div', null, h('span', null, `${b.short} told High Command`), h('b', null, String(sum((e) => e.reportedToHq[1])))),
+        ),
+      ),
+      h('section', { class: 'paper panel' },
+        h('table', { class: 'ledger diaries' },
+          h('thead', null,
+            h('tr', null, h('th', null, ''), h('th', null, ''), h('th', { colspan: '3', class: 'grp' }, a.short), h('th', { colspan: '3', class: 'grp' }, b.short), h('th', null, '')),
+            h('tr', null, ['Week', 'Theater', 'Claimed', 'To HQ', 'Destroyed', 'Claimed', 'To HQ', 'Destroyed', 'Sectors'].map((x) => h('th', null, x))),
+          ),
+          h('tbody', null, st.archive.map((e) => h('tr', null,
+            h('td', null, String(e.turn)), h('td', null, THEATERS[e.theater].name),
+            h('td', null, String(e.claimed[0])), h('td', null, String(e.reportedToHq[0])), h('td', { class: 'truth' }, String(e.trueKills[0])),
+            h('td', null, String(e.claimed[1])), h('td', null, String(e.reportedToHq[1])), h('td', { class: 'truth' }, String(e.trueKills[1])),
+            h('td', null, `${e.sectors0} : ${SECTORS - e.sectors0}`),
+          ))),
+        ),
       ),
     );
   } else if (tab === 'ledger') {

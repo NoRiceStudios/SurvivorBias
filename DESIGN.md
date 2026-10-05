@@ -293,8 +293,14 @@ Each human player is the other's "unknown force". Both plan at the same time
 and commit. The simulation resolves both sides together, and each player gets
 their own distorted debrief.
 
-- **Hotseat** *(implemented)*: one PC, with a "pass the controls" screen between
-  each planning, radio, debrief and redeployment phase.
+- **Hotseat** *(implemented)*: one PC, two named commanders. A sealed-folder
+  handover screen appears before every planning, radio, debrief and
+  redeployment phase, naming the commander it is for. Esc (or "Close folder")
+  hides the screen at any time. The first commander's sealed orders are saved
+  with the game, so a save made between the two planning phases resumes with
+  the second commander. After the war, a **Both War Diaries** view puts each
+  side's claims, its returns to High Command and the truth side by side, week
+  by week.
 - **LAN / direct IP** *(not built yet)*: one player hosts and the other
   connects. The host runs the authoritative simulation and sends each client
   only their perceived state, so the opponent's real state can never be read from
@@ -318,9 +324,10 @@ are not home to defend.
 |---|---|---|---|
 | **Strike** a named site | Lowers enemy production, repair or fuel. Slow pressure on the front. | Fighters **patrolling that sector** (95% chance to meet the raid) or the **reserve** (55%, +25% with radar). Flak. | A patrol in the wrong sector almost never arrives (5%, or 30% from the next sector). |
 | **Close support** | Pushes the front directly, the main lever on theater progress. | Patrols over your own frontline sector. Low-level raids take heavy flak. | Patrolling the front leaves the rear exposed. |
-| **Fighter sweep** | Kills fighters and wins air superiority, which is pressure in its own right. | Meet it in strength, or deny the fight by keeping fighters elsewhere. | Fighters on sweeps are not escorting or defending. |
+| **Fighter sweep** | Kills fighters and wins air superiority, which is pressure in its own right. It also **screens the front**: enemy close-support raids and sweeps over the front run into it. | Meet it in strength, or deny the fight by keeping fighters elsewhere. | Fighters on sweeps are not escorting or defending. |
+| **Feint** (any non-recon squadron, one or two sectors deep, not the real raid's sector) | Flies first. Each reserve squadron has a 50% chance (25% with radar) of being sent after it, and patrols over that sector always engage it. Drawn squadrons miss the real raid. | Radar, or patrols instead of a reserve. Observers report "a formation that turned away without bombing", which is a clue for next week. | The feinting squadron is at risk and not escorting, and the fuel is burned for no damage. |
 | **Defend** (patrol or reserve) | Intercepts raids. | Strike where they aren't. Go deep where the patrols don't reach. | Deep targets lose their escort beyond range 2. |
-| **Recon** a site | The truth about one site. Confirms objectives and exposes your own crews' exaggerations. | *(Next step: patrols in that sector intercept recon.)* | A recon aircraft and a week's fuel. |
+| **Recon** a site | The truth about one site. Confirms objectives and exposes your own crews' exaggerations. | Patrols over that sector catch it 60% of the time (12% otherwise). | A recon aircraft and a week's fuel. |
 
 The key choice is **patrol vs reserve**. A patrol concentrates and gambles on one
 sector; the reserve hedges at lower odds. Against a human, both sides try to read
@@ -365,14 +372,16 @@ images in rules, and differ only in names and paint.
 4. Each client receives only its own radio log, debrief and updated state.
 5. The host autosaves. A dropped player rejoins from the host's save.
 
-**7. Ideas for later:**
+**7. One day, one aircraft.** A day resolves as: feints, then the main raids
+(with sweeps screening the front, and both sweeps meeting each other if both
+sides sweep), then recon, then landing. Every aircraft has a single state for
+the whole day. A reserve fighter shot up chasing a feint is still damaged if it
+meets the main raid, and an aircraft is never counted twice.
 
-- **Diversions:** a small feint at one sector to draw the reserve, so the main
-  raid can hit another.
-- **Meeting engagements:** when both sides sweep the same front sector in the
-  same week, the fighters fight each other first.
-- **Recon interception** by patrols, and a **"spoofing"** research that sends
-  fake radio traffic to inflate the enemy's estimate of your strength.
+**8. Ideas for later:**
+
+- A **"spoofing"** research that sends fake radio traffic to inflate the enemy's
+  estimate of your strength.
 - **Agents' reports:** a low-reliability tip-off about which sector the enemy is
   planning to hit, worth acting on only sometimes.
 - **Turn timer** for LAN games, and **asymmetric scenarios** (one side starts a
