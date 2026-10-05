@@ -1,5 +1,6 @@
 import { AIRCRAFT, ARCHETYPE_BIAS, TARGETS, ZONE_LABEL } from './data';
 import type { Rng } from './rng';
+import { captainName } from './setup';
 import { emptyApproach } from './sim';
 import { WEATHER_EFFECT } from './theaters';
 import type {
@@ -70,7 +71,8 @@ export function squadronReport(
   report.claims = Math.max(0, Math.round(rawClaims * claimBias * (1 + rng.gauss(noise))));
 
   const seen = survivors.reduce((a, r) => a + r.enemiesSeen, 0) / survivors.length;
-  report.enemyFightersReported = Math.max(0, Math.round(seen * biasScale(bias.enemies) * (1 + rng.gauss(noise * 1.2))));
+  // Noisy, but crews who were attacked never report seeing no fighters at all.
+  report.enemyFightersReported = seen > 0 ? Math.max(1, Math.round(seen * biasScale(bias.enemies) * Math.max(0.3, 1 + rng.gauss(noise * 1.2)))) : 0;
 
   for (const r of survivors) {
     for (const k of Object.keys(r.sawApproach) as FighterApproach[]) report.approachReported[k] += r.sawApproach[k];
@@ -93,26 +95,35 @@ export function squadronReport(
     }
   }
 
-  // Remarks: the voice of the leader.
+  // Remarks: the voice of the leader, appropriate to the job the squadron flew.
   const L = `${sq.leader.rank} ${sq.leader.name}`;
   const lostN = sent - survivors.length;
-  switch (sq.leader.archetype) {
-    case 'braggart':
-      report.remarks.push(rng.pick([`${L}: "They scattered like pigeons. Put us up again tomorrow."`, `${L}: "Best day's shooting this squadron has had."`]));
-      break;
-    case 'pessimist':
-      report.remarks.push(rng.pick([`${L}: "There were more of them than last time. There are always more."`, `${L}: "We were lucky. Luck runs out."`]));
-      break;
-    case 'gloryHunter':
-      report.remarks.push(rng.pick([`${L} requests the squadron be given the lead next time.`, `${L}: "Give us the deep targets, sir. We can take it."`]));
-      break;
-    case 'byTheBook':
-      report.remarks.push(rng.pick([`${L} declines to confirm claims not witnessed by two crews.`, `${L}: "Report attached. Several items marked unconfirmed."`]));
-      break;
-    case 'timid':
-      report.remarks.push(rng.pick([`${L}: "The flak was the worst I have seen."`, `${L} recommends the target be given to the heavies.`]));
-      break;
-  }
+  const role = recs[0].role;
+  const defending = role === 'defense';
+  const remarks: Record<typeof sq.leader.archetype, [string[], string[]]> = {
+    braggart: [
+      [`${L}: "They scattered like pigeons. Put us up again tomorrow."`, `${L}: "Best day's shooting this squadron has had."`],
+      [`${L}: "They never got near the works. Not while we were up."`, `${L}: "Sent them home with their tails on fire."`],
+    ],
+    pessimist: [
+      [`${L}: "There were more of them than last time. There are always more."`, `${L}: "We were lucky. Luck runs out."`],
+      [`${L}: "More of them every day. We can't stop them all."`, `${L}: "They got through. They'll be back tomorrow."`],
+    ],
+    gloryHunter: [
+      [`${L} requests the squadron be given the lead next time.`, `${L}: "Give us the deep targets, sir. We can take it."`],
+      [`${L}: "Let us go after them over their own fields, sir."`, `${L} asks to be taken off defence and given an offensive role.`],
+    ],
+    byTheBook: [
+      [`${L} declines to confirm claims not witnessed by two crews.`, `${L}: "Report attached. Several items marked unconfirmed."`],
+      [`${L}: "Interception report attached. Claims marked unconfirmed where not seen to crash."`, `${L} declines to confirm claims not witnessed by two pilots.`],
+    ],
+    timid: [
+      [`${L}: "The flak was the worst I have seen."`, sq.kind === 'fighter' ? `${L}: "We were spread too thin to cover the bombers."` : `${L} recommends the target be given to the heavies.`],
+      [`${L}: "We were heavily outnumbered, sir."`, `${L}: "The boys need a rest. They're seeing bandits in every cloud."`],
+    ],
+  };
+  report.remarks.push(rng.pick(remarks[sq.leader.archetype][defending ? 1 : 0]));
+  if (raid && raid.weather !== 'clear' && !defending) report.remarks.push(raid.weather === 'storm' ? 'Weather: storms and heavy cloud throughout.' : 'Weather: solid cloud over the target area.');
   if (lostN > 0 && lostN / sent > 0.3) report.remarks.push(`${lostN} crews missing. Morale in the squadron is shaken.`);
   // What the ground crews say about the holes.
   const holes: Record<string, number> = {};
@@ -121,6 +132,15 @@ export function squadronReport(
   if (worst && worst[1] >= 3) {
     report.remarks.push(`Ground crew: "Most of the damage is in the ${ZONE_LABEL[worst[0] as keyof typeof ZONE_LABEL].toLowerCase()}. Could do with more plate there."`);
   }
+  // Plates that stopped something: the only direct evidence armor is working.
+  for (const r of survivors) {
+    const saved = r.hits.find((h) => h.saved);
+    if (saved) {
+      report.remarks.push(`Ground crew: "The ${ZONE_LABEL[saved.zone].toLowerCase()} plate on ${r.serial} is dented deep. Without it she'd not have come home."`);
+      break;
+    }
+  }
+  report.mission = raid?.target;
   return report;
 }
 
@@ -147,7 +167,7 @@ export function buildDebrief(
   ];
   const missing = mine
     .filter((p) => p.fate === 'lost')
-    .map((p) => ({ serial: p.serial, squadronId: p.squadronId, kind: p.kind, lastWords: p.lastWords }));
+    .map((p) => ({ serial: p.serial, squadronId: p.squadronId, kind: p.kind, lastWords: p.lastWords, captain: captainName(side.id, p.serial) }));
 
   const mainRaid = myRaids.find((r) => r.target !== 'feint') ?? null;
   const reports: SquadronReport[] = [];

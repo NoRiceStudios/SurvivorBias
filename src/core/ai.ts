@@ -121,12 +121,18 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
       plan.cover[sq.id] = exposed[Number(rng.weighted(w))].sector;
     }
   }
+  // Being hit by close support? Patrol our own front and sweep it, if the staff notice in time.
+  const ourFront = frontSector(t, (1 - id) as SideId);
+  const alert = side.observed.support > 0.8 && rng.chance(0.3 + 0.7 * side.insight);
+  if (alert && coverSquadrons.length) plan.cover[coverSquadrons[0].id] = ourFront;
   const escorts = spareFighters.filter((f) => !plan.defense.includes(f.id));
 
   const minRange = Math.min(...readyBombers.map((q) => bomberRange(q.kind)), 3);
   const targets = reachableSites(state, id, readyBombers.some((q) => q.kind === 'medium') ? 'medium' : 'heavy').filter((x) => depthFor(t.held0, id, x.sector) <= minRange);
   const pressured = side.perceived.front < -12 || theaterMods(state).support > 1;
-  if (readyBombers.length > 0 && rng.chance(0.85)) {
+  if (alert && escorts.length && rng.chance(0.35)) {
+    plan.raid = { target: 'sweep', squadronIds: escorts.map((q) => q.id) };
+  } else if (readyBombers.length > 0 && rng.chance(0.85)) {
     if (rng.chance(pressured ? 0.55 : 0.3) || targets.length === 0) {
       plan.raid = { target: 'support', squadronIds: [...readyBombers.map((q) => q.id), ...escorts.slice(0, 1).map((q) => q.id)] };
     } else {

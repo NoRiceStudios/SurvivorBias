@@ -46,6 +46,8 @@ export interface Hit {
   approach: Approach;
   /** Hit that brought the aircraft down. */
   lethal?: boolean;
+  /** Armor plate stopped a hit that would otherwise have brought the aircraft down. */
+  saved?: boolean;
 }
 
 export interface Airframe {
@@ -192,6 +194,8 @@ export interface SideState {
   lowMoraleTurns: number;
   /** Times caught inflating reports. */
   caught: number;
+  /** What this side has seen the enemy do recently (decaying counts): controllers and the Army learn. */
+  observed: { feints: number; support: number };
 }
 
 export interface RaidPlan {
@@ -272,6 +276,8 @@ export interface SquadronReport {
   approachReported: Record<FighterApproach, number>;
   flakReported: 'light' | 'moderate' | 'heavy' | 'murderous';
   targetDamageReported: number | null;
+  /** What the raid this report is about was doing. */
+  mission?: TargetId;
   remarks: string[];
   noReport?: boolean;
 }
@@ -282,7 +288,7 @@ export interface Debrief {
   /** Survivors only. Full hit lists for display. */
   returned: PlaneRecord[];
   /** Lost planes: only serials and squadron, never the hits. */
-  missing: { serial: string; squadronId: string; kind: AircraftKind; lastWords?: string }[];
+  missing: { serial: string; squadronId: string; kind: AircraftKind; lastWords?: string; captain?: string }[];
   reports: SquadronReport[];
   radio: RadioLine[];
   recon: { siteId: string; condition: number } | null;

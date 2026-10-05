@@ -1,9 +1,9 @@
 import { planCost, researchTurns } from './actions';
-import { AIRCRAFT, RESEARCH, TARGETS } from './data';
+import { AIRCRAFT, ARCHETYPE_INFO, RESEARCH, SQUADRON_NAMES, TARGETS } from './data';
 import { buildDebrief, updatePerceived } from './reports';
 import { Rng } from './rng';
 import { makeAirframe, makeLeader, makeSquadron } from './setup';
-import { finishDay, gatherFliers, newDay, resolveRaid, resolveRecon, type Flier } from './sim';
+import { finishDay, flyable, gatherFliers, newDay, resolveRaid, resolveRecon, type Flier } from './sim';
 import {
   applyPressure,
   enterTheater,
@@ -44,8 +44,42 @@ function memo(side: SideState, turn: number, kind: Memo['kind'], subject: string
   if (side.memos.length > 40) side.memos.length = 40;
 }
 
+export const FUEL_CAP = 320;
+export const MUNITIONS_CAP = 260;
+
+/** Production points per week. */
+export function factoryRate(side: SideState): number {
+  const f = side.factory;
+  return (3 + f.level * 2.5) * (0.4 + 0.6 * Math.min(1.2, side.facilities.industry / 100)) * (f.qc === 'rushed' ? 1.4 : f.qc === 'strict' ? 0.75 : 1);
+}
+
+/** The AI's resource multiplier: difficulty plus escalation through the theaters. */
+export function aiBonus(state: GameState, side: SideState): number {
+  const difficulty = 0.55 + 0.6 * side.insight; // green ~0.64, seasoned ~0.82, wald ~1.09
+  return difficulty * (1 + 0.15 * (act(state) - 1));
+}
+
+/** Between theaters the Ministry partly makes good a depleted wing. */
+function reinforce(rng: Rng, state: GameState, side: SideState, news: string[]) {
+  const planes = side.squadrons.reduce((x, q) => x + q.airframes.length, 0);
+  const shortfall = Math.max(0, 28 - planes);
+  const n = Math.round(shortfall * (0.3 + 0.4 * side.trust / 100));
+  if (n <= 0) return;
+  let delivered = 0;
+  for (let i = 0; i < n; i++) {
+    const fighters = side.squadrons.filter((q) => q.kind === 'fighter').reduce((x, q) => x + q.airframes.length, 0);
+    const kind: AircraftKind = fighters < planes / 2 || i % 2 === 0 ? 'fighter' : 'medium';
+    const sq = side.squadrons.filter((q) => q.kind === kind).sort((x, y) => x.airframes.length - y.airframes.length)[0];
+    if (!sq || sq.airframes.length >= 10) continue;
+    sq.airframes.push(makeAirframe(state, rng, kind, side.id));
+    sq.crews++;
+    delivered++;
+  }
+  if (delivered) news.push(`The Air Ministry has sent ${delivered} replacement aircraft with crews for the new theater.`);
+}
+
 /** Remove lost airframes and crews, update morale, queue repairs. */
-function applyLosses(rng: Rng, side: SideState, recs: PlaneRecord[]) {
+function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRecord[], news: string[]) {
   const bySq = new Map<string, PlaneRecord[]>();
   for (const r of recs) {
     if (r.side !== side.id) continue;
@@ -63,12 +97,16 @@ function applyLosses(rng: Rng, side: SideState, recs: PlaneRecord[]) {
     }
     let lost = 0;
     let kills = 0;
+    const crewsBefore = Math.max(1, sq.crews);
+    let leaderLost = false;
     for (const r of mine) {
       const af = sq.airframes.find((a) => a.id === r.airframeId);
       kills += r.trueKills;
       if (r.fate === 'lost') {
         lost++;
         sq.crews--;
+        // The leader flies with the squadron; any lost crew may have been his.
+        if (!leaderLost && r.role !== 'recon' && rng.chance(1 / crewsBefore)) leaderLost = true;
         sq.airframes = sq.airframes.filter((a) => a.id !== r.airframeId);
       } else if (r.fate === 'crashed') {
         if (rng.chance(0.25)) sq.crews--;
@@ -90,13 +128,17 @@ function applyLosses(rng: Rng, side: SideState, recs: PlaneRecord[]) {
     sq.skill = Math.min(0.95, sq.skill + 0.015 * (1 - frac));
     sq.crews = Math.max(0, sq.crews);
     if (frac >= 0.5 && mine.some((r) => r.fate !== 'lost')) {
-      sq.notables.unshift(`Turn survivors of the ${sq.name} are badly shaken.`);
+      sq.notables.unshift(`Week ${state.turn}: the survivors are badly shaken after losing ${lost} of ${mine.length}.`);
     }
-    if (mine.length > 0 && lost === mine.length && sq.airframes.length === 0) {
-      // Leader died with them.
+    if (leaderLost || (lost === mine.length && sq.airframes.length === 0)) {
+      const old = sq.leader;
       sq.leader = makeLeader(rng, side.id, undefined, side.squadrons.map((q) => q.leader.name));
+      const line = `${old.rank} ${old.name}, commanding ${sq.name}, is missing. ${sq.leader.rank} ${sq.leader.name} takes command.`;
+      news.push(line);
+      sq.notables.unshift(`Week ${state.turn}: ${old.rank} ${old.name} missing; ${sq.leader.rank} ${sq.leader.name} in command.`);
+      memo(side, state.turn + 1, 'notice', `${sq.name}: change of command`, `${line} The new commanding officer is described by the squadron as ${ARCHETYPE_INFO[sq.leader.archetype].label.toLowerCase()}: "${ARCHETYPE_INFO[sq.leader.archetype].blurb}"`, 'Group HQ');
     }
-    sq.notables = sq.notables.slice(0, 5);
+    sq.notables = [...new Set(sq.notables)].slice(0, 5);
   }
 }
 
@@ -111,14 +153,16 @@ function applyDamage(state: GameState, siteId: string | undefined, dmg: number):
 function economy(rng: Rng, state: GameState, side: SideState) {
   const r = side.resources;
   const trustF = 0.4 + side.trust / 100;
-  const bonus = side.isAI ? 1 + 0.15 * (act(state) - 1) : 1;
-  const sup = Math.round((45 + 45 * trustF) * (0.55 + 0.45 * side.facilities.industry / 100) * bonus);
-  const fuel = Math.round((35 + 35 * trustF) * (0.3 + 0.7 * side.facilities.fuel / 100) * bonus);
-  const mun = Math.round((25 + 20 * trustF) * bonus);
-  const rep = Math.round((2 + 3 * trustF) * bonus);
+  const bonus = side.isAI ? aiBonus(state, side) : 1;
+  const sup = Math.round((45 + 45 * trustF) * (0.55 + 0.45 * Math.min(1.2, side.facilities.industry / 100)) * bonus);
+  // Fuel and munitions are rationed: a full effort every week burns more than arrives.
+  const fuel = Math.round((25 + 30 * trustF) * (0.3 + 0.7 * Math.min(1.2, side.facilities.fuel / 100)) * bonus);
+  const mun = Math.round((18 + 16 * trustF) * bonus);
+  // Replacement aircrew are only posted while the pool is short.
+  const rep = r.replacements >= 8 ? 0 : Math.round((2 + 3 * trustF) * bonus);
   r.supplies += sup;
-  r.fuel += fuel;
-  r.munitions += mun;
+  r.fuel = Math.min(FUEL_CAP, r.fuel + fuel);
+  r.munitions = Math.min(MUNITIONS_CAP, r.munitions + mun);
   r.replacements += rep;
   side.memos.unshift({
     turn: state.turn + 1,
@@ -130,7 +174,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
 
   // Factory production.
   const f = side.factory;
-  const rate = (2 + f.level * 2.5) * (0.4 + 0.6 * side.facilities.industry / 100) * (f.qc === 'rushed' ? 1.4 : f.qc === 'strict' ? 0.75 : 1);
+  const rate = factoryRate(side);
   f.progress += rate;
   while (f.queue.length > 0 && f.progress >= AIRCRAFT[f.queue[0]].build) {
     const kind = f.queue.shift() as AircraftKind;
@@ -142,7 +186,10 @@ function economy(rng: Rng, state: GameState, side: SideState) {
     candidates.sort((a, b) => a.airframes.length - b.airframes.length);
     if (candidates.length > 0) candidates[0].airframes.push(af);
     else {
-      const sq = makeSquadron(state, rng, side.id, kind, 0, side.squadrons.length + 3, undefined, side.squadrons.map((q) => q.leader.name));
+      const used = new Set(side.squadrons.map((q) => q.name));
+      const free = SQUADRON_NAMES[side.id].findIndex((n) => !used.has(n));
+      const sq = makeSquadron(state, rng, side.id, kind, 0, free >= 0 ? free : side.squadrons.length, undefined, side.squadrons.map((q) => q.leader.name));
+      if (free < 0) sq.name = `${sq.name} (${side.squadrons.length + 1})`;
       sq.crews = 0;
       sq.airframes.push(af);
       side.squadrons.push(sq);
@@ -206,30 +253,49 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   for (const site of state.theater.sites) if (site.owner === side.id) site.condition = Math.min(100, site.condition + 4);
 }
 
-function newOrder(rng: Rng, state: GameState, side: SideState): Order {
+function newOrder(rng: Rng, state: GameState, side: SideState, exclude: Order['kind'][] = []): Order | null {
   const a = act(state);
   const t = state.theater;
   const def = theaterDef(state);
   const id = `o${state.nextId++}`;
-  const deadline = state.turn + rng.int(1, 2);
+  // Orders are issued at the end of a week, for the weeks that follow, and never outlive the theater.
+  const next = state.turn + 1;
+  const lastWeek = state.turn + Math.max(1, def.weeks - t.week);
+  const due = (weeks: number) => Math.min(lastWeek, next + weeks - 1);
+  const open = new Set(side.orders.filter((o) => !o.done && !o.failed).map((o) => o.kind));
   const targets = reachableSites(state, side.id, 'medium');
-  const kind = rng.weighted({ strike: targets.length ? 0.45 : 0, kills: 0.3, sorties: 0.1, advance: t.week >= 2 ? 0.2 : 0 });
+  const w: Partial<Record<Order['kind'], number>> = {
+    strike: targets.length ? 0.45 : 0,
+    kills: 0.3,
+    sorties: 0.1,
+    advance: t.week >= 2 && lastWeek - next >= 2 ? 0.2 : 0,
+  };
+  for (const k of [...open, ...exclude]) w[k] = 0;
+  if (Object.values(w).every((x) => !x)) return null;
+  const kind = rng.weighted(w);
   if (kind === 'strike') {
     const site = rng.pick(targets);
+    const deadline = due(rng.int(1, 2));
     const amount = 10 + 5 * a + rng.int(0, 6);
     return { id, kind, target: site.type, siteId: site.id, amount, deadline, text: `Inflict at least ${amount}% damage on the ${site.name} by week ${deadline}.` };
   }
   if (kind === 'advance') {
     const sector = frontSector(t, side.id);
-    const dl = state.turn + 3;
-    return { id, kind, amount: sector, deadline: dl, text: `Support the Army until ${def.sectors[sector]} is in our hands, by week ${dl}.` };
+    const deadline = due(3);
+    return { id, kind, amount: sector, deadline, text: `Support the Army until ${def.sectors[sector]} is in our hands, by week ${deadline}.` };
   }
   if (kind === 'kills') {
-    const amount = 6 + 3 * a + rng.int(0, 4);
-    return { id, kind, amount, deadline, text: `Destroy no fewer than ${amount} enemy aircraft by week ${deadline}.` };
+    // High Command asks a little more than the wing has been claiming.
+    const recent = state.archive.slice(-3).map((e) => e.reportedToHq[side.id]);
+    const rate = recent.length ? recent.reduce((x, y) => x + y, 0) / recent.length : 4;
+    const weeks = Math.min(2, lastWeek - next + 1);
+    const amount = Math.max(3, Math.round(rate * weeks * rng.range(1.0, 1.3)));
+    const deadline = due(weeks);
+    return { id, kind, amount, deadline, text: `Destroy no fewer than ${amount} enemy aircraft ${weeks === 1 ? 'this coming week' : `in the next ${weeks} weeks`} (by week ${deadline}).` };
   }
-  const amount = 10 + 2 * a + rng.int(0, 4);
-  return { id, kind, amount, deadline: state.turn + 1, text: `Mount at least ${amount} sorties next week to maintain pressure on the enemy.` };
+  const strength = side.squadrons.reduce((x, q) => x + flyable(q).length, 0);
+  const amount = Math.max(6, Math.round(strength * rng.range(0.6, 0.8)));
+  return { id, kind, amount, deadline: next, text: `Mount at least ${amount} sorties this coming week (week ${next}) to maintain pressure on the enemy.` };
 }
 
 interface Reported {
@@ -248,8 +314,15 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
     sorties: reported.sorties,
   };
   let trustDelta = 0;
+  const failedKinds: Order['kind'][] = [];
   for (const o of side.orders) {
     if (o.done || o.failed) continue;
+    // A strike order on a site we now hold is moot.
+    if (o.kind === 'strike' && o.siteId && state.theater.sites.find((x) => x.id === o.siteId)?.owner === side.id) {
+      o.done = true;
+      hqLines.push(`Order rescinded: "${o.text}" The site is now in our hands.`);
+      continue;
+    }
     if (o.kind === 'kills') o.amount -= toHq.kills;
     if (o.kind === 'strike' && o.siteId) o.amount -= toHq.damage[o.siteId] ?? 0;
     if (o.kind === 'sorties') o.amount -= toHq.sorties;
@@ -261,6 +334,7 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
       hqLines.push(`Order fulfilled: "${o.text}" — noted with satisfaction.`);
     } else if (state.turn >= o.deadline) {
       o.failed = true;
+      failedKinds.push(o.kind);
       trustDelta -= 7;
       hqLines.push(`Order NOT fulfilled: "${o.text}"`);
     }
@@ -278,10 +352,12 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
   }
   side.trust = Math.max(side.isAI ? 20 : 0, Math.min(100, Math.round(side.trust + trustDelta)));
   side.orders = side.orders.filter((o) => !o.done && !o.failed);
-  if (side.orders.length === 0 || rng.chance(0.35)) {
-    const o = newOrder(rng, state, side);
-    side.orders.push(o);
-    memo(side, state.turn + 1, 'order', 'Operational directive', o.text);
+  if (side.orders.length === 0 || (side.orders.length < 2 && rng.chance(0.35))) {
+    const o = newOrder(rng, state, side, failedKinds);
+    if (o) {
+      side.orders.push(o);
+      memo(side, state.turn + 1, 'order', 'Operational directive', o.text);
+    }
   }
   // Intelligence from above: optimistic, sometimes plain wrong.
   const enemyFighters = enemy.squadrons.filter((s) => s.kind === 'fighter').reduce((a, s) => a + s.airframes.length, 0);
@@ -363,6 +439,9 @@ function secondaryObjectives(rng: Rng, state: GameState, news: [string[], string
       else if (site.condition > 45 && rng.chance(0.3)) {
         o.status = 'discredited';
         side.trust = Math.max(side.isAI ? 20 : 0, side.trust - 15);
+        // The Ministry's photographs replace the crews' estimate.
+        side.perceived.sites[o.siteId] = site.condition;
+        if (!side.perceived.photographed.includes(o.siteId)) side.perceived.photographed.push(o.siteId);
         news[o.side].push(`Air Ministry reconnaissance shows the ${site.name} working normally. Your claim to have destroyed it has been withdrawn.`);
         memo(side, state.turn + 1, 'reprimand', 'Objective not achieved', `Photographs taken this week show the ${site.name} in full operation. The award made on the strength of your returns is noted against your record.`);
       }
@@ -404,7 +483,9 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     const defender = state.sides[other(id)];
     const dp = plans[other(id)];
     const radar = defender.research.includes('radar');
-    const drawnSquadrons = new Set(dp.defense.filter((sqId) => dp.cover[sqId] === f.sector || (dp.cover[sqId] === undefined && battle.chance(radar ? 0.25 : 0.5))));
+    // Controllers who have seen diversions recently are slower to take the bait.
+    const bait = (radar ? 0.25 : 0.5) / (1 + defender.observed.feints);
+    const drawnSquadrons = new Set(dp.defense.filter((sqId) => dp.cover[sqId] === f.sector || (dp.cover[sqId] === undefined && battle.chance(bait))));
     const drawn = gatherFliers(defender, dp.defense, () => 'defense', day).filter((x) => drawnSquadrons.has(x.sq.id) && x.af.kind === 'fighter' && x.alive && !x.committed);
     for (const x of drawn) x.committed = true;
     feints[id] = resolveRaid(battle, state, state.sides[id], defender, { target: 'feint', squadronIds: f.squadronIds }, dp, { day, feintSector: f.sector, onlyDefenders: drawn });
@@ -450,7 +531,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   for (const id of [0, 1] as SideId[]) {
     const r = raids[id];
     if (!r) continue;
-    if (r.target === 'support') supportPush[id] = r.damage * mods.support;
+    if (r.target === 'support') supportPush[id] = r.damage * mods.support / (1 + 0.25 * state.sides[other(id)].observed.support);
     else if (r.target !== 'sweep' && r.target !== 'feint') {
       const dealt = applyDamage(state, r.siteId, r.damage);
       damageTaken[(1 - id) as SideId][r.target] = dealt;
@@ -459,7 +540,8 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   }
 
   // Losses & morale.
-  for (const id of [0, 1] as SideId[]) applyLosses(rng, state.sides[id], allRecs);
+  const lossNews: [string[], string[]] = [[], []];
+  for (const id of [0, 1] as SideId[]) applyLosses(rng, state, state.sides[id], allRecs, lossNews[id]);
 
   // Pressure on the front moves on true results.
   const lost0 = allRecs.filter((r) => r.side === 0 && r.fate === 'lost').length;
@@ -469,8 +551,8 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   syncFacilities(state);
   const delta =
     (lost1 - lost0) * 2 +
-    (supportPush[0] - supportPush[1]) * 1.4 +
-    (strat0 - strat1) * 0.2 +
+    (supportPush[0] - supportPush[1]) * 1.15 +
+    (strat0 - strat1) * 0.3 +
     (Math.min(120, s0.facilities.industry) - Math.min(120, s1.facilities.industry)) * 0.03 +
     (Math.min(120, s0.facilities.fuel) - Math.min(120, s1.facilities.fuel)) * 0.02 +
     rng.gauss(3) +
@@ -478,6 +560,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   state.front = Math.round(state.front + delta);
   t.week++;
   const news = applyPressure(state);
+  for (const id of [0, 1] as SideId[]) news[id].unshift(...lossNews[id]);
   syncFacilities(state);
 
   // Debriefs.
@@ -512,6 +595,12 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     debriefs[id] = d;
   }
   secondaryObjectives(rng, state, news);
+  // Each side remembers what it saw the enemy do (observers, the Army). Memory fades.
+  for (const id of [0, 1] as SideId[]) {
+    const o = state.sides[id].observed;
+    o.feints = o.feints * 0.6 + (feints[other(id)] ? 1 : 0);
+    o.support = o.support * 0.6 + (raids[other(id)]?.target === 'support' ? 1 : 0);
+  }
 
   // Archive the truth.
   const hitsOf = (side: SideId, lost: boolean): Hit[] =>
@@ -557,10 +646,16 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       const next = THEATERS[t.index + 1];
       for (const id of [0, 1] as SideId[]) news[id].push(`The wing is redeploying to ${next.name}.`);
       enterTheater(state, t.index + 1, rng, decision.winner);
+      for (const id of [0, 1] as SideId[]) reinforce(rng, state, state.sides[id], news[id]);
       // Orders from the old theater lapse; High Command issues fresh ones.
       for (const side of state.sides) {
-        side.orders = [newOrder(rng, state, side)];
-        memo(side, state.turn + 1, 'order', 'Operational directive', side.orders[0].text);
+        side.memos = side.memos.filter((m) => !(m.turn === state.turn + 1 && m.kind === 'order' && m.subject === 'Operational directive'));
+        side.orders = [];
+        const o = newOrder(rng, state, side);
+        if (o) {
+          side.orders.push(o);
+          memo(side, state.turn + 1, 'order', 'Operational directive', o.text);
+        }
       }
     } else {
       state.outcome = warOutcome(state);

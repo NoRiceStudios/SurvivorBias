@@ -189,6 +189,10 @@ export function validatePlan(side: SideState, plan: TurnPlan, state?: GameState)
       if (main === sector) return fail('A feint over the same sector as the real raid fools nobody');
     }
   }
+  const ready = (ids: string[]) => ids.reduce((a, id) => a + (side.squadrons.find((q) => q.id === id) ? flyable(side.squadrons.find((q) => q.id === id)!).length : 0), 0);
+  if (plan.raid && raidIds.length && ready(raidIds) === 0) return fail('No aircraft in the raid are ready to fly');
+  if (plan.feint && ready(plan.feint.squadronIds) === 0) return fail('No aircraft ready to fly the feint');
+  if (plan.recon && ready([plan.recon.squadronId]) === 0) return fail('No recon aircraft ready to fly');
   if (state && plan.recon) {
     const site = state.theater.sites.find((x) => x.id === plan.recon!.siteId);
     if (!site || site.owner === side.id) return fail('Choose an enemy site to photograph');

@@ -38,6 +38,8 @@ export interface Flier {
   alive: boolean;
   /** Turned for home (abort / break-off). */
   out: boolean;
+  /** Mechanical abort before contact: back at base, out of the day's fighting. */
+  home: boolean;
   callsign: string;
   /** Damage taken, accumulated hits on fighters who strafe it. */
   passesTaken: number;
@@ -78,10 +80,10 @@ export function armorLoad(sq: Squadron): number {
   return total / Math.max(1, AIRCRAFT[sq.kind].armorBudget);
 }
 
-export function hitLethality(zone: ZoneId, f: Flier): number {
+export function hitLethality(zone: ZoneId, f: Flier, armor = f.sq.armor[zone]): number {
   const res = f.side.research;
   const factor = res.includes('armorAlloy') ? ARMOR_FACTOR_ALLOY : ARMOR_FACTOR;
-  let p = ZONE_LETHALITY[zone] * Math.pow(factor, f.sq.armor[zone]);
+  let p = ZONE_LETHALITY[zone] * Math.pow(factor, armor);
   if (zone === 'fuel' && res.includes('selfSealing')) p *= 0.45;
   // Small, fast airframes take less punishment per hole but have less to lose.
   if (f.af.kind === 'fighter' || f.af.kind === 'recon') p *= 1.25;
@@ -105,12 +107,15 @@ export function applyHit(rng: Rng, f: Flier, approach: Approach): boolean {
   f.rec.hits.push(hit);
   const armor = f.sq.armor[zone];
   f.condition -= ZONE_DAMAGE[zone] * Math.pow(0.8, armor) * (f.af.kind === 'fighter' ? 1.4 : 1);
-  if (rng.chance(hitLethality(zone, f)) || f.condition <= 0) {
+  const roll = rng.next();
+  if (roll < hitLethality(zone, f) || f.condition <= 0) {
     hit.lethal = true;
     f.alive = false;
     f.rec.fate = 'lost';
     return true;
   }
+  // The plate took a hit that would have been fatal without it.
+  if (armor > 0 && roll < hitLethality(zone, f, 0)) hit.saved = true;
   return false;
 }
 
@@ -127,7 +132,19 @@ function lastWords(rng: Rng, f: Flier): string {
     outerWing: ['Wing\'s on fire, outboard, can\'t put it out—'],
     fuselage: ['Hit amidships, structure\'s breaking up—', 'Gunners are dead back there, she\'s falling apart—'],
   };
+  const single: Record<ZoneId, string[]> = {
+    engines: ['Engine\'s seized, oil all over the screen, going down—', 'Engine fire! I\'m getting out—'],
+    cockpit: ['[carrier wave, no voice]', '[a short cry, then static]', 'I\'m hit— can\'t see—'],
+    fuel: ['Tank\'s burning, I\'m baling out—', 'She\'s on fire, the tank\'s gone—'],
+    wingRoot: ['Wing\'s coming off—', 'Main spar\'s gone, she\'s rolling—'],
+    tail: ['No elevators, I\'m spinning—', 'Tail\'s shot away—'],
+    nose: ['Prop\'s shot away, losing height—', 'Engine\'s hit, no power, going in—'],
+    outerWing: ['Wingtip\'s gone, can\'t hold her—'],
+    fuselage: ['Control cables cut, she won\'t answer—'],
+  };
   if (!zone) return '[no further transmissions]';
+  if (f.af.kind === 'fighter' || f.af.kind === 'recon') return rng.pick(single[zone]);
+  if (zone === 'engines' && f.af.kind === 'heavy') return rng.pick(['Two engines gone on the port side, can\'t hold her—', 'Number three is burning, can\'t feather it, going down—']);
   return rng.pick(lines[zone]);
 }
 
@@ -176,6 +193,7 @@ function makeFlier(sq: Squadron, af: Airframe, side: SideState, role: PlaneRecor
     callsign: `${cs} ${index + 1}`,
     passesTaken: 0,
     committed: false,
+    home: false,
   };
 }
 
@@ -272,7 +290,7 @@ function witnessLoss(ctx: RaidContext, lost: Flier, flight: Flier[]) {
     lost.rec.lastWords = lastWords(rng, lost);
     say(ctx, lost.side.id, lost.callsign, lost.rec.lastWords);
   }
-  const mate = flight.find((f) => f.alive && f.sq === lost.sq);
+  const mate = flight.find((f) => f.alive && !f.home && f.sq === lost.sq);
   if (mate && rng.chance(0.75)) {
     const chutes = rng.int(0, AIRCRAFT[lost.af.kind].crew);
     const what = rng.pick(['is going down', 'has gone in', 'is falling out of formation', 'just blew up']);
@@ -354,19 +372,24 @@ export function resolveRaid(
   for (const f of raid) startCounts.set(f.sq, (startCounts.get(f.sq) ?? 0) + 1);
   const aborted: string[] = [];
 
-  const lead = raid[0];
+  // The formation leader is a bomber when there are bombers.
+  const lead = bombers[0] ?? raid[0];
+  const speaker = (pool: Flier[]) => pool.find((f) => f.alive && !f.home) ?? lead;
   ctx.t = 5;
+  const wxLine = state.weather === 'cloud' ? ' Solid cloud forecast over the target.' : state.weather === 'storm' ? ' Rain and turbulence all the way.' : '';
   say(ctx, attacker.id, lead.callsign, target === 'feint'
-    ? `${lead.callsign.split(' ')[0]} Leader, diversion force of ${raid.length}, heading for ${THEATER_SECTOR(state, sector)}. Let's be seen.`
-    : `${lead.callsign.split(' ')[0]} Leader, ${raid.length} aircraft formed up, setting course.`);
+    ? `${lead.callsign.split(' ')[0]} Leader, diversion force of ${raid.length}, heading for ${THEATER_SECTOR(state, sector)}. Let's be seen.${wxLine}`
+    : `${lead.callsign.split(' ')[0]} Leader, ${raid.length} aircraft formed up, setting course.${wxLine}`);
 
   // Outbound: mechanical aborts from factory defects.
   for (const f of raid) {
     if (f.af.defect > 0 && rng.chance(f.af.defect * 0.5)) {
       f.out = true;
+      f.home = true;
       f.rec.fate = 'aborted';
       ctx.t += 3;
-      say(ctx, attacker.id, f.callsign, rng.pick(['Losing oil pressure, turning back.', 'Rough running on number one, aborting.', 'Hydraulics failed, returning to base.']));
+      const single = f.af.kind === 'fighter' || f.af.kind === 'recon';
+      say(ctx, attacker.id, f.callsign, rng.pick(['Losing oil pressure, turning back.', single ? 'Engine running rough, aborting.' : 'Rough running on number one, aborting.', 'Hydraulics failed, returning to base.']));
     }
   }
 
@@ -391,10 +414,10 @@ export function resolveRaid(
   ctx.t = 35;
   if (interceptors.length > 0) {
     const approach = rng.weighted(defender.approach) as FighterApproach;
-    say(ctx, attacker.id, lead.callsign, `Bandits, ${rng.pick(CLOCK[approach])} o'clock ${rng.pick(['high', 'level', 'low'])}! ${interceptors.length > 12 ? 'Lots of them!' : 'Here they come.'}`);
+    say(ctx, attacker.id, speaker(raid).callsign, `Bandits, ${rng.pick(CLOCK[approach])} o'clock ${rng.pick(['high', 'level', 'low'])}! ${interceptors.length > 12 ? 'Lots of them!' : 'Here they come.'}`);
     say(ctx, defender.id, interceptors[0].callsign, `Contact. ${bombers.length > 0 ? `${bombers.length >= 10 ? 'Large' : 'Small'} bomber formation` : 'Enemy fighters'}, ${escorts.length > 0 ? 'with escort' : 'no escort seen'}. Attacking.`, defender.id);
   } else {
-    say(ctx, attacker.id, lead.callsign, 'Sky is clear. No fighters yet.');
+    say(ctx, attacker.id, speaker(raid).callsign, state.weather === 'clear' ? 'Sky is clear. No fighters yet.' : 'No fighters yet. Cloud\'s thick; they may not find us.');
   }
 
   const rounds = 3;
@@ -421,13 +444,13 @@ export function resolveRaid(
       if (!e.alive) witnessLoss(ctx, e, raid);
     }
     // Free interceptors attack bombers.
-    const liveBombers = bombers.filter((b) => b.alive && (!b.out || round === rounds - 1));
+    const liveBombers = bombers.filter((b) => b.alive && !b.home && (!b.out || round === rounds - 1));
     if (liveBombers.length > 0) {
       for (const i of liveInterceptors) {
         if (!i.alive || tied.has(i)) continue;
         const passes = 1 + (rng.chance(i.sq.doctrine.aggression) ? 1 : 0);
         for (let p = 0; p < passes; p++) {
-          const pool = bombers.filter((b) => b.alive);
+          const pool = bombers.filter((b) => b.alive && !b.home);
           if (pool.length === 0) break;
           // Stragglers and loose formations get picked on.
           const weights: Record<string, number> = {};
@@ -444,7 +467,7 @@ export function resolveRaid(
       // Fighter sweep: everyone mixes it up.
       for (const i of liveInterceptors) {
         if (tied.has(i) || !i.alive) continue;
-        const foes = escorts.filter((e) => e.alive);
+        const foes = escorts.filter((e) => e.alive && !e.home);
         if (foes.length === 0) break;
         const foe = rng.pick(foes);
         dogfight(ctx, i, foe);
@@ -466,9 +489,14 @@ export function resolveRaid(
   if (target !== 'sweep' && target !== 'feint') {
     ctx.t += 12;
     const support = target === 'support';
-    const flakLevel = defender.flak * mods.flak * wx.flak * (0.7 + 0.3 * Math.min(1, defender.facilities.industry / 100)) * (support ? 0.8 : 1);
+    // The Army masses anti-aircraft guns where close support keeps coming in.
+    const frontFlak = support ? 0.8 * Math.min(1.8, 1 + 0.35 * defender.observed.support) : 1;
+    const flakLevel = defender.flak * mods.flak * wx.flak * (0.7 + 0.3 * Math.min(1, defender.facilities.industry / 100)) * frontFlak;
     const overTarget = raid.filter((f) => f.alive && !f.out);
-    if (overTarget.length > 0) say(ctx, attacker.id, overTarget[0].callsign, rng.pick(['Flak ahead. Steady... steady...', 'Bomb doors open. Hold her level.', 'Target in sight, running in.']));
+    const overBombers = overTarget.filter((f) => f.af.kind !== 'fighter');
+    if (overBombers.length > 0) say(ctx, attacker.id, overBombers[0].callsign, support
+      ? rng.pick(['Going in low over the lines. Pick your targets.', 'Down on the deck. Guns and bombs on the trenches.'])
+      : rng.pick(['Flak ahead. Steady... steady...', 'Bomb doors open. Hold her level.', state.weather === 'clear' ? 'Target in sight, running in.' : 'Can\'t see a thing through this. Bombing on dead reckoning.']));
     for (const f of overTarget) {
       const exposure = f.af.kind === 'fighter' ? 0.25 : 1;
       const alt = support ? 0.15 : f.sq.doctrine.altitude;
@@ -484,7 +512,7 @@ export function resolveRaid(
       damage += AIRCRAFT[b.af.kind].payload * acc * rng.range(0.5, 1.5);
     }
     damage *= 1.25 * wx.accuracy;
-    if (bombers.some((b) => b.alive && !b.out)) say(ctx, attacker.id, lead.alive ? lead.callsign : bombers.find((b) => b.alive)!.callsign, 'Bombs gone. Turning for home.');
+    if (bombers.some((b) => b.alive && !b.out)) say(ctx, attacker.id, speaker(bombers.filter((b) => !b.out)).callsign, 'Bombs gone. Turning for home.');
     // Defender's ground observers see the bombs fall.
     say(ctx, defender.id, 'Ground', support ? 'Enemy bombers low over our forward positions.' : `Bombs falling on ${site?.name ?? 'our facilities'}. Fires visible.`, defender.id);
   }
@@ -492,7 +520,7 @@ export function resolveRaid(
   // Egress: stragglers get picked off.
   ctx.t += 10;
   for (const i of interceptors.filter((x) => x.alive)) {
-    const stragglers = bombers.filter((b) => b.alive && b.condition < 55);
+    const stragglers = bombers.filter((b) => b.alive && !b.home && b.condition < 55);
     if (stragglers.length === 0 || !rng.chance(0.45)) continue;
     const s = rng.pick(stragglers);
     bomberPass(ctx, i, s, bombers);

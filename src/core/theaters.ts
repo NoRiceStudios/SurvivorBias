@@ -231,12 +231,15 @@ export function applyPressure(state: GameState): [string[], string[]] {
   const t = state.theater;
   const def = theaterDef(state);
   const news: [string[], string[]] = [[], []];
-  while (Math.abs(state.front) >= SECTOR_PRESSURE) {
+  // At most one sector falls per week; the defenders regroup behind it.
+  if (Math.abs(state.front) >= SECTOR_PRESSURE) {
     const winner: SideId = state.front > 0 ? 0 : 1;
     const sector = frontSector(t, winner);
-    if (sector < 0 || sector >= SECTORS) break;
+    if (sector < 0 || sector >= SECTORS) return news;
     t.held0 += winner === 0 ? 1 : -1;
     state.front -= winner === 0 ? SECTOR_PRESSURE : -SECTOR_PRESSURE;
+    const cap = SECTOR_PRESSURE / 2;
+    state.front = Math.max(-cap, Math.min(cap, state.front));
     // Captured facilities change hands, wrecked.
     for (const s of t.sites.filter((x) => x.sector === sector)) {
       s.owner = winner;

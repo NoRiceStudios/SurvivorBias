@@ -66,5 +66,6 @@ export function deserialize(json: string): GameState {
   }
   if (s.version !== SAVE_VERSION) throw new Error(`Save version ${s.version} is not supported (expected ${SAVE_VERSION})`);
   for (const p of s.sealed) if (p) p.feint ??= null;
+  for (const side of s.sides) side.observed ??= { feints: 0, support: 0 };
   return s;
 }

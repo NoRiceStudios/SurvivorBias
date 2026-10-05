@@ -181,6 +181,7 @@ function makeSide(state: GameState, rng: Rng, id: SideId, isAI: boolean): SideSt
     memos: [],
     lowMoraleTurns: 0,
     caught: 0,
+    observed: { feints: 0, support: 0 },
   };
 }
 
@@ -224,4 +225,17 @@ export function newGame(opts: NewGameOptions = {}): GameState {
 
 export function aircraftName(kind: AircraftKind, side: SideId): string {
   return AIRCRAFT[kind].name[side];
+}
+
+const CREW_RANKS: [string[], string[]] = [
+  ['Plt Off', 'Fg Off', 'Flt Lt', 'Sgt', 'Flt Sgt', 'WO'],
+  ['Leutnant', 'Oberleutnant', 'Feldwebel', 'Unteroffizier', 'Oberfeldwebel'],
+];
+
+/** A deterministic name for the captain of an aircraft, from its serial. */
+export function captainName(side: SideId, serial: string): string {
+  let h = 2166136261;
+  for (const ch of serial) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  const u = h >>> 0;
+  return `${CREW_RANKS[side][u % CREW_RANKS[side].length]} ${FIRST_NAMES[side][(u >>> 4) % FIRST_NAMES[side].length]} ${LAST_NAMES[side][(u >>> 9) % LAST_NAMES[side].length]}`;
 }
