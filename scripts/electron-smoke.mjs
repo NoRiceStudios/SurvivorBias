@@ -1,0 +1,12 @@
+import { _electron as electron } from 'playwright-core';
+const app = await electron.launch({ args: ['--no-sandbox', '.'], executablePath: './node_modules/electron/dist/electron' });
+const w = await app.firstWindow();
+await w.waitForTimeout(1500);
+const native = await w.evaluate(() => typeof window.sbNative);
+await w.evaluate(() => window.sb.newGame('single', 0.4));
+await w.evaluate(() => window.sb.launch(0));
+await w.waitForTimeout(500);
+const saves = await w.evaluate(() => window.sbNative.listSaves());
+await w.screenshot({ path: 'screenshots/electron.png' });
+console.log('sbNative:', native, 'saves:', JSON.stringify(saves));
+await app.close();
