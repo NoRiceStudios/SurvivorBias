@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { connect, createServer, type Server, type Socket } from 'node:net';
+import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 
 const savesDir = () => {
@@ -50,6 +52,90 @@ ipcMain.handle('delete', (_e, slot: string) => {
 });
 ipcMain.on('quit', () => app.quit());
 ipcMain.on('fullscreen', () => win?.setFullScreen(!win.isFullScreen()));
+
+/* ---------------- LAN: one opponent, newline-delimited JSON over TCP ---------------- */
+let server: Server | null = null;
+let peer: Socket | null = null;
+
+function lanStatus(status: Record<string, unknown>) {
+  win?.webContents.send('lan:status', status);
+}
+
+function attach(s: Socket) {
+  peer = s;
+  s.setNoDelay(true);
+  s.setEncoding('utf8');
+  let buf = '';
+  s.on('data', (chunk: string) => {
+    buf += chunk;
+    let i: number;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i);
+      buf = buf.slice(i + 1);
+      if (!line.trim()) continue;
+      try {
+        win?.webContents.send('lan:message', JSON.parse(line));
+      } catch {
+        /* ignore malformed line */
+      }
+    }
+  });
+  s.on('close', () => {
+    if (peer === s) peer = null;
+    lanStatus({ connected: false });
+  });
+  s.on('error', (e) => lanStatus({ connected: false, error: e.message }));
+  lanStatus({ connected: true, remote: s.remoteAddress });
+}
+
+function closeLan() {
+  peer?.destroy();
+  peer = null;
+  server?.close();
+  server = null;
+}
+
+function localAddresses(): string[] {
+  return Object.values(networkInterfaces())
+    .flat()
+    .filter((a) => a && a.family === 'IPv4' && !a.internal)
+    .map((a) => a!.address);
+}
+
+ipcMain.handle('lan:host', (_e, port: number) =>
+  new Promise((resolve) => {
+    closeLan();
+    const srv = createServer((s) => {
+      // One opponent at a time; a reconnecting player replaces a dead connection.
+      if (peer && !peer.destroyed) {
+        s.end(JSON.stringify({ t: 'reject', reason: 'This game already has an opponent connected.' }) + '\n');
+        return;
+      }
+      attach(s);
+    });
+    srv.once('error', (e) => resolve({ ok: false, error: e.message }));
+    srv.listen(port, () => {
+      server = srv;
+      resolve({ ok: true, addresses: localAddresses(), port });
+    });
+  }),
+);
+
+ipcMain.handle('lan:join', (_e, host: string, port: number) =>
+  new Promise((resolve) => {
+    closeLan();
+    const s = connect({ host, port }, () => {
+      attach(s);
+      resolve({ ok: true });
+    });
+    s.once('error', (e) => resolve({ ok: false, error: e.message }));
+  }),
+);
+
+ipcMain.on('lan:send', (_e, msg: unknown) => {
+  if (peer && !peer.destroyed) peer.write(JSON.stringify(msg) + '\n');
+});
+ipcMain.on('lan:close', () => closeLan());
 
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => app.quit());

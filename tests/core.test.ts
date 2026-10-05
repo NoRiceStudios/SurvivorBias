@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   aiPlan,
+  applyCommands,
+  redactFor,
+  type Command,
   approveRequest,
   gatherFliers,
   newDay,
@@ -471,5 +474,68 @@ describe('leader requests', () => {
       }
     }
     throw new Error('no plate request seen in 30 campaigns');
+  });
+});
+
+describe('LAN: redaction and command replay', () => {
+  const played = () => {
+    const s = startCampaign({ seed: 'lan', mode: 'lan' });
+    for (let w = 0; w < 4 && !s.outcome; w++) resolveTurn(s, [playerPlan(s), aiPlan(s, 1)]);
+    return s;
+  };
+
+  it('the joining player learns nothing about the enemy wing or the hidden truth', () => {
+    const s = played();
+    const v = redactFor(s, 1);
+    const json = JSON.stringify(v);
+    expect(v.sides[0].squadrons).toEqual([]);
+    expect(v.sides[0].resources.supplies).toBe(0);
+    for (const sq of s.sides[0].squadrons) for (const af of sq.airframes) expect(json).not.toContain(af.serial);
+    for (const k of ['fighter', 'medium', 'heavy', 'recon'] as const) for (const z of ZONES) expect(v.lethality[k][z]).toBe(0);
+    expect(v.rng.s).toBe(0);
+    expect(v.lastDebriefs[0]).toBeNull();
+    for (const site of v.theater.sites.filter((x) => x.owner === 0)) expect(site.condition).toBe(s.sides[1].perceived.sites[site.id] ?? 100);
+    for (const e of v.archive) {
+      expect(e.lostHits).toEqual([[], []]);
+      expect(e.trueKills).toEqual([0, 0]);
+      expect(e.survivorHits[0]).toEqual([]);
+    }
+    // Own side is intact.
+    expect(v.sides[1]).toEqual(s.sides[1]);
+  });
+
+  it('at the end of the war the archives open', () => {
+    const s = played();
+    s.outcome = ['victory', 'defeat'];
+    expect(redactFor(s, 1)).toEqual(JSON.parse(JSON.stringify(s)));
+  });
+
+  it('commands replayed on the host give exactly the joining player result', () => {
+    const s = played();
+    s.sides[1].resources.supplies = 1000;
+    s.sides[1].researching = null;
+    const client = redactFor(s, 1);
+    const side = s.sides[1];
+    const project = ['radar', 'selfSealing', 'photoRecon', 'radios'].find((r) => !side.research.includes(r))!;
+    const sq = side.squadrons.find((q) => q.kind === 'medium')!;
+    const free = ZONES.find((z) => sq.armor[z] > 0)!;
+    const cmds: Command[] = [
+      { k: 'armor', sq: sq.id, zone: free, value: sq.armor[free] - 1 },
+      { k: 'armor', sq: sq.id, zone: 'cockpit', value: Math.min(3, sq.armor.cockpit + 1) },
+      { k: 'doctrine', sq: sq.id, d: { formation: 0.9 } },
+      { k: 'build', kind: 'fighter' },
+      { k: 'research', id: project },
+      { k: 'focus', v: 'gunnery' },
+    ];
+    const plan = playerPlan(s);
+    expect(applyCommands(client, 1, cmds, plan).ok).toBe(true);
+    expect(applyCommands(s, 1, cmds, plan).ok).toBe(true);
+    expect(s.sides[1]).toEqual(client.sides[1]);
+  });
+
+  it('a command the host cannot apply is reported', () => {
+    const s = played();
+    s.sides[1].resources.supplies = 0;
+    expect(applyCommands(s, 1, [{ k: 'build', kind: 'medium' }]).ok).toBe(false);
   });
 });

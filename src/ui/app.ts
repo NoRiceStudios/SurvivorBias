@@ -2,6 +2,7 @@ import { aiPlan } from '../core/ai';
 import { emptyPlan, validatePlan } from '../core/actions';
 import { deserialize, serialize, startCampaign } from '../core/game';
 import { resolveTurn } from '../core/turn';
+import { applyCommand, type Command } from '../core/commands';
 import { carryPlan, defaultPlan } from '../core/plans';
 import type { GameState, SideId, TurnPlan } from '../core/types';
 import { sfxClick, sfxStamp, stopDrone } from './audio';
@@ -11,6 +12,8 @@ import { renderHq } from './hq';
 import { renderDebrief, renderRadio } from './battle';
 import { renderTitle } from './title';
 import { renderTheaterChange } from './theaterui';
+import { LAN_SAVE, LanSession } from './lan';
+import { renderLanSetup, renderLanWait } from './lanscreens';
 import { storage } from './storage';
 
 export type Screen =
@@ -20,7 +23,9 @@ export type Screen =
   | { kind: 'radio'; side: SideId }
   | { kind: 'debrief'; side: SideId; tab: string }
   | { kind: 'end'; side: SideId; tab: string }
-  | { kind: 'theater'; side: SideId; next: Screen };
+  | { kind: 'theater'; side: SideId; next: Screen }
+  | { kind: 'lanSetup' }
+  | { kind: 'lanWait'; side: SideId };
 
 export const AUTOSAVE = 'autosave';
 
@@ -31,8 +36,20 @@ export class App {
   /** Squadron selected in the hangar / squadron views. */
   selected: string | null = null;
   toastTimer = 0;
+  /** Active LAN session, if this is a LAN game. */
+  lan: LanSession | null = null;
 
   constructor(public root: HTMLElement) {}
+
+  /** The side this machine commands in a LAN game. */
+  get lanSide(): SideId {
+    return this.lan?.mySide ?? 0;
+  }
+
+  endLan() {
+    this.lan?.close();
+    this.lan = null;
+  }
 
   go(screen: Screen) {
     if (this.screen.kind === 'radio' && screen.kind !== 'radio') stopDrone();
@@ -68,6 +85,12 @@ export class App {
       case 'theater':
         view = renderTheaterChange(this, s.side, s.next);
         break;
+      case 'lanSetup':
+        view = renderLanSetup(this);
+        break;
+      case 'lanWait':
+        view = renderLanWait(this, s.side);
+        break;
     }
     this.root.append(view);
     for (const [key, top] of scrollers) {
@@ -86,6 +109,21 @@ export class App {
     t.className = bad ? 'show bad' : 'show';
     window.clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => (t!.className = ''), 2600);
+  }
+
+  /** Management commands applied this week, per side (sent with sealed orders in LAN games). */
+  pendingCommands: [Command[], Command[]] = [[], []];
+
+  /** Apply a management command for a side, remember it, re-render. */
+  cmd(side: SideId, c: Command) {
+    const r = applyCommand(this.state!, side, c, this.plans[side]);
+    if (!r.ok) {
+      this.toast(r.reason, true);
+      return;
+    }
+    this.pendingCommands[side].push(c);
+    sfxClick();
+    this.render();
   }
 
   /** Run an action against game state, re-render, toast failures. */
@@ -137,15 +175,31 @@ export class App {
     }
     this.plans = [defaultPlan(this.state, 0), defaultPlan(this.state, 1)];
     if (this.state.sealed[0]) this.plans[0] = this.state.sealed[0];
+    if (this.state.sealed[1]) this.plans[1] = this.state.sealed[1];
+    if (this.state.mode === 'lan' && !this.state.outcome) {
+      // A LAN game resumes as host: reopen the port and wait for the other commander.
+      const api = window.sbNative?.lan;
+      if (!api) {
+        this.toast('LAN games can only be resumed in the desktop version.', true);
+        return;
+      }
+      this.endLan();
+      this.lan = new LanSession(this, 'host', api);
+      if (!(await this.lan.host())) return;
+      this.go(this.state.sealed[0] ? { kind: 'lanWait', side: 0 } : { kind: 'hq', side: 0, tab: 'briefing' });
+      return;
+    }
     if (this.state.outcome) this.go({ kind: 'end', side: 0, tab: 'summary' });
     // A hotseat save made after the first commander sealed their orders resumes with the second.
     else if (this.state.mode === 'hotseat') this.planning(this.state.sealed[0] ? 1 : 0);
     else this.go({ kind: 'hq', side: 0, tab: 'briefing' });
   }
 
-  async save(slot = AUTOSAVE) {
+  async save(slot?: string) {
     if (!this.state) return;
-    await storage.save(slot, serialize(this.state));
+    // The joining player of a LAN game holds only a partial view; the host keeps the save.
+    if (this.lan?.role === 'client') return;
+    await storage.save(slot ?? (this.state.mode === 'lan' ? LAN_SAVE : AUTOSAVE), serialize(this.state));
   }
 
   /** Player confirms orders for a side. */
@@ -157,6 +211,16 @@ export class App {
       return;
     }
     sfxStamp();
+    if (st.mode === 'lan' && this.lan) {
+      if (this.lan.role === 'host') {
+        st.sealed[0] = JSON.parse(JSON.stringify(this.plans[0])) as TurnPlan;
+        await this.save();
+        await this.lan.hostSealed();
+      } else {
+        this.lan.clientSealed(JSON.parse(JSON.stringify(this.plans[1])), this.pendingCommands[1]);
+      }
+      return;
+    }
     if (st.mode === 'hotseat' && side === 0) {
       st.sealed[0] = JSON.parse(JSON.stringify(this.plans[0])) as TurnPlan;
       await this.save();
@@ -193,6 +257,10 @@ export class App {
 
   afterDebriefContinue(side: SideId) {
     const st = this.state!;
+    if (st.mode === 'lan') {
+      this.go(st.outcome ? { kind: 'end', side, tab: 'summary' } : { kind: 'hq', side, tab: 'briefing' });
+      return;
+    }
     if (st.mode === 'hotseat' && side === 0) {
       this.handover(1, { kind: 'radio', side: 1 }, `Week ${st.turn - (st.outcome ? 0 : 1)} — Operations report`);
       return;

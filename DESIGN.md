@@ -340,10 +340,30 @@ their own distorted debrief.
   the second commander. After the war, a **Both War Diaries** view puts each
   side's claims, its returns to High Command and the truth side by side, week
   by week.
-- **LAN / direct IP** *(not built yet)*: one player hosts and the other
-  connects. The host runs the authoritative simulation and sends each client
-  only their perceived state, so the opponent's real state can never be read from
-  memory or network traffic.
+- **LAN / direct IP** *(implemented)*: one player hosts and commands Aldmere;
+  the other joins by address and port and commands the Directorate. Both plan
+  **at the same time**, and the week is fought when both have sealed their
+  orders.
+  - **Transport:** the Electron main process runs plain TCP with
+    newline-delimited JSON (default port 41414), one opponent per game.
+  - **The host is authoritative.** It runs the simulation and sends the joining
+    player only `redactFor(state, 1)`: their own side in full, enemy sites at
+    their believed condition, and the reported front instead of the true one.
+    It contains none of the opponent's squadrons, reports, plans or resources,
+    no hidden lethality, no RNG state, and no truth archive. The full state is
+    shared only once the war is over.
+  - **Commands, not state.** Every management change (armor, doctrine, tactics,
+    production, research, training, QC, leader requests) is a serialisable
+    `Command`. The joining player's commands travel with their sealed orders,
+    and the host replays them under the same rules, so it never has to trust
+    the joiner's copy of the game. If a replay fails, the joiner gets a fresh
+    state and plans again.
+  - **Resilience:** the host autosaves to its own slot. A joining player who
+    drops out (even after sealing) rejoins and continues; their sealed orders
+    are safe with the host. Loading a LAN save reopens the port.
+  - **Testing:** `scripts/lan-smoke.mjs` runs two desktop instances against each
+    other over TCP: it checks redaction, command replay, several weeks of play,
+    and a disconnect and rejoin.
 
 ### 10.3 How missions work in multiplayer
 
@@ -401,7 +421,7 @@ PvP, not just flavour.
 sees the map from their own side. The Aldmere and Directorate sides are mirror
 images in rules, and differ only in names and paint.
 
-**6. Turn protocol (shared by hotseat and LAN).** Each turn has five steps:
+**6. Turn protocol (shared by hotseat and LAN; implemented).** Each turn has five steps:
 
 1. Both clients get the public theater state (sector ownership, weather
    forecast) plus their own private state.

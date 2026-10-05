@@ -1,5 +1,21 @@
 /** Save storage: Electron file system when available, browser storage otherwise. */
+export interface LanStatus {
+  connected: boolean;
+  remote?: string;
+  error?: string;
+}
+
+export interface LanApi {
+  host(port: number): Promise<{ ok: boolean; error?: string; addresses?: string[]; port?: number }>;
+  join(host: string, port: number): Promise<{ ok: boolean; error?: string }>;
+  send(msg: unknown): void;
+  close(): void;
+  onMessage(cb: (msg: unknown) => void): void;
+  onStatus(cb: (status: LanStatus) => void): void;
+}
+
 export interface NativeApi {
+  lan?: LanApi;
   saveGame(slot: string, data: string): Promise<void>;
   loadGame(slot: string): Promise<string | null>;
   listSaves(): Promise<{ slot: string; modified: number }[]>;

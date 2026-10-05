@@ -1,20 +1,9 @@
 import {
   armorUsed,
-  cancelQueued,
   canBuild,
   COSTS,
   planCost,
-  queueAircraft,
   researchTurns,
-  setApproach,
-  setArmor,
-  setDoctrine,
-  setQc,
-  setTrainingFocus,
-  startResearch,
-  upgradeFactory,
-  upgradeFlak,
-  upgradeTraining,
 } from '../core/actions';
 import {
   AIRCRAFT,
@@ -28,7 +17,6 @@ import {
 import { flyable } from '../core/sim';
 import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS, WEATHER_LABEL } from '../core/theaters';
 import { FUEL_CAP, MUNITIONS_CAP } from '../core/turn';
-import { approveRequest, declineRequest } from '../core/requests';
 import type { AircraftKind, FighterApproach, Hit, SideId, SideState, Squadron, TargetId, TrainingFocus } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
@@ -56,6 +44,13 @@ export function topBar(app: App, side: SideState, debriefWeek?: number): HTMLEle
   const front = side.perceived.front;
   const res = (name: string, v: string | number, label: string, title: string, cls = '') =>
     h('div', { class: `res ${cls}`, title }, icon(name, 18), h('div', { class: 'res-v' }, h('b', null, String(v)), h('small', null, label)));
+  const lan = app.lan;
+  const lanChip = lan
+    ? h('div', { class: `lan-chip ${lan.connected ? 'on' : 'off'}`, title: lan.status },
+      lan.role === 'host'
+        ? `LAN host ${lan.addresses[0] ?? ''}:${lan.port} · ${lan.connected ? (lan.opponentSealed ? 'opponent sealed' : 'opponent planning') : 'waiting for opponent'}`
+        : `LAN · ${lan.connected ? (lan.opponentSealed ? 'host sealed' : 'host planning') : 'disconnected'}`)
+    : null;
   return h(
     'header',
     { class: 'topbar' },
@@ -64,6 +59,7 @@ export function topBar(app: App, side: SideState, debriefWeek?: number): HTMLEle
       h('span', null, debriefWeek !== undefined ? `Week ${debriefWeek} debrief` : `Week ${st.turn}`),
       debriefWeek !== undefined ? null : h('span', { class: 'act' }, `${THEATERS[st.theater.index].name} · week ${st.theater.week + 1}/${THEATERS[st.theater.index].weeks}`),
       debriefWeek !== undefined ? null : h('span', { class: 'forecast', title: 'Meteorological Office forecast for the coming operation. Usually right.' }, `Forecast: ${WEATHER_LABEL[st.forecast[side.id]]}`)),
+    lanChip,
     h('div', { class: 'resources' },
       res('supplies', r.supplies, 'supplies', 'Supplies: upgrades, repairs, production, research, armor'),
       res('fuel', r.fuel, 'fuel', `Fuel: every aircraft that flies burns it. Depots hold at most ${FUEL_CAP}.`),
@@ -86,9 +82,9 @@ export function renderHq(app: App, sideId: SideId, tab: string): HTMLElement {
         id === 'briefing' && side.requests.length ? h('span', { class: 'badge' }, String(side.requests.length)) : null),
     ),
     h('div', { class: 'tabs-spacer' }),
-    app.state!.mode === 'hotseat' ? h('button', { class: 'tab small', title: 'Hide the screen (Esc)', onclick: () => app.toggleCover() }, 'Close folder') : null,
-    h('button', { class: 'tab small', onclick: () => { void app.save(`week${app.state!.turn}`).then(() => app.toast('Campaign saved')); } }, 'Save'),
-    h('button', { class: 'tab small', onclick: () => { void app.save().then(() => app.go({ kind: 'title' })); } }, 'Main Menu'),
+    app.state!.mode !== 'single' ? h('button', { class: 'tab small', title: 'Hide the screen (Esc)', onclick: () => app.toggleCover() }, 'Close folder') : null,
+    app.lan?.role === 'client' ? null : h('button', { class: 'tab small', onclick: () => { void app.save(`week${app.state!.turn}`).then(() => app.toast('Campaign saved')); } }, 'Save'),
+    h('button', { class: 'tab small', onclick: () => { void app.save().then(() => { app.endLan(); app.go({ kind: 'title' }); }); } }, 'Main Menu'),
   );
   let body: HTMLElement;
   switch (tab) {
@@ -116,7 +112,7 @@ export function renderHq(app: App, sideId: SideId, tab: string): HTMLElement {
       ' · ',
       h('span', { class: c.munitions > side.resources.munitions ? 'bad' : '' }, `Munitions ${c.munitions}/${side.resources.munitions}`),
     ),
-    h('button', { class: 'btn primary launch', onclick: () => void app.launch(sideId) }, app.state!.mode === 'hotseat' && sideId === 0 ? 'Seal Orders ▸' : 'Launch Operation ▸'),
+    h('button', { class: 'btn primary launch', onclick: () => void app.launch(sideId) }, app.state!.mode === 'lan' || (app.state!.mode === 'hotseat' && sideId === 0) ? 'Seal Orders ▸' : 'Launch Operation ▸'),
   );
   return h('div', { class: 'hq' }, topBar(app, side), h('div', { class: 'hq-body' }, nav, h('main', { class: 'content', 'data-keep-scroll': `hq-${tab}` }, body)), launch);
 }
@@ -160,8 +156,8 @@ function briefing(app: App, side: SideState): HTMLElement {
         h('div', { class: 'request-text' }, r.text),
         h('div', { class: 'request-effect muted small' }, `If approved: ${r.effect}`),
         h('div', { class: 'request-actions' },
-          h('button', { class: 'btn small', onclick: () => app.act(() => approveRequest(side, r.id, app.plans[side.id])) }, r.cost ? `Approve (${r.cost} supplies)` : 'Approve'),
-          h('button', { class: 'btn choice small', onclick: () => app.act(() => declineRequest(side, r.id)) }, 'Decline'),
+          h('button', { class: 'btn small', onclick: () => app.cmd(side.id, { k: 'approve', id: r.id }) }, r.cost ? `Approve (${r.cost} supplies)` : 'Approve'),
+          h('button', { class: 'btn choice small', onclick: () => app.cmd(side.id, { k: 'decline', id: r.id }) }, 'Decline'),
         ),
       )),
       h('p', { class: 'muted small' }, 'Leaders ask in character. Their advice is only as good as they are.'),
@@ -325,7 +321,7 @@ function operations(app: App, side: SideState): HTMLElement {
     );
   });
   const appr = side.approach;
-  const setAppr = (k: FighterApproach, v: number) => app.act(() => setApproach(side, { ...appr, [k]: Math.max(0.01, v) }));
+  const setAppr = (k: FighterApproach, v: number) => app.cmd(side.id, { k: 'approach', w: { ...appr, [k]: Math.max(0.01, v) } });
   return h('div', { class: 'col' },
     panel('Mission',
       theaterMap(st, { viewer: side.id, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), feint: plan.feint?.sector, scale: 2 }),
@@ -365,7 +361,7 @@ function squadrons(app: App, side: SideState): HTMLElement {
   const cards = side.squadrons.map((sq) => {
     const info = ARCHETYPE_INFO[sq.leader.archetype];
     const d = sq.doctrine;
-    const set = (k: keyof typeof d) => (v: number) => app.act(() => setDoctrine(side, sq.id, { [k]: v }));
+    const set = (k: keyof typeof d) => (v: number) => app.cmd(side.id, { k: 'doctrine', sq: sq.id, d: { [k]: v } });
     const repairs = sq.airframes.filter((a) => a.status === 'repair').length;
     return h('section', { class: 'paper panel sq-card' },
       h('div', { class: 'sq-head' },
@@ -428,8 +424,8 @@ function hangar(app: App, side: SideState): HTMLElement {
       h('td', null, ZONE_LABEL[z]),
       h('td', { class: 'plates' }, Array.from({ length: MAX_ARMOR_PER_ZONE }, (_, i) => h('i', { class: i < sq.armor[z] ? 'on' : '' }))),
       h('td', null,
-        h('button', { class: 'btn tiny', onclick: () => app.act(() => setArmor(side, sq.id, z, sq.armor[z] - 1)) }, '−'),
-        h('button', { class: 'btn tiny', onclick: () => app.act(() => setArmor(side, sq.id, z, sq.armor[z] + 1)) }, '+'),
+        h('button', { class: 'btn tiny', onclick: () => app.cmd(side.id, { k: 'armor', sq: sq.id, zone: z, value: sq.armor[z] - 1 }) }, '−'),
+        h('button', { class: 'btn tiny', onclick: () => app.cmd(side.id, { k: 'armor', sq: sq.id, zone: z, value: sq.armor[z] + 1 }) }, '+'),
       ),
       h('td', { class: 'muted' }, comp.length ? `${compCount[z] ?? 0} holes (${Math.round(((compCount[z] ?? 0) / total) * 100)}%)` : '—'),
     ),
@@ -473,17 +469,17 @@ function factory(app: App, side: SideState): HTMLElement {
           h('div', null, h('span', null, 'Works condition'), meter(side.facilities.industry, 100, 10, side.facilities.industry < 50 ? 'bad' : '')),
           h('div', null, h('span', null, 'Output'), h('b', null, `${rate.toFixed(1)} pts/week`)),
         ),
-        h('button', { class: 'btn', onclick: () => app.act(() => upgradeFactory(side)), disabled: f.level >= 5 }, `Expand works (${COSTS.factoryUpgrade(f.level)} supplies)`),
+        h('button', { class: 'btn', onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'factory' }), disabled: f.level >= 5 }, `Expand works (${COSTS.factoryUpgrade(f.level)} supplies)`),
       ),
       panel('Quality Control',
         h('p', { class: 'muted' }, 'Rushed production is faster, but some aircraft will have faults nobody finds until they fail in the air.'),
         h('div', { class: 'choice-row' }, (['rushed', 'standard', 'strict'] as const).map((q) =>
-          h('button', { class: `btn choice ${f.qc === q ? 'on' : ''}`, onclick: () => app.act(() => setQc(side, q)) }, q[0].toUpperCase() + q.slice(1)),
+          h('button', { class: `btn choice ${f.qc === q ? 'on' : ''}`, onclick: () => app.cmd(side.id, { k: 'qc', v: q }) }, q[0].toUpperCase() + q.slice(1)),
         )),
       ),
       panel('Ground Defences',
         h('p', { class: 'muted' }, `Flak batteries around our works and airfields. Current strength: ${Math.round(side.flak * 100)}.`),
-        h('button', { class: 'btn', onclick: () => app.act(() => upgradeFlak(side)), disabled: side.flak >= 1.5 }, `Add batteries (${COSTS.flakUpgrade(side.flak)} supplies, 20 munitions)`),
+        h('button', { class: 'btn', onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'flak' }), disabled: side.flak >= 1.5 }, `Add batteries (${COSTS.flakUpgrade(side.flak)} supplies, 20 munitions)`),
       ),
     ),
     h('div', { class: 'col' },
@@ -494,11 +490,11 @@ function factory(app: App, side: SideState): HTMLElement {
           return h('div', { class: `build ${ok ? '' : 'locked'}` },
             aircraftCanvas(k, { side: side.id, seed: 2 }, 1),
             h('div', null, h('div', { class: 'sq-name' }, spec.name[side.id]), h('div', { class: 'muted small' }, ok ? `${spec.role} · ${spec.build} pts · crew ${spec.crew}` : `Requires: ${RESEARCH.find((r) => r.id === spec.requires)?.name}`)),
-            h('button', { class: 'btn', disabled: !ok, onclick: () => app.act(() => queueAircraft(side, k)) }, `Order (${spec.cost})`),
+            h('button', { class: 'btn', disabled: !ok, onclick: () => app.cmd(side.id, { k: 'build', kind: k }) }, `Order (${spec.cost})`),
           );
         })),
         h('h3', null, 'Queue'),
-        f.queue.length ? h('ol', { class: 'queue' }, f.queue.map((k, i) => h('li', null, AIRCRAFT[k].name[side.id], h('button', { class: 'btn tiny', onclick: () => app.act(() => cancelQueued(side, i)) }, '✕')))) : h('p', { class: 'muted' }, 'Nothing on order.'),
+        f.queue.length ? h('ol', { class: 'queue' }, f.queue.map((k, i) => h('li', null, AIRCRAFT[k].name[side.id], h('button', { class: 'btn tiny', onclick: () => app.cmd(side.id, { k: 'cancel', i }) }, '✕')))) : h('p', { class: 'muted' }, 'Nothing on order.'),
         h('p', { class: 'muted small' }, `Progress carried: ${f.progress.toFixed(1)} pts. New aircraft join the squadron of their type with the fewest machines.`),
       ),
     ),
@@ -522,12 +518,12 @@ function training(app: App, side: SideState): HTMLElement {
         h('div', null, h('span', null, 'In training'), h('b', null, `${t.inTraining}`)),
         h('div', null, h('span', null, 'Awaiting intake'), h('b', null, `${side.resources.replacements}`)),
       ),
-      h('button', { class: 'btn', disabled: t.level >= 5, onclick: () => app.act(() => upgradeTraining(side)) }, `Expand school (${COSTS.trainingUpgrade(t.level)} supplies)`),
+      h('button', { class: 'btn', disabled: t.level >= 5, onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'training' }) }, `Expand school (${COSTS.trainingUpgrade(t.level)} supplies)`),
       h('p', { class: 'muted' }, 'Graduates fill squadrons that have more aircraft than crews. A squadron without crews cannot fly, however many aircraft it has.'),
     ),
     panel('Syllabus',
       h('div', { class: 'focus-list' }, focus.map(([id, label, desc]) =>
-        h('button', { class: `focus ${t.focus === id ? 'on' : ''}`, onclick: () => app.act(() => setTrainingFocus(side, id)) }, h('b', null, label), h('span', null, desc)),
+        h('button', { class: `focus ${t.focus === id ? 'on' : ''}`, onclick: () => app.cmd(side.id, { k: 'focus', v: id }) }, h('b', null, label), h('span', null, desc)),
       )),
     ),
   );
@@ -545,7 +541,7 @@ function research(app: App, side: SideState): HTMLElement {
         h('div', { class: 'r-head' }, h('b', null, r.name), done ? h('span', { class: 'stamp notice' }, 'IN SERVICE') : active ? h('span', { class: 'stamp order' }, 'IN HAND') : null),
         h('div', { class: 'small' }, r.desc),
         locked ? h('div', { class: 'muted small' }, `Requires ${RESEARCH.find((x) => x.id === r.requires)?.name}`) : null,
-        !done && !active ? h('button', { class: 'btn small', disabled: !!locked || !!side.researching, onclick: () => app.act(() => startResearch(side, r.id)) }, `Fund (${r.cost} supplies, ${researchTurns(r.cost)}w)`) : null,
+        !done && !active ? h('button', { class: 'btn small', disabled: !!locked || !!side.researching, onclick: () => app.cmd(side.id, { k: 'research', id: r.id }) }, `Fund (${r.cost} supplies, ${researchTurns(r.cost)}w)`) : null,
       );
     })),
   );

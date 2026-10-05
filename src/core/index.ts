@@ -12,3 +12,5 @@ export * from './theaters';
 export * from './plans';
 export * from './lethality';
 export * from './requests';
+export * from './commands';
+export * from './redact';

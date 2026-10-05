@@ -25,11 +25,11 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
   const [title, text] = OUTCOME_TEXT[outcome];
   const other = (1 - sideId) as SideId;
   const nav = h('nav', { class: 'tabs' },
-    [['summary', 'Outcome'], ['archive', 'Declassified'], ['ledger', 'The Ledger'], ...(st.mode === 'hotseat' ? [['diaries', 'Both War Diaries']] : [])].map(([id, label]) =>
+    [['summary', 'Outcome'], ['archive', 'Declassified'], ['ledger', 'The Ledger'], ...(st.mode !== 'single' ? [['diaries', 'Both War Diaries']] : [])].map(([id, label]) =>
       h('button', { class: `tab ${tab === id ? 'active' : ''}`, onclick: () => { sfxClick(); app.go({ kind: 'end', side: sideId, tab: id }); } }, label)),
-    st.mode === 'hotseat' ? h('button', { class: 'tab', onclick: () => app.go({ kind: 'end', side: other, tab }) }, `View ${st.sides[other].short}`) : null,
+    st.mode !== 'single' ? h('button', { class: 'tab', onclick: () => app.go({ kind: 'end', side: other, tab }) }, `View ${st.sides[other].short}`) : null,
     h('div', { class: 'tabs-spacer' }),
-    h('button', { class: 'tab small', onclick: () => app.go({ kind: 'title' }) }, 'Main Menu'),
+    h('button', { class: 'tab small', onclick: () => { app.endLan(); app.go({ kind: 'title' }); } }, 'Main Menu'),
   );
   const trueLost = st.archive.reduce((a, e) => a + e.trueLosses[sideId], 0);
   const trueKills = st.archive.reduce((a, e) => a + e.trueKills[sideId], 0);
