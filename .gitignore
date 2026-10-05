@@ -5,3 +5,4 @@ out/
 *.log
 screenshots/tmp/
 screenshots/
+.claude/worktrees/
