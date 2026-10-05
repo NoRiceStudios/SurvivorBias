@@ -61,10 +61,9 @@ Full reports: [marta-report.md](marta-report.md), [jonas-report.md](jonas-report
 
 Measured with `scripts/strategies.ts` (30 games per cell): the "close support + feint every week" recipe now wins 0–17% (previously 15–30%), while a mixed AI-level player wins 57% on Green, 37% on Seasoned and 23% on Wald.
 
-## Open: needs a design decision
+## Design decisions after round 1
 
-- Randomise the hidden zone lethality per campaign, so the armor puzzle can't be memorised.
-- Tie strategic bombing more directly to the front.
-- Minimum theater length, or an enemy counter-offensive at the end of a theater.
-- Teach doctrine, tactics and QC through leader remarks and requests.
-- Economy structure: fold fuel and munitions into supplies, or keep them as separate rationed stocks.
+- **Lethality:** randomised per campaign and per aircraft type. Implemented.
+- **Strategic bombing:** left as it is.
+- **Theater pacing:** kept as it is (at most one sector per week).
+- **Teaching:** squadron leaders' requests. Implemented.

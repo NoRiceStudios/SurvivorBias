@@ -48,6 +48,8 @@ export interface Hit {
   lethal?: boolean;
   /** Armor plate stopped a hit that would otherwise have brought the aircraft down. */
   saved?: boolean;
+  /** Aircraft type, recorded for the archive. */
+  kind?: AircraftKind;
 }
 
 export interface Airframe {
@@ -164,6 +166,8 @@ export interface Perceived {
   enemyArmorSeen: ZoneMap<number>;
   /** Cumulative survivor hits by zone (what the debriefs showed). */
   survivorHits: ZoneMap<number>;
+  /** The same, per aircraft type. */
+  survivorHitsByKind: Partial<Record<AircraftKind, ZoneMap<number>>>;
   claimedKillsTotal: number;
 }
 
@@ -196,6 +200,8 @@ export interface SideState {
   caught: number;
   /** What this side has seen the enemy do recently (decaying counts): controllers and the Army learn. */
   observed: { feints: number; support: number };
+  /** Squadron leaders' requests waiting on the commander's desk this week. */
+  requests: LeaderRequest[];
 }
 
 export interface RaidPlan {
@@ -236,6 +242,8 @@ export interface PlaneRecord {
   sawApproach: Record<FighterApproach, number>;
   enemiesSeen: number;
   lastWords?: string;
+  /** Turned back with a mechanical fault before contact. */
+  mechanical?: boolean;
 }
 
 export interface RadioLine {
@@ -338,6 +346,8 @@ export interface GameState {
   front: number;
   theater: TheaterState;
   theaterResults: TheaterResult[];
+  /** HIDDEN: per-type chance that one hit in a zone is fatal, rolled per campaign. */
+  lethality: Record<AircraftKind, ZoneMap<number>>;
   /** Weather for the coming week (true) and each side's forecast. */
   weather: Weather;
   forecast: [Weather, Weather];
@@ -390,4 +400,32 @@ export interface TheaterResult {
   winner: SideId | null;
   weeks: number;
   decisive: boolean;
+}
+
+/** --- Squadron leaders' requests --- */
+
+export type RequestKind =
+  | 'tighterBox'
+  | 'headOn'
+  | 'rest'
+  | 'higher'
+  | 'breakOffSooner'
+  | 'pressHome'
+  | 'strictQc'
+  | 'gunnery'
+  | 'reporting'
+  | 'plateTheHoles';
+
+export interface LeaderRequest {
+  id: string;
+  squadronId: string;
+  kind: RequestKind;
+  /** What the leader says. */
+  text: string;
+  /** What approving does, including the trade-off. */
+  effect: string;
+  cost: number;
+  /** For plate requests: the zone to add plate to, and the zone it comes off. */
+  zone?: ZoneId;
+  from?: ZoneId;
 }

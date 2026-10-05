@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   aiPlan,
+  approveRequest,
   gatherFliers,
   newDay,
   resolveRecon,
@@ -20,7 +21,6 @@ import {
   setArmor,
   startCampaign,
   validatePlan,
-  ZONE_LETHALITY,
   ZONES,
   type GameState,
   type TurnPlan,
@@ -97,24 +97,37 @@ describe('campaign', () => {
 });
 
 describe('survivorship bias', () => {
-  it('survivor damage is concentrated in low-lethality zones', () => {
-    const lostZ: Record<string, number> = {};
-    const survZ: Record<string, number> = {};
-    for (let g = 0; g < 6; g++) {
+  it('survivor damage is concentrated in low-lethality zones (for each campaign\'s own profile)', () => {
+    // Count, per campaign, how many fatal hits and survivor holes fall in that campaign's deadly zones.
+    let fatalDeadly = 0, fatalAll = 0, survDeadly = 0, survAll = 0;
+    for (let g = 0; g < 8; g++) {
       const s = startCampaign({ seed: `wald${g}` });
       for (let i = 0; i < 8 && !s.outcome; i++) endTurnSingle(s, playerPlan(s));
-      for (const e of s.archive) {
-        for (const h of e.lostHits[0].filter((x) => x.lethal)) lostZ[h.zone] = (lostZ[h.zone] ?? 0) + 1;
-        for (const h of e.survivorHits[0]) survZ[h.zone] = (survZ[h.zone] ?? 0) + 1;
+      for (const kind of ['medium', 'fighter'] as const) {
+        const leth = s.lethality[kind];
+        const deadly = new Set(ZONES.filter((z) => leth[z] >= 0.1));
+        for (const e of s.archive) {
+          for (const h of e.lostHits[0].filter((x) => x.lethal && x.kind === kind)) { fatalAll++; if (deadly.has(h.zone)) fatalDeadly++; }
+          for (const h of e.survivorHits[0].filter((x) => x.kind === kind)) { survAll++; if (deadly.has(h.zone)) survDeadly++; }
+        }
       }
     }
-    const share = (m: Record<string, number>, zs: ZoneId[]) => {
-      const tot = Object.values(m).reduce((a, b) => a + b, 0);
-      return zs.reduce((a, z) => a + (m[z] ?? 0), 0) / tot;
-    };
-    const deadly: ZoneId[] = ZONES.filter((z) => ZONE_LETHALITY[z] >= 0.1);
     // The hits that brought planes down are concentrated where survivors show few holes.
-    expect(share(lostZ, deadly)).toBeGreaterThan(share(survZ, deadly) * 2);
+    expect(fatalDeadly / fatalAll).toBeGreaterThan((survDeadly / survAll) * 2);
+  });
+
+  it('rolls a different hidden profile for each aircraft type and campaign', () => {
+    const a = startCampaign({ seed: 'prof-a' }).lethality;
+    const b = startCampaign({ seed: 'prof-b' }).lethality;
+    expect(a.medium).not.toEqual(a.heavy);
+    expect(a.medium).not.toEqual(b.medium);
+    expect(startCampaign({ seed: 'prof-a' }).lethality).toEqual(a);
+    for (const k of ['fighter', 'medium', 'heavy', 'recon'] as const) {
+      for (const z of ZONES) expect(a[k][z]).toBeGreaterThan(0);
+      // Outer wings and fuselage are always forgiving.
+      expect(a[k].outerWing).toBeLessThan(0.05);
+      expect(a[k].fuselage).toBeLessThan(0.05);
+    }
   });
 
   it('armoring where survivors are NOT hit beats armoring the holes', () => {
@@ -326,8 +339,10 @@ describe('hotseat missions', () => {
     const s = startCampaign({ seed: 'v2' }) as unknown as Record<string, unknown>;
     const old = { ...s, version: 2 } as Record<string, unknown>;
     delete old.sealed;
+    delete old.lethality;
     const loaded = deserialize(JSON.stringify(old));
-    expect(loaded.version).toBe(3);
+    expect(loaded.version).toBe(4);
+    expect(loaded.lethality.medium.cockpit).toBeGreaterThan(0);
     expect(loaded.sealed).toEqual([null, null]);
   });
 });
@@ -407,5 +422,54 @@ describe('playtest fixes', () => {
       saved += s.lastDebriefs[0]!.returned.flatMap((r) => r.hits).filter((h) => h.saved).length;
     }
     expect(saved).toBeGreaterThan(0);
+  });
+});
+
+describe('leader requests', () => {
+  it('leaders make requests for the human side only, and approving applies them', () => {
+    const kinds = new Set<string>();
+    let approved = 0;
+    for (let g = 0; g < 10; g++) {
+      const s = startCampaign({ seed: `req${g}` });
+      for (let w = 0; w < 8 && !s.outcome; w++) {
+        endTurnSingle(s, playerPlan(s));
+        expect(s.sides[1].requests).toEqual([]);
+        expect(s.sides[0].requests.length).toBeLessThanOrEqual(2);
+        for (const r of [...s.sides[0].requests]) {
+          kinds.add(r.kind);
+          const sq = s.sides[0].squadrons.find((q) => q.id === r.squadronId)!;
+          const before = JSON.stringify({ d: sq.doctrine, a: sq.armor, ap: s.sides[0].approach, t: s.sides[0].training.focus, q: s.sides[0].factory.qc });
+          const plan = playerPlan(s);
+          const res = approveRequest(s.sides[0], r.id, plan);
+          if (!res.ok) continue;
+          approved++;
+          const after = JSON.stringify({ d: sq.doctrine, a: sq.armor, ap: s.sides[0].approach, t: s.sides[0].training.focus, q: s.sides[0].factory.qc });
+          if (r.kind === 'rest') {
+            expect(plan.raid?.squadronIds ?? []).not.toContain(sq.id);
+            expect(plan.defense).not.toContain(sq.id);
+          } else expect(after).not.toBe(before);
+          expect(s.sides[0].requests.find((x) => x.id === r.id)).toBeUndefined();
+        }
+      }
+    }
+    expect(approved).toBeGreaterThan(5);
+    expect(kinds.size).toBeGreaterThan(3);
+  });
+
+  it('the plate request moves armor towards where the holes are', () => {
+    for (let g = 0; g < 30; g++) {
+      const s = startCampaign({ seed: `plate${g}` });
+      for (let w = 0; w < 6 && !s.outcome; w++) {
+        endTurnSingle(s, playerPlan(s));
+        const r = s.sides[0].requests.find((x) => x.kind === 'plateTheHoles');
+        if (!r) continue;
+        const sq = s.sides[0].squadrons.find((q) => q.id === r.squadronId)!;
+        const before = sq.armor[r.zone!];
+        expect(approveRequest(s.sides[0], r.id).ok).toBe(true);
+        expect(sq.armor[r.zone!]).toBe(before + 1);
+        return;
+      }
+    }
+    throw new Error('no plate request seen in 30 campaigns');
   });
 });

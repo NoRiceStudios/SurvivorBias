@@ -101,8 +101,15 @@ engine), wing roots, outer wings, fuel tanks, fuselage, tail/control surfaces,
 and turret positions.
 
 Each zone has a hidden **lethality**: how likely a hit there is to bring the
-plane down. Engines, cockpit and fuel tanks are high; outer wings and fuselage
-are low. **The player is never told these values.** That is the Wald puzzle:
+plane down. **The player is never told these values.** *(Implemented.)* They are
+**rolled per campaign and per aircraft type**, within plausible bounds:
+cockpit, engines and fuel are usually deadly, and the outer wings and fuselage
+always forgiving. Each type has its own character: the fighter's engine is in
+the nose, and the heavy bomber has four engines. Sometimes a type gets a twist,
+such as control cables run through the tail or an armoured seat fitted as
+standard. The armor puzzle has to be solved from the evidence every war, for
+every type, and the declassified archive reveals each type's profile at the
+end. That is the Wald puzzle:
 returning planes are covered in fuselage and wing hits *because* hits there are
 survivable.
 
@@ -272,6 +279,26 @@ That reward for careful observation is a core skill of the game.
 - Command Trust rises with *reported* success, so **inflating your own reports**
   upward is a real temptation. Getting caught (contradicted by recon, or
   exposed by a failed offensive) wrecks trust.
+
+## 8.5 Squadron leaders' requests *(implemented)*
+
+Each week, up to two leaders may bring a request, in character and prompted by
+what their squadron just went through:
+
+- a tighter box after losing stragglers
+- bombing from higher up after heavy flak
+- authority to turn back sooner
+- pressing attacks home
+- head-on attacks against tail gunners
+- a week's stand-down when exhausted
+- stricter factory inspection after mechanical aborts
+- gunnery or reporting at the training school
+- more plate "where we keep getting hit"
+
+Approving applies the change in one click and lifts the squadron's morale a
+little; declining costs a little morale. This is how the game teaches doctrine,
+tactics, QC and training. Advice depends on the leader's character, and the
+plate request is the survivorship trap in person.
 
 ## 9. Verification tools
 

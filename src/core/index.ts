@@ -10,3 +10,5 @@ export * from './ai';
 export * from './game';
 export * from './theaters';
 export * from './plans';
+export * from './lethality';
+export * from './requests';

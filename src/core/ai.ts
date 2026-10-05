@@ -12,7 +12,9 @@ import { ZONES } from './types';
  * A naive commander plates the holes; an insightful one plates the gaps.
  */
 export function chooseArmor(side: SideState, sq: Squadron): Record<ZoneId, number> {
-  const seen = side.perceived.survivorHits;
+  // Use this type's own survey once there is enough of it.
+  const own = side.perceived.survivorHitsByKind?.[sq.kind];
+  const seen = own && ZONES.reduce((a, z) => a + own[z], 0) > 10 ? own : side.perceived.survivorHits;
   const totalSeen = ZONES.reduce((a, z) => a + seen[z], 0);
   const budget = AIRCRAFT[sq.kind].armorBudget;
   const weights = {} as Record<ZoneId, number>;

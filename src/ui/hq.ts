@@ -28,6 +28,7 @@ import {
 import { flyable } from '../core/sim';
 import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS, WEATHER_LABEL } from '../core/theaters';
 import { FUEL_CAP, MUNITIONS_CAP } from '../core/turn';
+import { approveRequest, declineRequest } from '../core/requests';
 import type { AircraftKind, FighterApproach, Hit, SideId, SideState, Squadron, TargetId, TrainingFocus } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
@@ -81,7 +82,8 @@ export function renderHq(app: App, sideId: SideId, tab: string): HTMLElement {
     'nav',
     { class: 'tabs' },
     TABS.map(([id, label]) =>
-      h('button', { class: `tab ${tab === id ? 'active' : ''}`, onclick: () => { sfxClick(); app.go({ kind: 'hq', side: sideId, tab: id }); } }, label),
+      h('button', { class: `tab ${tab === id ? 'active' : ''}`, onclick: () => { sfxClick(); app.go({ kind: 'hq', side: sideId, tab: id }); } }, label,
+        id === 'briefing' && side.requests.length ? h('span', { class: 'badge' }, String(side.requests.length)) : null),
     ),
     h('div', { class: 'tabs-spacer' }),
     app.state!.mode === 'hotseat' ? h('button', { class: 'tab small', title: 'Hide the screen (Esc)', onclick: () => app.toggleCover() }, 'Close folder') : null,
@@ -152,6 +154,18 @@ function briefing(app: App, side: SideState): HTMLElement {
   const notes = adjutantNotes(app, side);
   return h('div', { class: 'col' },
     notes.length ? h('section', { class: 'paper panel adjutant' }, h('h2', null, 'Adjutant\'s notes'), h('ul', null, notes.map((n) => h('li', null, n)))) : null,
+    side.requests.length ? h('section', { class: 'paper panel requests' },
+      h('h2', null, 'Requests from the squadrons'),
+      side.requests.map((r) => h('div', { class: 'request' },
+        h('div', { class: 'request-text' }, r.text),
+        h('div', { class: 'request-effect muted small' }, `If approved: ${r.effect}`),
+        h('div', { class: 'request-actions' },
+          h('button', { class: 'btn small', onclick: () => app.act(() => approveRequest(side, r.id, app.plans[side.id])) }, r.cost ? `Approve (${r.cost} supplies)` : 'Approve'),
+          h('button', { class: 'btn choice small', onclick: () => app.act(() => declineRequest(side, r.id)) }, 'Decline'),
+        ),
+      )),
+      h('p', { class: 'muted small' }, 'Leaders ask in character. Their advice is only as good as they are.'),
+    ) : null,
     theaterPanel(app, side),
     h('div', { class: 'grid2' },
       h('div', { class: 'col' },
@@ -175,8 +189,9 @@ export function adjutantNotes(app: App, side: SideState): string[] {
   const st = app.state!;
   const plan = app.plans[side.id];
   const notes: string[] = [];
+  const tired = side.squadrons.filter((q) => q.fatigue >= 0.7);
+  if (tired.length) notes.push(`${tired.map((q) => `${q.name} (${Math.round(q.fatigue * 10)}/10)`).join(', ')} ${tired.length > 1 ? 'are' : 'is'} exhausted. Tired crews shoot and fly worse, and their morale slides. A week standing down restores them.`);
   for (const sq of side.squadrons) {
-    if (sq.fatigue >= 0.7) notes.push(`${sq.name} is exhausted (fatigue ${Math.round(sq.fatigue * 10)}/10). Tired crews shoot and fly worse, and their morale slides. A week standing down restores them.`);
     if (sq.morale <= 0.25) notes.push(`Morale in ${sq.name} is very low. If the whole wing's morale stays this low for three weeks, the crews will refuse to fly.`);
     const idleAircraft = sq.airframes.filter((a) => a.status === 'ready').length - Math.max(0, sq.crews);
     if (idleAircraft >= 2) notes.push(`${sq.name} has ${idleAircraft} serviceable aircraft with no crews to fly them. The training school fills gaps as crews graduate.`);
@@ -387,11 +402,8 @@ function squadrons(app: App, side: SideState): HTMLElement {
 /* ---------------- Hangar ---------------- */
 function survivorComposite(app: App, side: SideState, kind: AircraftKind): Hit[] {
   const st = app.state!;
-  if (kind === 'fighter' || kind === 'recon') {
-    const d = st.lastDebriefs[side.id];
-    return d ? d.returned.filter((r) => r.kind === kind).flatMap((r) => r.hits) : [];
-  }
-  return st.archive.slice(-10).flatMap((e) => e.survivorHits[side.id]);
+  // Every hole the ground crews logged on this type over the last ten weeks.
+  return st.archive.slice(-10).flatMap((e) => e.survivorHits[side.id]).filter((h) => (h.kind ?? 'medium') === kind);
 }
 
 const PLATE_TINT = ['', '#c5c8a0', '#9aa774', '#6f7f4f'];
@@ -439,7 +451,7 @@ function hangar(app: App, side: SideState): HTMLElement {
         h('table', { class: 'armor-table' }, h('tbody', null, rows)),
       ),
       panel('Damage Survey — Returned Aircraft',
-        h('p', { class: 'muted' }, `Every hole recorded by the ground crews on aircraft that came back${sq.kind === 'fighter' || sq.kind === 'recon' ? ' last week' : ' (last 10 weeks, all bombers)'}. ${comp.length} holes plotted.`),
+        h('p', { class: 'muted' }, `Every hole recorded by the ground crews on ${AIRCRAFT[sq.kind].name[side.id]}s that came back (last 10 weeks). ${comp.length} holes plotted. Each type is built differently.`),
         h('div', { class: 'blueprint-wrap' }, aircraftCanvas(sq.kind, { side: side.id, style: 'blueprint', hits: comp, dots: true }, sq.kind === 'heavy' ? 3 : sq.kind === 'medium' ? 4 : 6)),
         h('p', { class: 'handwritten' }, comp.length > 30 ? 'The pattern is clear enough. The question is what it means.' : 'Too few returns yet to see a pattern.'),
       ),

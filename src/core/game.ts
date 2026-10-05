@@ -2,6 +2,7 @@ import { aiPlan } from './ai';
 import { emptyPlan } from './actions';
 import { Rng } from './rng';
 import { newGame, SAVE_VERSION, type NewGameOptions } from './setup';
+import { DEFAULT_LETHALITY } from './lethality';
 import { depthFor } from './theaters';
 import { resolveTurn } from './turn';
 import type { GameState, SideId, TurnPlan } from './types';
@@ -64,8 +65,17 @@ export function deserialize(json: string): GameState {
     for (const side of s.sides) side.commander ??= side.id === 0 ? 'Air Commodore' : 'Oberst';
     s.version = 3;
   }
+  // Version 3 saves predate per-campaign lethality profiles: they keep the original fixed one.
+  if (s.version === 3) {
+    s.lethality = JSON.parse(JSON.stringify(DEFAULT_LETHALITY));
+    for (const side of s.sides) side.perceived.survivorHitsByKind ??= {};
+    s.version = 4;
+  }
   if (s.version !== SAVE_VERSION) throw new Error(`Save version ${s.version} is not supported (expected ${SAVE_VERSION})`);
   for (const p of s.sealed) if (p) p.feint ??= null;
-  for (const side of s.sides) side.observed ??= { feints: 0, support: 0 };
+  for (const side of s.sides) {
+    side.observed ??= { feints: 0, support: 0 };
+    side.requests ??= [];
+  }
   return s;
 }

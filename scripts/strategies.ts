@@ -67,7 +67,7 @@ for (const [name, strat] of Object.entries(strategies)) {
       while (!s.outcome) endTurnSingle(s, trim(s, strat(s)));
       if (s.outcome![0] === 'victory' || s.outcome![0] === 'pyrrhic') wins++;
       weeks += s.archive.length;
-      lostBombers += s.archive.reduce((a, e) => a + e.lostHits[0].filter((h) => h.lethal).length, 0);
+      lostBombers += s.archive.reduce((a, e) => a + e.lostHits[0].filter((h) => h.lethal && (h.kind === 'medium' || h.kind === 'heavy')).length, 0);
       lostAll += s.archive.reduce((a, e) => a + e.trueLosses[0], 0);
     }
     console.log(`${name.padEnd(14)} ${diff.padEnd(9)} win ${Math.round((wins / games) * 100)}% · avg weeks ${(weeks / games).toFixed(1)} · bombers lost ${(lostBombers / games).toFixed(1)} · all aircraft lost ${(lostAll / games).toFixed(1)}`);

@@ -1,6 +1,7 @@
 import { planCost, researchTurns } from './actions';
 import { AIRCRAFT, ARCHETYPE_INFO, RESEARCH, SQUADRON_NAMES, TARGETS } from './data';
 import { buildDebrief, updatePerceived } from './reports';
+import { generateRequests } from './requests';
 import { Rng } from './rng';
 import { makeAirframe, makeLeader, makeSquadron } from './setup';
 import { finishDay, flyable, gatherFliers, newDay, resolveRaid, resolveRecon, type Flier } from './sim';
@@ -473,7 +474,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     state.sides[id].resources.munitions = Math.max(0, state.sides[id].resources.munitions - c.munitions);
   }
 
-  const day = newDay();
+  const day = newDay(state.lethality);
   const other = (id: SideId) => (1 - id) as SideId;
 
   // 1. Feints go in first. The enemy controller may scramble reserve squadrons at them;
@@ -597,6 +598,11 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     debriefs[id] = d;
   }
   secondaryObjectives(rng, state, news);
+  // Squadron leaders bring their requests to the commander (the AI runs its own wing).
+  for (const id of [0, 1] as SideId[]) {
+    const side = state.sides[id];
+    side.requests = side.isAI ? [] : generateRequests(rng, state, side, debriefs[id]);
+  }
   // Each side remembers what it saw the enemy do (observers, the Army). Memory fades.
   for (const id of [0, 1] as SideId[]) {
     const o = state.sides[id].observed;
@@ -607,8 +613,8 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   // Archive the truth.
   const hitsOf = (side: SideId, lost: boolean): Hit[] =>
     allRecs
-      .filter((r) => r.side === side && (r.kind === 'medium' || r.kind === 'heavy') && (lost ? r.fate === 'lost' : r.fate !== 'lost'))
-      .flatMap((r) => r.hits);
+      .filter((r) => r.side === side && (lost ? r.fate === 'lost' : r.fate !== 'lost'))
+      .flatMap((r) => r.hits.map((h) => ({ ...h, kind: r.kind })));
   const entry: ArchiveEntry = {
     turn: state.turn,
     trueLosses: [lost0, lost1],

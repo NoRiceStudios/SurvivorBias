@@ -367,3 +367,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .topbar .crest, .topbar .week, .topbar .week span { white-space: nowrap; }
 .resources { gap: 14px; }
 .missing td:first-child { white-space: nowrap; }
+.requests { box-shadow: 0 0 0 2px var(--olive-2), 0 0 0 4px #16171a, 6px 6px 0 4px var(--shadow); }
+.request { padding: 8px 0 10px; border-bottom: 1px dotted var(--paper-3); }
+.request-text { font-size: 21px; }
+.request-actions { margin-top: 4px; }

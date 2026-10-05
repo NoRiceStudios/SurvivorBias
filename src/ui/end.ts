@@ -1,6 +1,7 @@
-import { ZONE_LABEL, ZONE_LETHALITY } from '../core/data';
+import { AIRCRAFT, ZONE_LABEL } from '../core/data';
+import { KINDS } from '../core/lethality';
 import { SECTORS, THEATERS } from '../core/theaters';
-import type { Outcome, SideId } from '../core/types';
+import type { AircraftKind, Hit, Outcome, SideId } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
 import { sfxClick } from './audio';
@@ -38,22 +39,32 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
   if (tab === 'archive') {
     const surv = st.archive.flatMap((e) => e.survivorHits[sideId]);
     const lost = st.archive.flatMap((e) => e.lostHits[sideId]);
-    const fatal = lost.filter((x) => x.lethal);
-    const maxL = Math.max(...Object.values(ZONE_LETHALITY));
+    // Old saves have untagged hits: those were all bomber hits.
+    const ofKind = (hits: Hit[], k: AircraftKind) => hits.filter((x) => (x.kind ?? 'medium') === k);
+    const kinds = KINDS.filter((k) => ofKind(surv, k).length + ofKind(lost, k).length > 0);
+    const NAMES: Record<AircraftKind, string> = { fighter: 'fighters', medium: 'medium bombers', heavy: 'heavy bombers', recon: 'reconnaissance aircraft' };
     body = h('div', { class: 'col' },
-      h('section', { class: 'paper panel declass' },
-        h('div', { class: 'stamp big declass-stamp' }, 'DECLASSIFIED'),
-        h('h2', null, 'Where the bombers were hit'),
-        h('div', { class: 'composite-row three' },
-          h('figure', null, aircraftCanvas('medium', { side: sideId, style: 'blueprint', hits: surv, dots: true }, 4), h('figcaption', null, `What you saw: ${surv.length} holes on aircraft that returned.`)),
-          h('figure', null, aircraftCanvas('medium', { side: sideId, style: 'blueprint', hits: lost, dots: true, dotColor: '#5a5040' }, 4), h('figcaption', null, `What you never saw: ${lost.length} holes on aircraft that did not return.`)),
-          h('figure', null, aircraftCanvas('medium', { side: sideId, style: 'blueprint', hits: fatal, dots: true, dotColor: '#d02020' }, 4), h('figcaption', null, `The ${fatal.length} hits that brought them down.`)),
-        ),
-      ),
+      kinds.map((k, i) => {
+        const sv = ofKind(surv, k);
+        const ls = ofKind(lost, k);
+        const fatal = ls.filter((x) => x.lethal);
+        const leth = st.lethality[k];
+        const maxL = Math.max(...Object.values(leth));
+        const scale = k === 'heavy' ? 3 : k === 'medium' ? 4 : 5;
+        return h('section', { class: 'paper panel declass' },
+          i === 0 ? h('div', { class: 'stamp big declass-stamp' }, 'DECLASSIFIED') : null,
+          h('h2', null, `Where our ${NAMES[k]} were hit — ${AIRCRAFT[k].name[sideId]}`),
+          h('div', { class: 'composite-row three' },
+            h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: sv, dots: true }, scale), h('figcaption', null, `What you saw: ${sv.length} holes on aircraft that returned.`)),
+            h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: ls, dots: true, dotColor: '#5a5040' }, scale), h('figcaption', null, `What you never saw: ${ls.length} holes on aircraft that did not return.`)),
+            h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: fatal, dots: true, dotColor: '#d02020' }, scale), h('figcaption', null, `The ${fatal.length} hits that brought them down.`)),
+          ),
+          h('h3', null, `This war's ${AIRCRAFT[k].name[sideId]}: chance that one hit brings her down (unarmored)`),
+          ZONES.map((z) => h('div', { class: 'bar-row' }, h('span', null, ZONE_LABEL[z]), h('span', { class: 'bar red' }, h('i', { style: `width:${Math.round((leth[z] / maxL) * 100)}%` })), h('span', null, `${Math.round(leth[z] * 100)}%`))),
+        );
+      }),
       h('section', { class: 'paper panel' },
-        h('h2', null, 'Chance that a single hit brings an aircraft down (unarmored)'),
-        ZONES.map((z) => h('div', { class: 'bar-row' }, h('span', null, ZONE_LABEL[z]), h('span', { class: 'bar red' }, h('i', { style: `width:${Math.round((ZONE_LETHALITY[z] / maxL) * 100)}%` })), h('span', null, `${Math.round(ZONE_LETHALITY[z] * 100)}%`))),
-        h('p', { class: 'handwritten' }, 'The holes in the returning aircraft show where an aircraft can be hit and still come home.'),
+        h('p', { class: 'handwritten' }, 'The holes in the returning aircraft show where an aircraft can be hit and still come home. Every type is different, and every war.'),
       ),
     );
   } else if (tab === 'diaries') {

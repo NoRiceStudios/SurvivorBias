@@ -23,10 +23,11 @@ import {
   THEATERS,
   WEATHER_LABEL,
   ZONE_LABEL,
-  ZONE_LETHALITY,
   ZONES,
   aiPlan,
+  approveRequest,
   armorUsed,
+  declineRequest,
   bomberRange,
   cancelQueued,
   canBuild,
@@ -144,6 +145,7 @@ function brief() {
     'Standing orders:',
     ...(side.orders.length ? side.orders.map((o) => `  - ${o.text}${o.deadline <= st.turn ? ' [DUE THIS WEEK]' : ''}`) : ['  (none)']),
     ...(adjutant().length ? ['Adjutant\'s notes:', ...adjutant().map((n) => `  ! ${n}`)] : []),
+    ...(side.requests.length ? ['Requests from the squadrons (approve R# / decline R#):', ...side.requests.map((r, i) => `  R${i + 1} ${r.text}\n       If approved: ${r.effect}${r.cost ? ` Cost: ${r.cost} supplies.` : ''}`)] : []),
     'Correspondence this week:',
     ...side.memos.filter((m) => m.turn >= st.turn).map((m) => `  [${m.kind.toUpperCase()}] ${m.from} — ${m.subject}: ${m.body}`),
   );
@@ -152,8 +154,9 @@ function brief() {
 function adjutant(): string[] {
   const side = me();
   const notes: string[] = [];
+  const tired = side.squadrons.filter((q) => q.fatigue >= 0.7);
+  if (tired.length) notes.push(`${tired.map((q) => `${sqCode(q)} ${q.name} (${Math.round(q.fatigue * 10)}/10)`).join(', ')} ${tired.length > 1 ? 'are' : 'is'} exhausted. Tired crews shoot and fly worse, and their morale slides. A week standing down restores them.`);
   for (const sq of side.squadrons) {
-    if (sq.fatigue >= 0.7) notes.push(`${sqCode(sq)} ${sq.name} is exhausted (fatigue ${Math.round(sq.fatigue * 10)}/10). Tired crews shoot and fly worse, and their morale slides. A week standing down restores them.`);
     if (sq.morale <= 0.25) notes.push(`Morale in ${sqCode(sq)} ${sq.name} is very low. If the whole wing's morale stays this low for three weeks, the crews will refuse to fly.`);
     const idle = sq.airframes.filter((a) => a.status === 'ready').length - Math.max(0, sq.crews);
     if (idle >= 2) notes.push(`${sqCode(sq)} has ${idle} serviceable aircraft with no crews. The training school fills gaps as crews graduate.`);
@@ -208,13 +211,11 @@ function squadrons() {
 function hangar(code: string) {
   const sq = findSq(code);
   const st = state!;
-  const comp = sq.kind === 'fighter' || sq.kind === 'recon'
-    ? (st.lastDebriefs[0]?.returned.filter((r) => r.kind === sq.kind).flatMap((r) => r.hits) ?? [])
-    : st.archive.slice(-10).flatMap((e) => e.survivorHits[0]);
+  const comp = st.archive.slice(-10).flatMap((e) => e.survivorHits[0]).filter((h) => (h.kind ?? 'medium') === sq.kind);
   const counts: Record<string, number> = {};
   for (const h of comp) counts[h.zone] = (counts[h.zone] ?? 0) + 1;
   say(`Hangar — ${sq.name} (${AIRCRAFT[sq.kind].name[0]}). Plates ${armorUsed(sq)}/${AIRCRAFT[sq.kind].armorBudget} (max ${MAX_ARMOR_PER_ZONE} per zone; fitting a plate costs ${COSTS.armorChange} supplies, removing is free; plates add weight, slower aircraft are caught more often).`);
-  say(`Damage survey of returned aircraft (${sq.kind === 'fighter' || sq.kind === 'recon' ? 'last week' : 'last 10 weeks, all bombers'}): ${comp.length} holes plotted.`);
+  say(`Damage survey of returned ${AIRCRAFT[sq.kind].name[0]}s (last 10 weeks; each type is built differently): ${comp.length} holes plotted.`);
   for (const z of ZONES) say(`   ${ZONE_LABEL[z].padEnd(12)} armor ${'■'.repeat(sq.armor[z])}${'□'.repeat(MAX_ARMOR_PER_ZONE - sq.armor[z])}   holes seen: ${counts[z] ?? 0}${comp.length ? ` (${Math.round(((counts[z] ?? 0) / comp.length) * 100)}%)` : ''}`);
   say('Airframes:');
   for (const af of sq.airframes) say(`   ${af.serial}: ${af.status === 'repair' ? `in repair (${af.repairTurns}w)` : 'ready'}, condition ${af.condition}%, ${af.sorties} sorties, last sortie: ${zoneCounts(af.hits)}`);
@@ -366,13 +367,16 @@ function endView() {
   say(`######## THE WAR IS OVER: ${texts[st.outcome![0]]} ########`);
   say(`Theaters: ${st.theaterResults.map((r) => `${r.name} ${r.winner === 0 ? 'won' : r.winner === null ? 'drawn' : 'lost'}${r.decisive ? ' (decisive)' : ''} in ${r.weeks}w`).join(' | ')}`);
   say(`Weeks: ${st.archive.length} · our aircraft lost: ${sum((e) => e.trueLosses[0])} · enemy aircraft claimed by crews: ${sum((e) => e.claimed[0])} · reported to HQ: ${sum((e) => e.reportedToHq[0])} · ACTUALLY destroyed: ${sum((e) => e.trueKills[0])}`);
-  const surv = st.archive.flatMap((e) => e.survivorHits[0]);
-  const lost = st.archive.flatMap((e) => e.lostHits[0]);
-  const fatal = lost.filter((h) => h.lethal);
-  say('DECLASSIFIED — where the bombers were hit:');
-  for (const z of ZONES) {
-    const c = (a: Hit[]) => a.filter((h) => h.zone === z).length;
-    say(`   ${ZONE_LABEL[z].padEnd(12)} on survivors ${String(c(surv)).padStart(4)} · on aircraft that did not return ${String(c(lost)).padStart(4)} · fatal hits ${String(c(fatal)).padStart(3)} · chance one hit brings a plane down ${pct(ZONE_LETHALITY[z])}`);
+  for (const k of ['fighter', 'medium', 'heavy', 'recon'] as AircraftKind[]) {
+    const surv = st.archive.flatMap((e) => e.survivorHits[0]).filter((h) => (h.kind ?? 'medium') === k);
+    const lost = st.archive.flatMap((e) => e.lostHits[0]).filter((h) => (h.kind ?? 'medium') === k);
+    if (!surv.length && !lost.length) continue;
+    const fatal = lost.filter((h) => h.lethal);
+    say(`DECLASSIFIED — where our ${AIRCRAFT[k].name[0]}s were hit:`);
+    for (const z of ZONES) {
+      const c = (a: Hit[]) => a.filter((h) => h.zone === z).length;
+      say(`   ${ZONE_LABEL[z].padEnd(12)} on survivors ${String(c(surv)).padStart(4)} · on aircraft that did not return ${String(c(lost)).padStart(4)} · fatal hits ${String(c(fatal)).padStart(3)} · chance one hit brings her down ${pct(st.lethality[k][z])}`);
+    }
   }
 }
 
@@ -388,6 +392,7 @@ function run(cmd: string) {
       '        doctrine S# aggression=0..1 formation=0..1 altitude=0..1 breakoff=0.1..1',
       '        build fighter|medium|heavy|recon · cancel <queue#> · research <id> · upgrade factory|training|flak',
       '        qc rushed|standard|strict · focus balanced|gunnery|evasion|reporting',
+      'Requests: approve R# · decline R# (squadron leaders\' requests, listed in the brief)',
       'Turn: launch (fly this week\'s operation and read the debrief)',
       'UI: screenshot <screen> <out.png> [S#] — screens: title briefing operations squadrons hangar factory training research intel radio debrief-aircraft debrief-reports debrief-missing debrief-home end-summary end-archive end-ledger',
       'Start: new green|seasoned|wald [seed]. Chain commands with ";".',
@@ -471,6 +476,15 @@ function run(cmd: string) {
     case 'qc': check(setQc(side, a[0] as QcPolicy)); return factory();
     case 'focus': check(setTrainingFocus(side, a[0] as TrainingFocus)); return training();
     case 'launch': return launch();
+    case 'approve':
+    case 'decline': {
+      const req = side.requests[Number(a[0]?.replace(/^R/i, '')) - 1];
+      if (!req) throw new Error(`No request ${a[0]}. Requests are listed in the brief.`);
+      if (verb === 'approve') check(approveRequest(side, req.id, plan));
+      else declineRequest(side, req.id);
+      say(`${verb === 'approve' ? 'Approved' : 'Declined'}: ${req.text}`);
+      return;
+    }
     case 'screenshot': {
       writeFileSync(file, JSON.stringify({ state: serialize(state), plan: plan! } satisfies SaveFile));
       execFileSync('node', [resolve(__dirname, 'shot-save.mjs'), file, a[0], a[1], a[2] ? findSq(a[2]).id : ''], { stdio: 'inherit' });

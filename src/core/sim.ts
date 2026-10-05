@@ -6,8 +6,8 @@ import {
   CALLSIGNS,
   ZONE_AREA,
   ZONE_DAMAGE,
-  ZONE_LETHALITY,
 } from './data';
+import { DEFAULT_LETHALITY, type LethalityTable } from './lethality';
 import type { Rng } from './rng';
 import { depthFor, escortRange, frontSector, theaterMods, THEATERS, WEATHER_EFFECT } from './theaters';
 import type {
@@ -26,6 +26,7 @@ import type {
   TargetId,
   TurnPlan,
   ZoneId,
+  ZoneMap,
 } from './types';
 import { ZONES } from './types';
 
@@ -45,6 +46,8 @@ export interface Flier {
   passesTaken: number;
   /** Drawn away by a feint: not available for the main raid. */
   committed: boolean;
+  /** HIDDEN: this airframe type's lethality profile for the campaign. */
+  leth: ZoneMap<number>;
   /** Defending fighter actually got off the ground (airfield damage). Rolled once per day. */
   available?: boolean;
 }
@@ -56,13 +59,14 @@ export interface Flier {
  */
 export interface Day {
   fliers: Map<string, Flier>;
+  lethality: LethalityTable;
   /** Sweeps over the front have already met each other today. */
   metFront: boolean;
   landing: RadioLine[];
 }
 
-export function newDay(): Day {
-  return { fliers: new Map(), metFront: false, landing: [] };
+export function newDay(lethality: LethalityTable = DEFAULT_LETHALITY): Day {
+  return { fliers: new Map(), lethality, metFront: false, landing: [] };
 }
 
 const CLOCK: Record<FighterApproach, string[]> = {
@@ -83,7 +87,7 @@ export function armorLoad(sq: Squadron): number {
 export function hitLethality(zone: ZoneId, f: Flier, armor = f.sq.armor[zone]): number {
   const res = f.side.research;
   const factor = res.includes('armorAlloy') ? ARMOR_FACTOR_ALLOY : ARMOR_FACTOR;
-  let p = ZONE_LETHALITY[zone] * Math.pow(factor, armor);
+  let p = f.leth[zone] * Math.pow(factor, armor);
   if (zone === 'fuel' && res.includes('selfSealing')) p *= 0.45;
   // Small, fast airframes take less punishment per hole but have less to lose.
   if (f.af.kind === 'fighter' || f.af.kind === 'recon') p *= 1.25;
@@ -167,7 +171,7 @@ function skillMult(f: Flier): number {
   return (0.6 + 0.8 * s) * gyro * (1 - f.sq.fatigue * 0.3);
 }
 
-function makeFlier(sq: Squadron, af: Airframe, side: SideState, role: PlaneRecord['role'], index: number): Flier {
+function makeFlier(sq: Squadron, af: Airframe, side: SideState, role: PlaneRecord['role'], index: number, lethality: LethalityTable = DEFAULT_LETHALITY): Flier {
   const cs = CALLSIGNS[side.id][sq.insignia % CALLSIGNS[side.id].length];
   return {
     rec: {
@@ -194,6 +198,7 @@ function makeFlier(sq: Squadron, af: Airframe, side: SideState, role: PlaneRecor
     passesTaken: 0,
     committed: false,
     home: false,
+    leth: lethality[af.kind],
   };
 }
 
@@ -210,7 +215,7 @@ export function gatherFliers(side: SideState, ids: string[], role: (sq: Squadron
     flyable(sq).forEach((af, i) => {
       let f = day?.fliers.get(af.id);
       if (!f) {
-        f = makeFlier(sq, af, side, role(sq), i);
+        f = makeFlier(sq, af, side, role(sq), i, day?.lethality);
         day?.fliers.set(af.id, f);
       }
       out.push(f);
@@ -343,7 +348,7 @@ export function resolveRaid(
   opts: RaidOpts = {},
 ): RaidResult | null {
   if (!raidPlan || raidPlan.squadronIds.length === 0) return null;
-  const day = opts.day ?? newDay();
+  const day = opts.day ?? newDay(state.lethality);
   const target: TargetId = raidPlan.target;
   const ctx: RaidContext = { rng, state, attacker, defender, radio: [], t: 0 };
 
@@ -387,6 +392,7 @@ export function resolveRaid(
       f.out = true;
       f.home = true;
       f.rec.fate = 'aborted';
+      f.rec.mechanical = true;
       ctx.t += 3;
       const single = f.af.kind === 'fighter' || f.af.kind === 'recon';
       say(ctx, attacker.id, f.callsign, rng.pick(['Losing oil pressure, turning back.', single ? 'Engine running rough, aborting.' : 'Rough running on number one, aborting.', 'Hydraulics failed, returning to base.']));
@@ -580,7 +586,7 @@ export function resolveRecon(
   if (!sq) return { ok: false, rec: null, intercepted: false };
   const af = flyable(sq)[0];
   if (!af) return { ok: false, rec: null, intercepted: false };
-  const f = day.fliers.get(af.id) ?? makeFlier(sq, af, side, 'recon', 0);
+  const f = day.fliers.get(af.id) ?? makeFlier(sq, af, side, 'recon', 0, day.lethality);
   day.fliers.set(af.id, f);
   const hunters = patrols.filter((p) => p.alive);
   const threat = hunters.length ? 0.6 : 0.12 + (enemy.research.includes('radar') ? 0.1 : 0);

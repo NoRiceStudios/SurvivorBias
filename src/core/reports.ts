@@ -251,7 +251,13 @@ export function updatePerceived(rng: Rng, side: SideState, d: Debrief, myRaid: R
   if (tot > 0) {
     for (const k of Object.keys(app) as FighterApproach[]) p.enemyApproach[k] = p.enemyApproach[k] * 0.5 + (app[k] / tot) * 0.5;
   }
-  for (const r of d.returned) for (const h of r.hits) p.survivorHits[h.zone]++;
+  for (const r of d.returned) {
+    const byKind = (p.survivorHitsByKind[r.kind] ??= Object.fromEntries(ZONES.map((z) => [z, 0])) as Record<(typeof ZONES)[number], number>);
+    for (const h of r.hits) {
+      p.survivorHits[h.zone]++;
+      byKind[h.zone]++;
+    }
+  }
   p.claimedKillsTotal += d.reports.reduce((a, r) => a + r.claims, 0);
   // Beliefs about enemy repair: staff assume a modest recovery each turn.
   for (const k of Object.keys(p.sites)) p.sites[k] = Math.min(100, p.sites[k] + 3);
