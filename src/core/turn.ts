@@ -94,7 +94,7 @@ function applyLosses(rng: Rng, side: SideState, recs: PlaneRecord[]) {
     }
     if (mine.length > 0 && lost === mine.length && sq.airframes.length === 0) {
       // Leader died with them.
-      sq.leader = makeLeader(rng, side.id);
+      sq.leader = makeLeader(rng, side.id, undefined, side.squadrons.map((q) => q.leader.name));
     }
     sq.notables = sq.notables.slice(0, 5);
   }
@@ -142,7 +142,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
     candidates.sort((a, b) => a.airframes.length - b.airframes.length);
     if (candidates.length > 0) candidates[0].airframes.push(af);
     else {
-      const sq = makeSquadron(state, rng, side.id, kind, 0, side.squadrons.length + 3);
+      const sq = makeSquadron(state, rng, side.id, kind, 0, side.squadrons.length + 3, undefined, side.squadrons.map((q) => q.leader.name));
       sq.crews = 0;
       sq.airframes.push(af);
       side.squadrons.push(sq);

@@ -331,3 +331,16 @@ describe('hotseat missions', () => {
     expect(loaded.sealed).toEqual([null, null]);
   });
 });
+
+describe('names', () => {
+  it('squadron leaders in a wing never share a first name or surname', () => {
+    for (let g = 0; g < 30; g++) {
+      const s = startCampaign({ seed: `names${g}` });
+      for (const side of s.sides) {
+        const names = side.squadrons.map((q) => q.leader.name.split(' '));
+        expect(new Set(names.map((n) => n[0])).size).toBe(names.length);
+        expect(new Set(names.map((n) => n.slice(1).join(' '))).size).toBe(names.length);
+      }
+    }
+  });
+});

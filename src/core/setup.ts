@@ -85,10 +85,16 @@ export function makeAirframe(
   };
 }
 
-export function makeLeader(rng: Rng, side: SideId, archetype?: Archetype): Leader {
+/** A squadron leader. Avoids reusing a first name or surname already in `taken`. */
+export function makeLeader(rng: Rng, side: SideId, archetype?: Archetype, taken: string[] = []): Leader {
   const archetypes: Archetype[] = ['braggart', 'pessimist', 'gloryHunter', 'byTheBook', 'timid'];
+  const usedFirst = new Set(taken.map((n) => n.split(' ')[0]));
+  const usedLast = new Set(taken.map((n) => n.split(' ').slice(1).join(' ')));
+  const free = (pool: string[], used: Set<string>) => pool.filter((x) => !used.has(x));
+  const firsts = free(FIRST_NAMES[side], usedFirst);
+  const lasts = free(LAST_NAMES[side], usedLast);
   return {
-    name: `${rng.pick(FIRST_NAMES[side])} ${rng.pick(LAST_NAMES[side])}`,
+    name: `${rng.pick(firsts.length ? firsts : FIRST_NAMES[side])} ${rng.pick(lasts.length ? lasts : LAST_NAMES[side])}`,
     rank: rng.pick(RANKS[side]),
     archetype: archetype ?? rng.pick(archetypes),
   };
@@ -102,6 +108,7 @@ export function makeSquadron(
   size: number,
   nameIndex: number,
   archetype?: Archetype,
+  takenNames: string[] = [],
 ): Squadron {
   const names = SQUADRON_NAMES[side];
   const sq: Squadron = {
@@ -115,7 +122,7 @@ export function makeSquadron(
     morale: rng.range(0.65, 0.8),
     fatigue: 0,
     trauma: 0,
-    leader: makeLeader(rng, side, archetype),
+    leader: makeLeader(rng, side, archetype, takenNames),
     doctrine: defaultDoctrine(kind),
     armor: defaultArmor(kind),
     notables: [],
@@ -145,12 +152,11 @@ export function emptyPerceived(): Perceived {
 function makeSide(state: GameState, rng: Rng, id: SideId, isAI: boolean): SideState {
   const archetypes: Archetype[] = rng.shuffle(['braggart', 'pessimist', 'gloryHunter', 'byTheBook', 'timid']);
   const order = rng.shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-  const squadrons: Squadron[] = [
-    makeSquadron(state, rng, id, 'fighter', 8, order[0], archetypes[0]),
-    makeSquadron(state, rng, id, 'fighter', 8, order[1], archetypes[1]),
-    makeSquadron(state, rng, id, 'medium', 6, order[2], archetypes[2]),
-    makeSquadron(state, rng, id, 'medium', 6, order[3], archetypes[3]),
-  ];
+  const squadrons: Squadron[] = [];
+  const kinds: [AircraftKind, number][] = [['fighter', 8], ['fighter', 8], ['medium', 6], ['medium', 6]];
+  kinds.forEach(([kind, size], i) =>
+    squadrons.push(makeSquadron(state, rng, id, kind, size, order[i], archetypes[i], squadrons.map((q) => q.leader.name))),
+  );
   // Keep fighter names for fighters on the Directorate side where names imply role.
   return {
     id,
