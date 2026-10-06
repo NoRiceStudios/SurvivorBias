@@ -192,8 +192,10 @@ the effect on our works as known fact and on the enemy's as an estimate built
 from our own beliefs about their sites. In hotseat and LAN each commander sees
 only that view, so no hidden information leaks.
 
-Between theaters the Ministry partly makes good a depleted wing: about 30–70%
-of the shortfall below 28 aircraft, depending on trust. Difficulty scales the
+Between theaters the Ministry partly makes good a depleted wing, in proportion
+to its confidence: up to 70% of the shortfall below 28 aircraft, and nothing
+below a confidence of 30. Our own losses can't be talked down: more than two
+aircraft lost in a week costs confidence. Difficulty scales the
 AI's resources (Green ×0.64, Seasoned ×0.82, Wald ×1.09), and the AI gets 15%
 more with each theater.
 
@@ -264,6 +266,13 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
   - **Tipping points:** below 50% a type of works is CRIPPLED. Crippled
     airfields ground more of each operation and halve fighter cover; crippled
     depots and works lose a further 30%.
+  - **Bombs, not captures, wreck works:**
+    - The condition of a type of works is the average of the home sites still
+      held, so losing ground doesn't wreck what lies behind it.
+    - Bomb damage to works is multiplied by 2.5, so about three good raids
+      cripple a type.
+    - The immediate pressure from a strike is modest; the lasting effect does
+      the work.
 - **Front warnings:** the Army warns a week ahead when either side's line is
   about to give way.
 - **No capture without air cover.** A sector cannot fall in a week in which the
@@ -351,12 +360,25 @@ That reward for careful observation is a core skill of the game.
   - **Steady:** losses shake his squadron's morale less.
   - **Sharp-eyed:** his reports exaggerate half as much.
   - **Shaken:** his squadron tires faster and his reports wander.
-- **Survival:** the leader flies callsign 1. When his aircraft is lost he bales
-  out and makes it back about half the time.
+- **Missing, then news:** the leader flies callsign 1. When his aircraft is lost
+  he is only *missing*. Two to three weeks later comes one of three outcomes:
+  - he is presumed killed, and the obituary follows;
+  - the Red Cross reports him a prisoner;
+  - rarely, he gets back through the lines and resumes command.
+
+  Only men seen to bale out can turn up again, so the radio and the outcome
+  agree.
 - **Record:** each leader keeps a record of his requests and how they were
   answered, his close calls and his heavy losses.
-- **Obituary:** a veteran's death brings an obituary built from that record
-  ("He asked three times to press his attacks home; you agreed once.").
+- **Obituary:** built from human details rather than a list:
+  - his last call;
+  - something he used to say;
+  - the request he pressed hardest and what you answered ("He asked three
+    times to press his attacks home; you agreed once.");
+  - a word from his successor.
+- **Faces:** every leader has a unique pixel portrait, built from his name.
+  It is shown on the squadron card and in the general's dispatch, in sepia
+  with a mourning band when he is dead.
 - **Prisoners of war:** parachutes are counted on every loss. Two to four weeks
   later the Red Cross reports some missing men, leaders included, as prisoners.
 - **Names:** no name is reused within a war.
@@ -580,9 +602,20 @@ replayed, and verified identically on both machines in PvP.
 - **Writing:** spare and grim when it comes to loss. Memos and forms
   (*"Form 27-B: Request for Additional Armor, denied pending Form 27-A"*) carry
   the dry humor.
-- **High Command in person:** each week's memos are read out by the general
-  (or the Directorate's officer) in an animated pop-up with a pixel-art
-  portrait and typed text.
+- **High Command in person:** in weeks with orders, praise or blame, or news of
+  the wing's own men, the general (or the Directorate's officer) reads the
+  memos in an animated pop-up with a pixel-art portrait and typed text. At the
+  end of a theater he reads the verdict, the cost and the roll of the missing.
+- **Station life:** a scene or two a week from the wing's own airfield, more in
+  a quiet week:
+  - a squadron's evening off;
+  - letters for the missing;
+  - newcomers, with names;
+  - leaders with a reputation;
+  - the ground crews.
+
+  Scenes are built per side in the core, so in hotseat and LAN each commander
+  reads only their own.
 - **Radio:** every call has several wordings, depending on weather, aircraft
   type and the leader's character, plus wounded calls and background chatter.
   Without VHF sets the wing listens on old HF equipment: many calls are lost or
