@@ -1,0 +1,189 @@
+/**
+ * The tutorial: the adjutant walks a new commander through the first weeks of
+ * a Green campaign. Each step is shown on one screen, points at one element
+ * and either waits for "Next" or for the player to do the thing it asks.
+ * Progress is kept in the save (state.tutorial), so it survives a reload.
+ */
+import type { App, Screen } from './app';
+import { sfxClick } from './audio';
+import { h } from './dom';
+
+interface Step {
+  /** The screen this step belongs to. */
+  where: (s: Screen) => boolean;
+  /** CSS selector of the element to point at. */
+  target?: string;
+  title: string;
+  text: string;
+  /** Advance on its own once this is true; otherwise the card shows "Next". */
+  done?: (app: App) => boolean;
+}
+
+const hq = (tab?: string) => (s: Screen) => s.kind === 'hq' && (!tab || s.tab === tab);
+const debrief = (tab?: string) => (s: Screen) => s.kind === 'debrief' && (!tab || s.tab === tab);
+
+const STEPS: Step[] = [
+  {
+    where: hq('briefing'),
+    title: 'Welcome to No. 7 Wing, sir',
+    text: 'You command a wing of bombers and fighters for the rest of the war. Each week you plan one operation, read what your crews say happened, and report to High Command. Be warned: almost nothing you are told is the whole truth.',
+  },
+  {
+    where: hq('briefing'),
+    target: '.orders',
+    title: 'Orders from High Command',
+    text: 'High Command sets you targets and quotas. It judges you on the returns you send in, not on what really happened. Its confidence in you decides how many supplies you get.',
+  },
+  {
+    where: hq(),
+    target: '.resources',
+    title: 'Your resources',
+    text: 'Supplies pay for armor, aircraft, training and research. Stores (fuel and munitions) are used by every aircraft that flies. Hover over any figure for details.',
+  },
+  {
+    where: hq(),
+    target: '[data-tab="operations"]',
+    title: 'Plan the week',
+    text: 'Open Operations to plan this week\'s mission.',
+    done: (app) => app.screen.kind === 'hq' && app.screen.tab === 'operations',
+  },
+  {
+    where: hq('operations'),
+    target: '.mission-grid',
+    title: 'Choose a mission',
+    text: 'Close support pushes the front directly. A fighter sweep hunts enemy fighters. A strike on a named site wrecks their airfields, works or fuel depots, which hurts them week after week. Your first order asks for a strike, so the target is already picked.',
+  },
+  {
+    where: hq('operations'),
+    target: '.sq-table',
+    title: 'Who flies',
+    text: 'Bombers carry the bombs; fighters either escort them or stay home to defend. Tired squadrons fly and shoot worse, so rest them now and then.',
+  },
+  {
+    where: hq('operations'),
+    target: '.launch',
+    title: 'Launch',
+    text: 'The bar below shows what the plan costs in stores. When you are ready, launch the operation.',
+    done: (app) => app.screen.kind === 'radio',
+  },
+  {
+    where: (s) => s.kind === 'radio',
+    target: '.radio-right',
+    title: 'The operations room',
+    text: 'This is the radio traffic as it was heard. Your old HF sets lose many calls in the static. VHF sets (Research) let you hear far more, including the last words of crews who do not come back. Continue when the log is done.',
+    done: (app) => app.screen.kind === 'debrief',
+  },
+  {
+    where: debrief('aircraft'),
+    target: '.composite-row',
+    title: 'The damage plot',
+    text: 'Every dot is a hole in a bomber that came back. The ground crew will tell you to put armor where the holes are. Before you do, ask yourself which aircraft you are not seeing here.',
+  },
+  {
+    where: debrief(),
+    target: '[data-tab="reports"]',
+    title: 'Squadron reports',
+    text: 'Open the squadron reports.',
+    done: (app) => app.screen.kind === 'debrief' && app.screen.tab === 'reports',
+  },
+  {
+    where: debrief('reports'),
+    target: '.report',
+    title: 'Form 541',
+    text: 'Each squadron leader reports what his crews believe: kills, damage, the fighters they saw. Some leaders boast, some despair, and frightened crews see double. Learn who you can trust.',
+  },
+  {
+    where: debrief(),
+    target: '[data-tab="missing"]',
+    title: 'The missing',
+    text: 'Open the list of the missing.',
+    done: (app) => app.screen.kind === 'debrief' && app.screen.tab === 'missing',
+  },
+  {
+    where: debrief('missing'),
+    title: 'Those who did not return',
+    text: 'Their damage was never recorded: there is nothing left to inspect. Their last radio calls, when you hear them, are the only clue to what brings an aircraft down.',
+  },
+  {
+    where: debrief(),
+    target: '[data-tab="home"]',
+    title: 'Home front and High Command',
+    text: 'Open Home Front & HQ.',
+    done: (app) => app.screen.kind === 'debrief' && app.screen.tab === 'home',
+  },
+  {
+    where: debrief('home'),
+    title: 'The front and High Command',
+    text: 'The Army liaison says what moved the front this week; a sector falls when pressure builds up. High Command answers your returns. When you have read everything, file your reports to start the next week.',
+    done: (app) => app.screen.kind === 'hq',
+  },
+  {
+    where: hq(),
+    target: '.adjutant',
+    title: 'My notes, sir',
+    text: 'Each week I list what needs your attention here: tired squadrons, idle crews, shortages. Squadron leaders also bring requests. Approving costs little, but their advice is only as good as they are.',
+  },
+  {
+    where: hq(),
+    target: '[data-tab="hangar"]',
+    title: 'The hangar',
+    text: 'Open the Hangar.',
+    done: (app) => app.screen.kind === 'hq' && app.screen.tab === 'hangar',
+  },
+  {
+    where: hq('hangar'),
+    target: '.armor-table',
+    title: 'Where to put the armor',
+    text: 'Armor is heavy, so each type carries only a few plates. The holes in returning aircraft show where an aircraft can be hit and still come home. Where should the plates go, then? Every type is different, and every war.',
+  },
+  {
+    where: hq(),
+    title: 'Carry on, sir',
+    text: 'That is the essentials. The Factory builds aircraft, Training turns recruits into crews, Research develops new equipment, and Intelligence collects what we think we know about the enemy. The war is yours now.',
+  },
+];
+
+export function tutorialActive(app: App): boolean {
+  return app.state?.tutorial !== undefined && app.state.mode === 'single';
+}
+
+function finish(app: App) {
+  if (app.state) delete app.state.tutorial;
+  void app.save();
+  app.render();
+}
+
+/** Called after every render: advance finished steps, then draw the current one. */
+export function renderTutorial(app: App) {
+  document.getElementById('tutorial')?.remove();
+  for (const el of document.querySelectorAll('.tut-target')) el.classList.remove('tut-target');
+  if (!tutorialActive(app)) return;
+  const st = app.state!;
+  let step = STEPS[st.tutorial!];
+  // Steps the player has already done move on by themselves.
+  while (step?.done?.(app)) {
+    st.tutorial!++;
+    step = STEPS[st.tutorial!];
+  }
+  if (!step) return finish(app);
+  if (!step.where(app.screen)) return;
+  const target = step.target ? document.querySelector<HTMLElement>(step.target) : null;
+  target?.classList.add('tut-target');
+  target?.scrollIntoView({ block: 'nearest' });
+  const last = st.tutorial === STEPS.length - 1;
+  const card = h('div', { id: 'tutorial', class: 'tutorial-card paper' },
+    h('div', { class: 'tut-from' }, `Adjutant · ${st.tutorial! + 1}/${STEPS.length}`),
+    h('h3', null, step.title),
+    h('p', null, step.text),
+    h('div', { class: 'tut-actions' },
+      h('button', { class: 'btn small choice', onclick: () => { sfxClick(); finish(app); } }, 'Skip tutorial'),
+      step.done ? h('span', { class: 'muted small' }, 'Waiting for you, sir…') : h('button', { class: 'btn small primary', onclick: () => {
+        sfxClick();
+        if (last) return finish(app);
+        st.tutorial!++;
+        app.render();
+      } }, last ? 'Dismissed' : 'Next ▸'),
+    ),
+  );
+  document.body.append(card);
+}

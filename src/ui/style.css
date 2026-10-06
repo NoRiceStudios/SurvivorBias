@@ -418,3 +418,13 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .research.tier2 { margin-left: 24px; }
 .research.tier3 { margin-left: 36px; }
 @media (max-width: 1100px) { .tech-tree { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Tutorial: the adjutant's card, and a pulsing frame round what he is talking about. */
+.tutorial-card { position: fixed; right: 18px; bottom: 74px; width: 380px; max-width: calc(100vw - 36px); z-index: 900; padding: 12px 14px; box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35), 0 0 0 3px #2c4672; animation: tut-in 0.25s ease-out; }
+.tutorial-card h3 { margin: 4px 0 6px; }
+.tutorial-card p { margin: 0 0 10px; line-height: 1.35; }
+.tut-from { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; }
+.tut-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.tut-target { outline: 3px solid #e0b040; outline-offset: 3px; animation: tut-pulse 1.2s ease-in-out infinite; position: relative; z-index: 5; }
+@keyframes tut-pulse { 50% { outline-color: rgba(224, 176, 64, 0.25); } }
+@keyframes tut-in { from { transform: translateY(16px); opacity: 0; } }

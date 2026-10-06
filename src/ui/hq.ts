@@ -79,7 +79,7 @@ export function renderHq(app: App, sideId: SideId, tab: string): HTMLElement {
     'nav',
     { class: 'tabs' },
     TABS.map(([id, label]) =>
-      h('button', { class: `tab ${tab === id ? 'active' : ''}`, onclick: () => { sfxClick(); app.go({ kind: 'hq', side: sideId, tab: id }); } }, label,
+      h('button', { class: `tab ${tab === id ? 'active' : ''}`, 'data-tab': id, onclick: () => { sfxClick(); app.go({ kind: 'hq', side: sideId, tab: id }); } }, label,
         id === 'briefing' && side.requests.length ? h('span', { class: 'badge' }, String(side.requests.length)) : null),
     ),
     h('div', { class: 'tabs-spacer' }),

@@ -1,5 +1,5 @@
-import { AIRCRAFT, APPROACH_LABEL, TARGETS } from '../core/data';
-import type { Debrief, FighterApproach, SideId, SquadronReport } from '../core/types';
+import { AIRCRAFT, APPROACH_LABEL, TARGETS, ZONE_LABEL } from '../core/data';
+import type { Debrief, FighterApproach, Hit, SideId, SquadronReport, ZoneId } from '../core/types';
 import type { App } from './app';
 import { sfxClick, sfxKey, sfxStamp, sfxStatic, startDrone, stopDrone } from './audio';
 import { h, meter, plural } from './dom';
@@ -168,7 +168,7 @@ export function renderDebrief(app: App, sideId: SideId, tab: string): HTMLElemen
   const d = st.lastDebriefs[sideId]!;
   const side = st.sides[sideId];
   const nav = h('nav', { class: 'tabs' },
-    DTABS.map(([id, label]) => h('button', { class: `tab ${tab === id ? 'active' : ''}`, onclick: () => { sfxClick(); app.go({ kind: 'debrief', side: sideId, tab: id }); } }, label,
+    DTABS.map(([id, label]) => h('button', { class: `tab ${tab === id ? 'active' : ''}`, 'data-tab': id, onclick: () => { sfxClick(); app.go({ kind: 'debrief', side: sideId, tab: id }); } }, label,
       id === 'missing' && d.missing.length ? h('span', { class: 'badge' }, String(d.missing.length)) : null)),
   );
   let body: HTMLElement;
@@ -216,7 +216,7 @@ function aircraftView(app: App, d: Debrief): HTMLElement {
             const n = d.missing.filter((m) => m.kind !== 'fighter').length;
             return n === 0 ? 'Every bomber came back.' : `${plural(n, 'bomber')} did not return. ${n === 1 ? 'Its' : 'Their'} damage was not recorded.`;
           })()),
-          h('p', { class: 'handwritten' }, 'Chief Fitter: "Wings and fuselage again, sir. Like a pepper pot."'),
+          h('p', { class: 'handwritten' }, fitterSays(allHits)),
         ),
       ),
     ) : null,
@@ -305,4 +305,18 @@ function homeView(app: App, d: Debrief): HTMLElement {
       h('p', { class: 'muted small' }, 'High Command judges you on the returns you send, not on what happened.'),
     ),
   );
+}
+
+/** The chief fitter reads the holes he can see, and only those. */
+function fitterSays(hits: Hit[]): string {
+  if (hits.length === 0) return 'Chief Fitter: "Not a mark on them, sir. Somebody up there likes us."';
+  const count: Partial<Record<ZoneId, number>> = {};
+  for (const x of hits) count[x.zone] = (count[x.zone] ?? 0) + 1;
+  const top = (Object.entries(count) as [ZoneId, number][]).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([z]) => ZONE_LABEL[z].toLowerCase());
+  const lines = [
+    `Chief Fitter: "${top.join(' and ')} again, sir. Like a pepper pot."`,
+    `Chief Fitter: "Most of it's in the ${top[0]}. If I had more plate, that's where I'd put it."`,
+    `Chief Fitter: "${top[0]}, ${top[0]}, ${top[0]}. They can't stop hitting it."`,
+  ];
+  return lines[hits.length % lines.length].replace(/"(\w)/, (_, c: string) => `"${c.toUpperCase()}`);
 }

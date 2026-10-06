@@ -52,6 +52,7 @@ export function renderTitle(app: App): HTMLElement {
       return items;
     }
     const items = [
+      btn('Tutorial', () => { menu = 'main'; app.newTutorial(); }),
       btn('New Campaign', () => { menu = 'new'; refresh(); }),
       btn('Two Commanders (Hotseat)', () => { menu = 'hotseat'; refresh(); }),
       btn('Two Commanders (LAN / Direct IP)', () => app.go({ kind: 'lanSetup' })),

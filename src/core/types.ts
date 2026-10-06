@@ -375,6 +375,8 @@ export interface GameState {
   archive: ArchiveEntry[];
   outcome: [Outcome, Outcome] | null;
   nextId: number;
+  /** Tutorial step, while the guided first campaign is running. */
+  tutorial?: number;
 }
 
 /** --- Theaters --- */

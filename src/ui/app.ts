@@ -15,6 +15,7 @@ import { renderTheaterChange } from './theaterui';
 import { LAN_SAVE, LanSession } from './lan';
 import { renderLanSetup, renderLanWait } from './lanscreens';
 import { storage } from './storage';
+import { renderTutorial } from './tutorial';
 
 export type Screen =
   | { kind: 'title' }
@@ -97,6 +98,7 @@ export class App {
       const el = this.root.querySelector<HTMLElement>(`[data-keep-scroll="${key}"]`);
       if (el) el.scrollTop = top;
     }
+    renderTutorial(this);
   }
 
   toast(msg: string, bad = false) {
@@ -159,6 +161,13 @@ export class App {
     } else {
       this.go({ kind: 'hq', side: 0, tab: 'briefing' });
     }
+  }
+
+  /** A Green campaign with the adjutant explaining each step. */
+  newTutorial() {
+    this.newGame('single', 0.15);
+    this.state!.tutorial = 0;
+    this.render();
   }
 
   async loadSlot(slot: string) {
