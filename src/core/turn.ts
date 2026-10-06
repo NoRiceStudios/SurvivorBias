@@ -979,6 +979,12 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     // Army liaison: honest about towns, optimistic about pressure.
     // Army liaison: optimistic, but steady from week to week, so its figure and its words agree.
     side.perceived.front = Math.round(state.front * (id === 0 ? 1 : -1) + 4 + rng.gauss(1)) || 0;
+    // An Intelligence Section cross-checks the Army's figures and can put the line within a band.
+    if (side.research.includes('intelOfficer')) {
+      const f = (id === 0 ? state.front : 0 - state.front) + rng.int(-2, 2);
+      const lo = 3 * Math.floor((f - 2) / 3);
+      side.perceived.frontBand = [lo, lo + 6];
+    } else delete side.perceived.frontBand;
     const reported: Reported = {
       kills: d.reports.reduce((a, r) => a + r.claims, 0),
       damage: {},

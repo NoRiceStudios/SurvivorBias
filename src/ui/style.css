@@ -493,3 +493,4 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 /* The general's verdict on the redeployment card. */
 .verdict { display: flex; gap: 12px; align-items: flex-start; text-align: left; max-width: 760px; margin: 8px auto 10px; }
 .verdict canvas { flex: none; image-rendering: pixelated; border: 2px solid #3a3226; }
+.crew-request, .merge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }

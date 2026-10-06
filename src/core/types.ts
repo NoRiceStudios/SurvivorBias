@@ -185,6 +185,8 @@ export interface Perceived {
   /** The same, per aircraft type. */
   survivorHitsByKind: Partial<Record<AircraftKind, ZoneMap<number>>>;
   claimedKillsTotal: number;
+  /** With an Intelligence Section: the band the true front lies in, from our side (low, high). */
+  frontBand?: [number, number];
   /** Y-Service guess at the enemy's next operation (may be wrong). */
   warning?: { text: string; sector?: number; guess?: { target: TargetId; siteId?: string } | null };
   /** Whether the Y-Service's recent warnings came true (most recent last). */

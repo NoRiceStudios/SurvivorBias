@@ -76,6 +76,9 @@ import {
   facilityCondition,
   buyConvoy,
   CONVOY,
+  requestCrews,
+  mergeSquadrons,
+  crewPrice,
 } from '../src/core';
 
 interface SaveFile {
@@ -150,7 +153,7 @@ function brief() {
     `Weather forecast for this operation: ${WEATHER_LABEL[st.forecast[0]]} (Met Office forecasts are usually right).`,
     `Resources: supplies ${r.supplies} · stores ${r.stores} (fuel and munitions) · replacement aircrew ${r.replacements}`,
     `High Command confidence: ${side.trust}/100 (deliveries grow with it; at 0 you are relieved) · Sectors held: ${t.held0}/${SECTORS}`,
-    `Army liaison puts the pressure on the front at ${side.perceived.front >= 0 ? '+' : ''}${side.perceived.front} (a sector usually falls at about ±${SECTOR_PRESSURE}, at most one a week; liaison figures run a little optimistic).`,
+    `Army liaison puts the pressure on the front at ${side.perceived.front >= 0 ? '+' : ''}${side.perceived.front} (a sector usually falls at about ±${SECTOR_PRESSURE}, at most one a week; liaison figures run a little optimistic).${side.perceived.frontBand ? ` Intelligence Section: the line really stands between ${side.perceived.frontBand[0]} and ${side.perceived.frontBand[1]}.` : ''}`,
     `Primary objective: gain ${DECISIVE_GAIN} sectors from the enemy (so far ${gain >= 0 ? '+' : ''}${gain}). If neither side breaks through by week ${def.weeks}, the theater goes to whoever holds the advantage, but only if they have taken at least one sector. Otherwise it is a stalemate.`,
     `Secondary objective: ${obj.text} [${obj.status.toUpperCase()}]`,
     ...(side.perceived.warning ? [`Intelligence warning: ${side.perceived.warning.text} (may be wrong${side.perceived.warning.sector !== undefined ? '; patrols over that sector would meet the raid' : ''})`] : []),
@@ -167,6 +170,12 @@ function brief() {
 function adjutant(): string[] {
   const side = me();
   const notes: string[] = [];
+  for (const kind of ['medium', 'heavy', 'fighter'] as const) {
+    const have = me().squadrons.filter((q) => q.kind === kind).reduce((a, q) => a + q.airframes.length, 0);
+    if (have > 0 && have < 6 && !me().factory.queue.includes(kind)) notes.push(`Only ${have} ${AIRCRAFT[kind].name[0]} left and none on order: order more (build ${kind}); crews follow aircraft, or ask the Ministry (crews N).`);
+  }
+  const gutted = me().squadrons.filter((q) => q.airframes.length <= 2 && me().squadrons.some((o) => o !== q && o.kind === q.kind));
+  for (const q of gutted) notes.push(`${sqCode(q)} ${q.name} is down to ${q.airframes.length} aircraft: merge it into another of its type (merge ${sqCode(q)} S#).`);
   const tired = side.squadrons.filter((q) => q.fatigue >= 0.7);
   if (tired.length) notes.push(`${tired.map((q) => `${sqCode(q)} ${q.name} (${Math.round(q.fatigue * 10)}/10)`).join(', ')} ${tired.length > 1 ? 'are' : 'is'} exhausted. Tired crews shoot and fly worse, and their morale slides. Each week standing down takes off about a third of it; it takes two or three to restore them fully.`);
   for (const sq of side.squadrons) {
@@ -432,6 +441,8 @@ function run(cmd: string) {
       '        build fighter|medium|heavy|recon · cancel <queue#> · research <id> · upgrade factory|training|flak',
       '        qc rushed|standard|strict · focus balanced|gunnery|evasion|reporting',
       'Requests: approve R# · decline R# (squadron leaders\' requests, listed in the brief)',
+      'crews N — ask the Ministry for N trained aircrew for aircraft without crews (price rises as confidence falls)',
+      'merge S# S# — fold a squadron down to one or two aircraft into another of the same type',
       `convoy — buy a stores convoy (${CONVOY.supplies} supplies for ${CONVOY.stores} stores, once a week)`,
       'repair airfield|fuel|industry — emergency repairs to our own works (40 supplies, once a week per type)',
       'fit — trim this week\'s plan to the stores we hold (drops the feint, then recon, then bomber squadrons each with a matching escort, then patrols)',
@@ -523,6 +534,14 @@ function run(cmd: string) {
       // A launch after a failed order in the same chain would fly a plan the commander didn't mean.
       if (failed.length) throw new Error(`Not launched: ${failed.length} earlier command${failed.length > 1 ? 's' : ''} in this chain failed. Fix ${failed.length > 1 ? 'them' : 'it'} and launch again.`);
       return launch();
+    case 'crews': check(requestCrews(side, Number(a[0] ?? 1))); say(`Crews posted. Replacement pool ${side.resources.replacements}; supplies ${side.resources.supplies}.`); return;
+    case 'merge': {
+      const from = findSq(a[0]);
+      const into = findSq(a[1]);
+      check(mergeSquadrons(state, side, from.id, into.id, plan));
+      say(`${from.name} merged into ${into.name}. Squadron codes have changed: see 'squadrons'.`);
+      return;
+    }
     case 'convoy': check(buyConvoy(state, side)); say(`Convoy bought: stores now ${side.resources.stores}.`); return;
     case 'repair': check(emergencyRepair(state, side, a[0] as 'airfield')); say(`Repairs done. Our ${a[0]} now at ${side.facilities[a[0] as 'airfield']}%.`); return;
     case 'fit': {

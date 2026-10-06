@@ -1,4 +1,4 @@
-import { buyConvoy, CONVOY, emergencyRepair, emptyPlan, queueAircraft, REPAIR_COST, setApproach, startResearch, upgradeFactory, upgradeFlak, upgradeTraining, validatePlan } from './actions';
+import { buyConvoy, CONVOY, requestCrews, emergencyRepair, emptyPlan, queueAircraft, REPAIR_COST, setApproach, startResearch, upgradeFactory, upgradeFlak, upgradeTraining, validatePlan } from './actions';
 import { AIRCRAFT, APPROACH_ZONES, MAX_ARMOR_PER_ZONE, RESEARCH, ZONE_AREA } from './data';
 import { Rng } from './rng';
 import { flyable } from './sim';
@@ -104,6 +104,8 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
       }
     }
   }
+  // Aircraft waiting for crews and supplies to spare: ask the Ministry.
+  if (side.resources.supplies > 220) requestCrews(side, 3);
   // Short of stores with supplies to spare: buy a convoy.
   if (side.resources.stores < 60 && side.resources.supplies > CONVOY.supplies + 120) buyConvoy(state, side);
   // Emergency repairs to badly damaged works, when supplies allow.

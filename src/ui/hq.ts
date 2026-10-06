@@ -3,6 +3,7 @@ import {
   canBuild,
   COSTS,
   REPAIR_COST,
+  crewPrice,
   CONVOY,
   planCost,
   researchTurns,
@@ -197,6 +198,14 @@ export function adjutantNotes(app: App, side: SideState): string[] {
   if (tired.length) notes.push(`${tired.map((q) => `${q.name} (${Math.round(q.fatigue * 10)}/10)`).join(', ')} ${tired.length > 1 ? 'are' : 'is'} exhausted. Tired crews shoot and fly worse, and their morale slides. Each week standing down takes off about a third of it; it takes two or three to restore them fully.`);
   const low = side.squadrons.filter((q) => q.morale <= 0.25 && q.airframes.length > 0);
   if (low.length) notes.push(`Morale in ${low.map((q) => q.name).join(', ')} is very low. If the whole wing's morale stays this low for three weeks, the crews will refuse to fly.`);
+  // A type of aircraft bleeding out, with nothing on order to replace it.
+  for (const kind of ['medium', 'heavy', 'fighter'] as const) {
+    const have = side.squadrons.filter((q) => q.kind === kind).reduce((a, q) => a + q.airframes.length, 0);
+    const onOrder = side.factory.queue.filter((k) => k === kind).length;
+    if (have > 0 && have < 6 && onOrder === 0) notes.push(`Only ${plural(have, 'aircraft', 'aircraft')} of type ${AIRCRAFT[kind].name[side.id]} left and none on order. Order more at the Factory: crews follow the aircraft (or ask the Ministry for crews, Training).`);
+  }
+  const gutted = side.squadrons.filter((q) => q.airframes.length <= 2 && side.squadrons.some((o) => o !== q && o.kind === q.kind));
+  if (gutted.length) notes.push(`${gutted.map((q) => q.name).join(', ')} ${gutted.length > 1 ? 'are' : 'is'} down to one or two aircraft and could be merged into another squadron of the same type (Squadrons).`);
   const thin = (plan.raid?.squadronIds ?? []).map((id) => side.squadrons.find((q) => q.id === id)).filter((q): q is Squadron => !!q && flyable(q).length > 0 && flyable(q).length <= 2);
   if (thin.length) notes.push(`${thin.map((q) => `${q.name} can put up only ${plural(flyable(q).length, 'aircraft', 'aircraft')}`).join('; ')}. A handful flying alone is easy prey.`);
   for (const sq of side.squadrons) {
@@ -251,7 +260,7 @@ function theaterPanel(app: App, side: SideState): HTMLElement {
     h('div', { class: 'theater-goals' },
       h('div', null, h('h3', null, 'Primary objective'),
         h('p', null, `Gain ${DECISIVE_GAIN} sectors from the enemy. Gained so far: `, h('b', { class: gain > 0 ? 'good' : gain < 0 ? 'bad' : '' }, `${gain >= 0 ? '+' : ''}${gain}`), '.'),
-        h('p', { class: 'small' }, `Army liaison puts the pressure on the front at ${side.perceived.front >= 0 ? '+' : ''}${side.perceived.front}. A sector usually falls at about ±${SECTOR_PRESSURE}, and at most one a week. Losses inflicted, close support and damage to enemy works all add pressure.`),
+        h('p', { class: 'small' }, `Army liaison puts the pressure on the front at ${side.perceived.front >= 0 ? '+' : ''}${side.perceived.front}. A sector usually falls at about ±${SECTOR_PRESSURE}, and at most one a week.${side.perceived.frontBand ? ` Intelligence Section: the line really stands between ${side.perceived.frontBand[0] >= 0 ? '+' : ''}${side.perceived.frontBand[0]} and ${side.perceived.frontBand[1] >= 0 ? '+' : ''}${side.perceived.frontBand[1]}.` : ''} Losses inflicted, close support and damage to enemy works all add pressure.`),
         h('p', { class: 'muted small' }, `If neither side breaks through by week ${def.weeks}, the theater goes to whoever holds the advantage, but only if they have taken at least one sector. Otherwise it is a stalemate.`)),
       h('div', null, h('h3', null, 'Secondary objective'), h('p', null, obj.text, ' ', h('span', { class: `stamp ${obj.status === 'discredited' || obj.status === 'overrun' ? 'reprimand' : obj.status === 'open' ? 'order' : 'notice'}` }, objStatus))),
       h('div', null, h('h3', null, `Stage: ${stage.title}`), h('p', { class: 'small' }, stage.text)),
@@ -413,6 +422,11 @@ function squadrons(app: App, side: SideState): HTMLElement {
         h('div', { class: 'doc-row' }, h('span', null, 'Break off at'), slider(d.breakOff, set('breakOff'), '10% lost', 'Never'), h('span', { class: 'small' }, pct(d.breakOff))),
       ),
       sq.notables.length ? h('ul', { class: 'notables' }, sq.notables.slice(0, 3).map((n) => h('li', null, n))) : null,
+      // A gutted squadron can be folded into another of the same type.
+      sq.airframes.length <= 2 && side.squadrons.some((q) => q !== sq && q.kind === sq.kind)
+        ? h('div', { class: 'merge-row' }, h('span', { class: 'small' }, `${sq.name} is down to ${plural(sq.airframes.length, 'aircraft', 'aircraft')}. Merge into: `),
+          side.squadrons.filter((q) => q !== sq && q.kind === sq.kind).map((q) => h('button', { class: 'btn small choice', onclick: () => app.cmd(side.id, { k: 'merge', from: sq.id, into: q.id }) }, q.name)))
+        : null,
       sq.leader.log?.length ? h('details', { class: 'leader-record' },
         h('summary', null, `${sq.leader.name.split(' ')[1]}'s record (${sq.leader.ops ?? 0} operations)`),
         h('ul', null, [...sq.leader.log].reverse().slice(0, 6).map((e) => h('li', null, `Week ${e.week}: ${e.text}.`)))) : null,
@@ -548,6 +562,9 @@ function training(app: App, side: SideState): HTMLElement {
         h('div', null, h('span', null, 'Aircraft without a crew'), h('b', null, `${crewShortfall(side)}`)),
       ),
       h('button', { class: 'btn', disabled: t.level >= 5, onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'training' }) }, `Expand school (${COSTS.trainingUpgrade(t.level)} supplies)`),
+      h('div', { class: 'crew-request' },
+        h('span', null, `Ask the Ministry for trained aircrew (${crewPrice(side)} supplies each; dearer the less it trusts you):`),
+        [1, 3].map((n) => h('button', { class: 'btn small', disabled: crewShortfall(side) === 0 || side.resources.supplies < n * crewPrice(side), onclick: () => app.cmd(side.id, { k: 'crews', n }) }, `+${n}`))),
       h('p', { class: 'muted' }, 'Graduates fill squadrons that have more aircraft than crews. A squadron without crews cannot fly, however many aircraft it has.'),
       h('p', { class: 'muted' }, 'The Air Ministry posts aircrew, and the school takes pupils, only for aircraft the wing has or has on order. To grow the wing, order aircraft at the Factory: crews follow. Spare crews move to squadrons of the same type that are short.'),
       h('p', { class: 'muted' }, `Expanding the school takes more pupils at once and turns out better shots (each level adds to a graduate's starting skill). It pays when many aircraft are waiting for crews (now ${crewShortfall(side)}).`),

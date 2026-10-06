@@ -908,4 +908,26 @@ describe('designer decisions after round 2', () => {
     expect(side.resources.stores).toBeGreaterThan(stores);
     expect(applyCommand(s, 0, { k: 'convoy' }).ok).toBe(false);
   });
+
+  it('the Ministry posts crews for supplies, and a gutted squadron can be merged', () => {
+    const s = startCampaign({ seed: 'crewmerge' });
+    const side = s.sides[0];
+    side.resources.supplies = 1000;
+    // No aircraft without crews yet: nothing to ask for.
+    expect(applyCommand(s, 0, { k: 'crews', n: 2 }).ok).toBe(false);
+    side.factory.queue.push('medium', 'medium');
+    const before = side.resources.supplies;
+    expect(applyCommand(s, 0, { k: 'crews', n: 2 }).ok).toBe(true);
+    expect(side.resources.supplies).toBeLessThan(before);
+    const meds = side.squadrons.filter((q) => q.kind === 'medium');
+    const [a, b] = meds;
+    a.airframes = a.airframes.slice(0, 2);
+    a.crews = 2;
+    const total = b.airframes.length + 2;
+    const plan = playerPlan(s);
+    expect(applyCommand(s, 0, { k: 'merge', from: a.id, into: b.id }, plan).ok).toBe(true);
+    expect(side.squadrons.includes(a)).toBe(false);
+    expect(b.airframes.length).toBe(total);
+    expect(plan.raid?.squadronIds ?? []).not.toContain(a.id);
+  });
 });

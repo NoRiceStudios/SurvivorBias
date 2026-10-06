@@ -6,6 +6,8 @@
  */
 import {
   buyConvoy,
+  mergeSquadrons,
+  requestCrews,
   cancelQueued,
   emergencyRepair,
   queueAircraft,
@@ -47,7 +49,9 @@ export type Command =
   | { k: 'approve'; id: string }
   | { k: 'decline'; id: string }
   | { k: 'repair'; what: FacilityType }
-  | { k: 'convoy' };
+  | { k: 'convoy' }
+  | { k: 'crews'; n: number }
+  | { k: 'merge'; from: string; into: string };
 
 export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?: TurnPlan): ActionResult {
   const side = state.sides[sideId];
@@ -67,6 +71,8 @@ export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?
       return { ok: true };
     case 'repair': return emergencyRepair(state, side, c.what);
     case 'convoy': return buyConvoy(state, side);
+    case 'crews': return requestCrews(side, c.n);
+    case 'merge': return mergeSquadrons(state, side, c.from, c.into, plan);
   }
 }
 

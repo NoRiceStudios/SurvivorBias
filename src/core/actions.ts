@@ -167,6 +167,63 @@ export function buyConvoy(state: GameState, side: SideState): ActionResult {
   return ok;
 }
 
+/** Supplies per aircrew asked of the Ministry: dearer the less it trusts the commander. */
+export function crewPrice(side: SideState): number {
+  return Math.round(15 + (100 - side.trust) * 0.35);
+}
+
+/** Aircraft (built or on order) without a trained crew or one at the school. Raw recruits don't count. */
+function crewless(side: SideState): number {
+  const aircraft = side.squadrons.reduce((a, q) => a + q.airframes.length, 0) + side.factory.queue.length;
+  const crews = side.squadrons.reduce((a, q) => a + Math.max(0, q.crews), 0) + side.training.inTraining;
+  return Math.max(0, aircraft - crews);
+}
+
+/** Ask the Ministry for trained aircrew, posted straight to squadrons short of crews. */
+export function requestCrews(side: SideState, n: number): ActionResult {
+  const need = crewless(side);
+  if (!Number.isFinite(n) || n < 1) return fail('Ask for at least one crew');
+  if (need <= 0) return fail('Every aircraft we have or have on order already has a crew. Order aircraft first: crews follow them');
+  const k = Math.min(Math.round(n), need);
+  const cost = k * crewPrice(side);
+  if (side.resources.supplies < cost) return fail(`Not enough supplies (${cost} needed for ${k})`);
+  side.resources.supplies -= cost;
+  let left = k;
+  for (const sq of [...side.squadrons].sort((a, b) => a.crews - a.airframes.length - (b.crews - b.airframes.length))) {
+    while (left > 0 && sq.crews < sq.airframes.length) {
+      // Posted from other units: competent, not special.
+      sq.skill = (sq.skill * sq.crews + 0.35) / (sq.crews + 1);
+      sq.crews++;
+      left--;
+    }
+  }
+  side.resources.replacements += left;
+  return ok;
+}
+
+/** Fold a gutted squadron into another of the same type: aircraft and crews move, the name goes on the roll. */
+export function mergeSquadrons(state: GameState, side: SideState, fromId: string, intoId: string, plan?: TurnPlan): ActionResult {
+  const from = side.squadrons.find((q) => q.id === fromId);
+  const into = side.squadrons.find((q) => q.id === intoId);
+  if (!from || !into || from === into) return fail('Choose two different squadrons');
+  if (from.kind !== into.kind) return fail('Only squadrons flying the same type can be merged');
+  if (from.airframes.length > 2) return fail(`${from.name} can still fly as a squadron`);
+  into.skill = (into.skill * into.crews + from.skill * from.crews) / Math.max(1, into.crews + from.crews);
+  into.airframes.push(...from.airframes);
+  into.crews += from.crews;
+  side.squadrons = side.squadrons.filter((q) => q !== from);
+  if (plan) {
+    if (plan.raid) plan.raid.squadronIds = plan.raid.squadronIds.filter((x) => x !== from.id);
+    plan.defense = plan.defense.filter((x) => x !== from.id);
+    delete plan.cover[from.id];
+    if (plan.feint) plan.feint.squadronIds = plan.feint.squadronIds.filter((x) => x !== from.id);
+    if (plan.recon?.squadronId === from.id) plan.recon = null;
+  }
+  const n = from.airframes.length;
+  side.memos.unshift({ turn: state.turn, from: 'Group HQ', kind: 'notice', subject: `${from.name} merged into ${into.name}`, body: `The last ${n === 0 ? 'men' : n === 1 ? 'crew and aircraft' : `${n} crews and aircraft`} of ${from.name} have carried their squadron badge across the field to ${into.name}. ${from.leader.rank} ${from.leader.name} becomes a flight commander there. ${from.name}'s name has been painted on the board in the mess, under the date.` });
+  return ok;
+}
+
 export function researchTurns(cost: number): number {
   return Math.max(1, Math.round(cost / 45));
 }

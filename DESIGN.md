@@ -179,7 +179,7 @@ The crew is modelled at squadron level:
 |---|---|---|
 | **Supplies** | Upgrades, R&D, repairs, armor (4 per plate fitted; removal free) | High Command deliveries (scaled by trust and our works) |
 | **Stores** (fuel and munitions, merged after playtest round 2) | Each sortie: fighter 3, medium 5, heavy 8, recon 2; flak batteries 20 | Rationed. Deliveries are about 80% of a full effort, so the wing must stand squadrons down from time to time. Depots hold at most 240. Bombing our fuel depots cuts deliveries. A "Fit to stores" button trims a plan that is too big. |
-| **Replacements** | New airmen into training | Posted, and taken into the school, only for aircraft the wing has or has on order. Crews follow aircraft, so none sit idle. |
+| **Replacements** | New airmen into training. Trained aircrew can also be asked of the Ministry for supplies (dearer the less it trusts you), but only for aircraft without crews. A squadron down to one or two aircraft can be merged into another of its type. | Posted, and taken into the school, only for aircraft the wing has or has on order. Crews follow aircraft, so none sit idle. |
 
 **What bombing does** (one rule set, `effects.ts`, for both sides):
 - **Airfields:** cratered runways keep part of each operation on the ground,
@@ -277,7 +277,9 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
       back quickly.
     - A side whose airfields or fuel depots are crippled gets much less out
       of close support.
-  - **Swing cap:** no single raid can move the front by more than 15 points in
+  - **Intelligence Section:** puts the true front within a band of about six points
+  (on the briefing); without it, only the liaison's words and optimistic figure.
+- **Swing cap:** no single raid can move the front by more than 15 points in
     a week.
 - **Front warnings:** the Army warns a week ahead when either side's line is
   about to give way.
