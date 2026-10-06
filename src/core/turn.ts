@@ -1,6 +1,7 @@
 import { tech } from './tech';
+import { remember } from './leaders';
 import { planCost, researchTurns } from './actions';
-import { AIRCRAFT, ARCHETYPE_INFO, RESEARCH, SQUADRON_NAMES, TARGETS } from './data';
+import { AIRCRAFT, ARCHETYPE_INFO, REQUEST_SHORT, RESEARCH, SQUADRON_NAMES, TARGETS, TRAIT_INFO } from './data';
 import { buildDebrief, updatePerceived } from './reports';
 import { facilityEffects } from './effects';
 import { generateRequests } from './requests';
@@ -27,14 +28,18 @@ import type {
   Facilities,
   GameState,
   Hit,
+  Leader,
   Memo,
   Order,
   Outcome,
   PlaneRecord,
   RaidResult,
+  RequestKind,
   SideId,
   SideState,
+  Squadron,
   TargetId,
+  Trait,
   TurnPlan,
 } from './types';
 
@@ -111,12 +116,17 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
         if (!r.lead && rng.chance(tech(side, 'escape'))) {
           news.push(`The crew of ${r.serial} (${sq.name}) got out and has been brought home.`);
           r.captain = `${captainName(side.id, r.serial, state.seed)} (rescued with his crew, back with the squadron)`;
-        } else sq.crews--;
+        } else {
+          sq.crews--;
+          // Men seen to bale out may turn up later as prisoners.
+          if (!r.lead) prisonerPost(rng, state, side, sq, r);
+        }
         // The leader flies callsign 1. Old hands get out more often than most: about half bale out and make it back.
         if (r.lead) {
-          if (rng.chance(0.5)) {
+          if (rng.chance(sq.leader.trait === 'lucky' ? 0.75 : 0.5)) {
             r.captain = `${sq.leader.rank} ${sq.leader.name} (baled out and made it back; his crew is missing)`;
             news.push(`${sq.leader.rank} ${sq.leader.name} of ${sq.name} baled out of ${r.serial} and has made his way back to the squadron.`);
+            remember(sq.leader, state.turn, `baled out of ${r.serial} and walked back to the squadron`);
           } else {
             leaderLost = true;
             r.captain = `${sq.leader.rank} ${sq.leader.name}`;
@@ -137,9 +147,21 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
       }
     }
     const frac = lost / mine.length;
-    sq.morale = Math.max(0, Math.min(1, sq.morale - frac * 0.45 + Math.min(0.08, kills * 0.02) + (lost === 0 ? 0.04 : 0) - (sq.fatigue > 0.6 ? 0.04 : 0)));
+    const steady = sq.leader.trait === 'steady' ? 0.6 : 1;
+    sq.morale = Math.max(0, Math.min(1, sq.morale - frac * 0.45 * steady + Math.min(0.08, kills * 0.02) + (lost === 0 ? 0.04 : 0) - (sq.fatigue > 0.6 ? 0.04 : 0)));
     sq.trauma = Math.min(1, sq.trauma * 0.7 + frac * 1.3);
-    sq.fatigue = Math.min(1, sq.fatigue + 0.22);
+    sq.fatigue = Math.min(1, sq.fatigue + 0.22 + (sq.leader.trait === 'shaken' ? 0.06 : 0));
+    if (frac >= 0.4 && lost >= 2) remember(sq.leader, state.turn, `lost ${lost} of ${mine.length} aircraft in one operation`);
+    // The leader's operations in command, and the reputation he earns after five of them.
+    if (mine.some((r) => r.lead) && !leaderLost) {
+      sq.leader.ops = (sq.leader.ops ?? 0) + 1;
+      if (sq.leader.ops >= 5 && !sq.leader.trait) {
+        sq.leader.trait = earnTrait(rng, sq);
+        const info = TRAIT_INFO[sq.leader.trait];
+        remember(sq.leader, state.turn, `became known as "${info.label}"`);
+        news.push(`${sq.leader.rank} ${sq.leader.name} of ${sq.name} has a name in the wing now: ${info.label}. ${info.blurb}`);
+      }
+    }
     sq.skill = Math.min(0.95, sq.skill + 0.015 * (1 - frac));
     sq.crews = Math.max(0, sq.crews);
     if (frac >= 0.5 && mine.some((r) => r.fate !== 'lost')) {
@@ -151,13 +173,68 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
       side.usedNames = [...new Set([...(side.usedNames ?? []), old.name])];
       sq.leader = makeLeader(rng, side.id, undefined, [...side.squadrons.map((q) => q.leader.name), ...side.usedNames]);
       const lostLead = mine.find((r) => r.lead && r.fate === 'lost');
+      sq.leader.since = state.turn + 1;
+      sq.leader.ops = 0;
       const line = `${old.rank} ${old.name}, commanding ${sq.name}, is missing${lostLead ? ` with ${lostLead.serial}` : ''}. ${sq.leader.rank} ${sq.leader.name} takes command.`;
       news.push(line);
+      if ((old.ops ?? 0) >= 3) memo(side, state.turn + 1, 'notice', `In memoriam: ${old.rank} ${old.name}`, obituary(old, sq.name, state.turn), 'Group HQ');
+      if (lostLead) prisonerPost(rng, state, side, sq, lostLead, old);
       sq.notables.unshift(`Week ${state.turn}: ${old.rank} ${old.name} missing; ${sq.leader.rank} ${sq.leader.name} in command.`);
       memo(side, state.turn + 1, 'notice', `${sq.name}: change of command`, `${line} The new commanding officer is described by the squadron as ${ARCHETYPE_INFO[sq.leader.archetype].label.toLowerCase()}: "${ARCHETYPE_INFO[sq.leader.archetype].blurb}"`, 'Group HQ');
     }
     sq.notables = [...new Set(sq.notables)].slice(0, 5);
   }
+}
+
+/** The reputation a leader earns, coloured by what his squadron went through. */
+function earnTrait(rng: Rng, sq: Squadron): Trait {
+  const fighter = sq.kind === 'fighter';
+  const baledOut = (sq.leader.log ?? []).some((l) => l.text.startsWith('baled out'));
+  const w: Record<Trait, number> = {
+    ace: fighter ? 2 + sq.skill * 2 : 0.5,
+    lucky: 0.8 + (baledOut ? 2 : 0),
+    steady: 1 + (sq.morale > 0.6 ? 1 : 0) + (sq.leader.archetype === 'timid' ? 0.5 : 0),
+    sharpEyed: sq.leader.archetype === 'byTheBook' ? 3 : 0.7,
+    shaken: sq.trauma * 5 + (sq.leader.archetype === 'pessimist' ? 0.5 : 0),
+  };
+  return rng.weighted(w) as Trait;
+}
+
+const times = (n: number) => (n === 1 ? 'once' : n === 2 ? 'twice' : n === 3 ? 'three times' : `${n} times`);
+
+/** A short obituary for a leader who had been in command a while, built from what the squadron remembers. */
+export function obituary(l: Leader, squadron: string, week: number): string {
+  const log = l.log ?? [];
+  const parts: string[] = [`${l.rank} ${l.name} led ${squadron} on ${l.ops ?? 0} operations${l.since ? ` from week ${l.since}` : ''}.`];
+  if (l.trait) parts.push(`The wing knew him as "${TRAIT_INFO[l.trait].label}".`);
+  const byKind = new Map<RequestKind, { asked: number; approved: number }>();
+  for (const e of log) if (e.kind) {
+    const k = byKind.get(e.kind) ?? { asked: 0, approved: 0 };
+    k.asked++;
+    if (e.approved) k.approved++;
+    byKind.set(e.kind, k);
+  }
+  for (const [kind, k] of byKind) {
+    parts.push(`He asked ${times(k.asked)} ${REQUEST_SHORT[kind]}; ${k.approved === 0 ? 'you never agreed' : k.approved === k.asked ? (k.asked === 1 ? 'you agreed' : 'you agreed every time') : `you agreed ${times(k.approved)}`}.`);
+  }
+  const other = log.filter((e) => !e.kind && !e.text.startsWith('became known') && e.week !== week);
+  if (other.length) parts.push(`In week ${other[other.length - 1].week} he ${other[other.length - 1].text}.`);
+  parts.push('A letter to his family has gone out over your signature.');
+  return parts.join(' ');
+}
+
+/** Crews seen to bale out may be reported as prisoners by the Red Cross a few weeks later. */
+function prisonerPost(rng: Rng, state: GameState, side: SideState, sq: Squadron, r: PlaneRecord, leader?: Leader) {
+  const chutes = r.chutes ?? 0;
+  if (chutes === 0 || !rng.chance(0.6)) return;
+  const due = state.turn + rng.int(2, 4);
+  const who = leader ? `${leader.rank} ${leader.name}, commanding ${sq.name}` : AIRCRAFT[r.kind].crew === 1 ? `${captainName(side.id, r.serial, state.seed)}, pilot of ${r.serial} (${sq.name})` : `${chutes} of the crew of ${r.serial} (${sq.name}), ${captainName(side.id, r.serial, state.seed)} among them`;
+  side.post = [...(side.post ?? []), {
+    due,
+    from: 'International Red Cross',
+    subject: leader ? `${leader.rank} ${leader.name} is alive` : `Prisoners of war: ${r.serial}`,
+    body: `We are informed that ${who}, missing since week ${state.turn}, ${leader || AIRCRAFT[r.kind].crew === 1 ? 'is' : 'are'} alive and ${leader || AIRCRAFT[r.kind].crew === 1 ? 'a prisoner' : 'prisoners'} of war. Next-of-kin have been told.`,
+  }];
 }
 
 function applyDamage(state: GameState, siteId: string | undefined, dmg: number): number {
@@ -611,6 +688,16 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     if (n > 0) lossNews[id].push(`Cratered runways kept ${n === 1 ? 'one of our aircraft' : `${n} of our aircraft`} on the ground (airfields at ${state.sides[id].facilities.airfield}%).`);
   }
   for (const id of [0, 1] as SideId[]) applyLosses(rng, state, state.sides[id], allRecs, lossNews[id]);
+  // Letters arriving this week: Red Cross news of men who were posted missing.
+  for (const id of [0, 1] as SideId[]) {
+    const sd = state.sides[id];
+    const arriving = (sd.post ?? []).filter((p) => p.due <= state.turn + 1);
+    sd.post = (sd.post ?? []).filter((p) => p.due > state.turn + 1);
+    for (const p of arriving) {
+      memo(sd, state.turn + 1, 'notice', p.subject, p.body, p.from);
+      lossNews[id].push(`${p.from}: ${p.body}`);
+    }
+  }
 
   // Pressure on the front moves on true results.
   const lost0 = allRecs.filter((r) => r.side === 0 && r.fate === 'lost').length;

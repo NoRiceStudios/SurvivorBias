@@ -14,6 +14,8 @@ import {
   fitPlanToStores,
   planCost,
   tech,
+  obituary,
+  remember,
   RESEARCH,
   startResearch,
   theaterDecision,
@@ -782,5 +784,26 @@ describe('designer decisions after round 2', () => {
     side.research.push('fuelEconomy', 'pooledStores');
     expect(tech(side, 'economy')).toBeCloseTo(0.2);
     expect(planCost(side, plan).stores).toBeLessThan(before);
+  });
+
+  it('leaders earn a reputation, are remembered, and some missing men turn up as prisoners', () => {
+    let traits = 0;
+    let post = 0;
+    for (let g = 0; g < 6; g++) {
+      const s = startCampaign({ seed: `rep${g}` });
+      for (let w = 0; w < 14 && !s.outcome; w++) endTurnSingle(s, playerPlan(s));
+      traits += s.sides[0].squadrons.filter((q) => q.leader.trait).length;
+      post += s.sides[0].memos.filter((m) => m.from === 'International Red Cross').length;
+    }
+    expect(traits).toBeGreaterThan(0);
+    expect(post).toBeGreaterThan(0);
+    const l = { name: 'Hugh Hale', rank: 'Sqn Ldr', archetype: 'gloryHunter' as const, ops: 9, since: 2, trait: 'ace' as const };
+    remember(l, 3, 'asked', 'pressHome', false);
+    remember(l, 5, 'asked', 'pressHome', false);
+    remember(l, 8, 'asked', 'pressHome', true);
+    const text = obituary(l, 'No. 9', 10);
+    expect(text).toContain('He asked three times to press his attacks home');
+    expect(text).toContain('you agreed once');
+    expect(text).toContain('"Ace"');
   });
 });

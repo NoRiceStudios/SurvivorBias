@@ -428,3 +428,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .tut-target { outline: 3px solid #e0b040; outline-offset: 3px; animation: tut-pulse 1.2s ease-in-out infinite; position: relative; z-index: 5; }
 @keyframes tut-pulse { 50% { outline-color: rgba(224, 176, 64, 0.25); } }
 @keyframes tut-in { from { transform: translateY(16px); opacity: 0; } }
+.trait.rep { background: #2c4672; color: #f0e6cc; }
+.trait.rep.shaken { background: #7c2a24; }
+.leader-record { margin-top: 6px; font-size: 13px; }
+.leader-record summary { cursor: pointer; font-weight: bold; }

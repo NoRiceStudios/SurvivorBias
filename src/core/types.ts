@@ -70,10 +70,18 @@ export interface Airframe {
   nickname?: string;
 }
 
+export type Trait = 'ace' | 'lucky' | 'steady' | 'sharpEyed' | 'shaken';
+
 export interface Leader {
   name: string;
   rank: string;
   archetype: Archetype;
+  /** Week he took command, operations led since, and the reputation earned after a few. */
+  since?: number;
+  ops?: number;
+  trait?: Trait;
+  /** What the squadron remembers: his requests and how they were answered, close calls, losses. */
+  log?: { week: number; text: string; kind?: RequestKind; approved?: boolean }[];
 }
 
 export interface Squadron {
@@ -206,6 +214,8 @@ export interface SideState {
   observed: { feints: number; support: number };
   /** Squadron leaders' requests waiting on the commander's desk this week. */
   requests: LeaderRequest[];
+  /** Letters still in the post: Red Cross cards about prisoners, delivered on their week. */
+  post?: { due: number; from: string; subject: string; body: string }[];
   /** Leaders' names already used in this war (lost leaders included). */
   usedNames?: string[];
 }
@@ -250,6 +260,8 @@ export interface PlaneRecord {
   sawApproach: Record<FighterApproach, number>;
   enemiesSeen: number;
   lastWords?: string;
+  /** Parachutes seen (or not) when the aircraft went down. */
+  chutes?: number;
   /** What a squadron mate saw of the loss, e.g. "falling out of formation, 3 chutes". */
   witnessed?: string;
   /** Turned back with a mechanical fault before contact. */
@@ -445,6 +457,8 @@ export interface LeaderRequest {
   id: string;
   /** Number shown on the desk this week (R1, R2…); stays put when another request is answered. */
   n?: number;
+  /** Week the request was made. */
+  week?: number;
   squadronId: string;
   kind: RequestKind;
   /** What the leader says. */

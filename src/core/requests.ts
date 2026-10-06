@@ -4,7 +4,8 @@
  * what his squadron just went through. Approving applies it in one click. The
  * advice is only as good as the leader: some of it is the survivorship trap.
  */
-import { AIRCRAFT, ZONE_LABEL } from './data';
+import { AIRCRAFT, REQUEST_SHORT, ZONE_LABEL } from './data';
+import { remember } from './leaders';
 import { COSTS, setApproach } from './actions';
 import type { Rng } from './rng';
 import type { Archetype, Debrief, GameState, LeaderRequest, RequestKind, SideState, Squadron, TurnPlan, ZoneId } from './types';
@@ -107,7 +108,7 @@ export function generateRequests(rng: Rng, state: GameState, side: SideState, d:
     const k = Number(rng.weighted(w));
     const [pick] = pool.splice(k, 1);
     const { weight: _w, ...req } = pick;
-    out.push({ ...req, id: `r${state.nextId++}`, n: out.length + 1 });
+    out.push({ ...req, id: `r${state.nextId++}`, n: out.length + 1, week: state.turn });
     const sq = side.squadrons.find((q) => q.id === pick.squadronId)!;
     sq.asked = { ...sq.asked, [pick.kind]: state.turn };
     for (let j = pool.length - 1; j >= 0; j--) if (pool[j].squadronId === pick.squadronId || pool[j].kind === pick.kind) pool.splice(j, 1);
@@ -158,6 +159,7 @@ export function approveRequest(side: SideState, id: string, plan?: TurnPlan): { 
   }
   side.resources.supplies -= req.cost;
   sq.morale = Math.min(1, sq.morale + 0.03);
+  remember(sq.leader, req.week ?? 0, `asked ${REQUEST_SHORT[req.kind]}, and you agreed`, req.kind, true);
   side.requests = side.requests.filter((r) => r.id !== id);
   return { ok: true };
 }
@@ -166,6 +168,9 @@ export function declineRequest(side: SideState, id: string) {
   const req = side.requests.find((r) => r.id === id);
   if (!req) return;
   const sq = side.squadrons.find((q) => q.id === req.squadronId);
-  if (sq) sq.morale = Math.max(0, sq.morale - 0.01);
+  if (sq) {
+    sq.morale = Math.max(0, sq.morale - 0.01);
+    remember(sq.leader, req.week ?? 0, `asked ${REQUEST_SHORT[req.kind]}, and you said no`, req.kind, false);
+  }
   side.requests = side.requests.filter((r) => r.id !== id);
 }

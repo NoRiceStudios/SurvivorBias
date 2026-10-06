@@ -68,6 +68,7 @@ import {
   type ZoneId,
   fitPlanToStores,
   BRANCHES,
+  TRAIT_INFO,
 } from '../src/core';
 
 interface SaveFile {
@@ -201,7 +202,8 @@ function squadrons() {
     say(
       `${sqCode(sq)} ${sq.name} — ${AIRCRAFT[sq.kind].name[0]} (${AIRCRAFT[sq.kind].role}), range ${sq.kind === 'fighter' ? escortRange(me()) : bomberRange(sq.kind)} sectors`,
       `    aircraft ${sq.airframes.length} (${flyable(sq).length} ready, ${repairs} in repair) · crews ${sq.crews} · skill ${ten(sq.skill)} · morale ${ten(sq.morale)} · fatigue ${ten(sq.fatigue)}`,
-      `    leader: ${sq.leader.rank} ${sq.leader.name} — "${info.label}": ${info.blurb}`,
+      `    leader: ${sq.leader.rank} ${sq.leader.name} — "${info.label}": ${info.blurb} · ${sq.leader.ops ?? 0} operations in command${sq.leader.trait ? ` · known as "${TRAIT_INFO[sq.leader.trait].label}": ${TRAIT_INFO[sq.leader.trait].blurb}` : ''}`,
+      ...(sq.leader.log ?? []).slice(-3).map((e) => `    record: week ${e.week}, ${e.text}`),
       `    doctrine: aggression ${d.aggression.toFixed(2)} · formation ${d.formation.toFixed(2)} · altitude ${d.altitude.toFixed(2)} · break off at ${pct(d.breakOff)} lost`,
       `    armor (${armorUsed(sq)}/${AIRCRAFT[sq.kind].armorBudget} plates): ${ZONES.filter((z) => sq.armor[z]).map((z) => `${z} ${sq.armor[z]}`).join(', ') || 'none'}`,
       ...sq.notables.slice(0, 2).map((n) => `    note: ${n}`),

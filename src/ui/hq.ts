@@ -12,6 +12,7 @@ import {
   MAX_ARMOR_PER_ZONE,
   BRANCHES,
   RESEARCH,
+  TRAIT_INFO,
   TARGETS,
   ZONE_LABEL,
 } from '../core/data';
@@ -381,8 +382,9 @@ function squadrons(app: App, side: SideState): HTMLElement {
         h('div', null,
           h('h2', null, sq.name),
           h('div', { class: 'muted' }, `${AIRCRAFT[sq.kind].name[side.id]} — ${AIRCRAFT[sq.kind].role}`),
-          h('div', { class: 'leader' }, `${sq.leader.rank} ${sq.leader.name}`, h('span', { class: 'trait', title: info.blurb }, info.label)),
-          h('div', { class: 'muted small' }, info.blurb),
+          h('div', { class: 'leader' }, `${sq.leader.rank} ${sq.leader.name}`, h('span', { class: 'trait', title: info.blurb }, info.label),
+            sq.leader.trait ? h('span', { class: `trait rep ${sq.leader.trait}`, title: TRAIT_INFO[sq.leader.trait].blurb }, TRAIT_INFO[sq.leader.trait].label) : null),
+          h('div', { class: 'muted small' }, `${info.blurb} ${sq.leader.trait ? TRAIT_INFO[sq.leader.trait].blurb : `${sq.leader.ops ?? 0} operation${sq.leader.ops === 1 ? '' : 's'} in command; the wing makes up its mind about a leader after five.`}`),
         ),
       ),
       h('div', { class: 'stats' },
@@ -400,6 +402,9 @@ function squadrons(app: App, side: SideState): HTMLElement {
         h('div', { class: 'doc-row' }, h('span', null, 'Break off at'), slider(d.breakOff, set('breakOff'), '10% lost', 'Never'), h('span', { class: 'small' }, pct(d.breakOff))),
       ),
       sq.notables.length ? h('ul', { class: 'notables' }, sq.notables.slice(0, 3).map((n) => h('li', null, n))) : null,
+      sq.leader.log?.length ? h('details', { class: 'leader-record' },
+        h('summary', null, `${sq.leader.name.split(' ')[1]}'s record (${sq.leader.ops ?? 0} operations)`),
+        h('ul', null, [...sq.leader.log].reverse().slice(0, 6).map((e) => h('li', null, `Week ${e.week}: ${e.text}.`)))) : null,
     );
   });
   return h('div', { class: 'col' },

@@ -43,8 +43,9 @@ export function squadronReport(
   const lossFrac = sent ? (sent - survivors.length) / sent : 0;
   // Shock widens the error bars; reporting-discipline training narrows them.
   const discipline = side.training.focus === 'reporting' ? 0.6 : 1;
-  const noise = (0.12 + sq.trauma * 0.5 + lossFrac * 0.4) * discipline;
-  const biasScale = (b: number) => 1 + (b - 1) * (side.training.focus === 'reporting' ? 0.6 : 1);
+  const noise = (0.12 + sq.trauma * 0.5 + lossFrac * 0.4 + (sq.leader.trait === 'shaken' ? 0.15 : 0)) * discipline;
+  const sharp = sq.leader.trait === 'sharpEyed' ? 0.5 : 1;
+  const biasScale = (b: number) => 1 + (b - 1) * (side.training.focus === 'reporting' ? 0.6 : 1) * sharp;
   const report: SquadronReport = {
     squadronId,
     squadronName: sq.name,

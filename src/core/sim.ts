@@ -100,7 +100,7 @@ export function hitLethality(zone: ZoneId, f: Flier, armor = f.sq.armor[zone]): 
   if (f.af.kind === 'heavy') p *= 0.8;
   p *= 1 + f.af.defect * 0.6;
   // The squadron leader is an old hand: he nurses a damaged aircraft home more often.
-  if (f.rec.lead) p *= 0.8;
+  if (f.rec.lead) p *= f.sq.leader.trait === 'lucky' ? 0.5 : 0.8;
   p *= 0.75;
   return Math.min(0.95, p);
 }
@@ -175,7 +175,8 @@ function say(ctx: RaidContext, side: SideId, callsign: string, text: string, hea
 
 function skillMult(f: Flier): number {
   const s = f.sq.skill;
-  return (0.6 + 0.8 * s) * (1 + tech(f.side, 'hits')) * (1 - f.sq.fatigue * 0.3);
+  const ace = f.sq.leader.trait === 'ace' ? 1.1 : 1;
+  return (0.6 + 0.8 * s) * (1 + tech(f.side, 'hits')) * ace * (1 - f.sq.fatigue * 0.3);
 }
 
 function makeFlier(sq: Squadron, af: Airframe, side: SideState, role: PlaneRecord['role'], index: number, lethality: LethalityTable = DEFAULT_LETHALITY): Flier {
@@ -312,9 +313,10 @@ function witnessLoss(ctx: RaidContext, lost: Flier, flight: Flier[]) {
     lost.rec.lastWords = lastWords(rng, lost);
     say(ctx, lost.side.id, lost.callsign, lost.rec.lastWords, lost.side.id, true);
   }
+  const chutes = rng.int(0, AIRCRAFT[lost.af.kind].crew);
+  lost.rec.chutes = chutes;
   const mate = flight.find((f) => f.alive && !f.home && f.sq === lost.sq);
   if (mate && rng.chance(0.75)) {
-    const chutes = rng.int(0, AIRCRAFT[lost.af.kind].crew);
     const what = rng.pick(SEEN_WHAT);
     lost.rec.witnessed = `${mate.callsign} reported it "${what}", ${chutes > 0 ? `${chutes} chute${chutes > 1 ? 's' : ''} seen` : 'no chutes'}.`;
     const count = chutes > 0 ? rng.pick([`I count ${chutes} chute${chutes > 1 ? 's' : ''}.`, `${chutes === 1 ? 'One chute' : `${chutes} chutes`}, I think.`]) : rng.pick(['No chutes.', 'Nobody got out.', 'No chutes. None.']);

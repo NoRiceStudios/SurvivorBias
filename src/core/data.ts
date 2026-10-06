@@ -3,7 +3,9 @@ import type {
   Approach,
   Archetype,
   FighterApproach,
+  RequestKind,
   TargetId,
+  Trait,
   ZoneId,
   ZoneMap,
 } from './types';
@@ -259,6 +261,29 @@ export const ARCHETYPE_INFO: Record<Archetype, { label: string; blurb: string }>
   gloryHunter: { label: 'Glory-seeker', blurb: 'Wants the dangerous jobs. Wants the medals more.' },
   byTheBook: { label: 'By the book', blurb: 'Only reports what he is certain of.' },
   timid: { label: 'Cautious', blurb: 'Brings his boys home. Flak always looks heavier from his seat.' },
+};
+
+/** Reputations a squadron leader earns after about five operations in command. */
+export const TRAIT_INFO: Record<Trait, { label: string; blurb: string }> = {
+  ace: { label: 'Ace', blurb: 'A natural shot. His squadron shoots 10% better when he leads it.' },
+  lucky: { label: 'Lucky', blurb: 'Comes home when others don\'t. Far less likely to be lost, and gets out when he is.' },
+  steady: { label: 'Steady', blurb: 'Losses shake his squadron\'s morale much less.' },
+  sharpEyed: { label: 'Sharp-eyed', blurb: 'His reports exaggerate claims and damage only half as much.' },
+  shaken: { label: 'Shaken', blurb: 'Seen too much. His squadron tires faster and his reports wander.' },
+};
+
+/** Each request as it follows "he asked", for a leader's record and obituary. */
+export const REQUEST_SHORT: Record<RequestKind, string> = {
+  tighterBox: 'for a tighter box',
+  headOn: 'for head-on attacks',
+  higher: 'to bomb from higher up',
+  breakOffSooner: 'for leave to turn back sooner',
+  pressHome: 'to press his attacks home',
+  rest: 'for a stand-down for his crews',
+  strictQc: 'for stricter inspections at the works',
+  gunnery: 'for more gunnery at the school',
+  reporting: 'for better reporting drill at the school',
+  plateTheHoles: 'for more plate where the holes were',
 };
 
 /** Report multipliers per archetype. Systematic and therefore learnable. */
