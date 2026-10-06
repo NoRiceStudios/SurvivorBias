@@ -271,7 +271,8 @@ export function applyPressure(state: GameState, flew: [boolean, boolean] = [true
     if (sector < 0 || sector >= SECTORS) return news;
     t.held0 += winner === 0 ? 1 : -1;
     state.front -= winner === 0 ? SECTOR_PRESSURE : -SECTOR_PRESSURE;
-    const cap = SECTOR_PRESSURE / 2;
+    // Only a little of the push carries on past a fallen sector, so the next one has to be fought for.
+    const cap = SECTOR_PRESSURE / 4;
     state.front = Math.max(-cap, Math.min(cap, state.front));
     // Captured facilities change hands, wrecked.
     for (const s of t.sites.filter((x) => x.sector === sector)) {
@@ -321,6 +322,10 @@ export function enterTheater(state: GameState, index: number, rng: Rng, headStar
     side.perceived.sites = Object.fromEntries(state.theater.sites.filter((x) => x.owner !== side.id).map((x) => [x.id, 100]));
     side.perceived.photographed = [];
     side.perceived.front = side.id === 0 ? state.front : 0 - state.front;
+    // A new front: the Intelligence Section has to work out the line afresh, and the enemy's gunners
+    // here have not yet learned our habits.
+    delete side.perceived.frontBand;
+    side.observed = { feints: 0, support: 0 };
     // Redeployment: the ground crews catch up on repairs, crews get a breather.
     if (index > 0) {
       side.requests = side.requests.filter((r) => r.kind !== 'rest');

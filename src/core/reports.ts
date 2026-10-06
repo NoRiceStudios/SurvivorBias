@@ -106,6 +106,7 @@ export function squadronReport(
   const L = `${sq.leader.rank} ${sq.leader.name}`;
   const lostN = sent - survivors.length;
   const role = recs[0].role;
+  report.role = role;
   const defending = role === 'defense';
   const sweep = raid?.target === 'sweep';
   const escort = sq.kind === 'fighter' && !defending && !sweep;
@@ -120,7 +121,7 @@ export function squadronReport(
       [`${L}: "More of them every day. We can't stop them all."`, `${L}: "They got through. They'll be back tomorrow."`, `${L}: "We were scrambled late. We're always scrambled late."`, `${L}: "For every one we stop, two get through."`],
     ],
     gloryHunter: [
-      [`${L} requests the squadron be given the lead next time.`, `${L}: "Give us the deep targets, sir. We can take it."`, `${L}: "We went in lower than anyone. Put that in the record."`, `${L} asks that his crews be considered for decorations.`],
+      [`${L} requests the squadron be given the lead next time.`, `${L}: "Give us the deep targets, sir. We can take it."`, sq.doctrine.altitude < 0.5 ? `${L}: "We went in lower than anyone. Put that in the record."` : `${L}: "We were first over the target. Put that in the record."`, `${L} asks that his crews be considered for decorations.`],
       [`${L}: "Let us go after them over their own fields, sir."`, `${L} asks to be taken off defence and given an offensive role.`, `${L}: "Waiting for them to come to us is no way to win a war."`],
     ],
     byTheBook: [
@@ -132,19 +133,31 @@ export function squadronReport(
       [report.enemyFightersReported >= 6 ? `${L}: "We were heavily outnumbered, sir."` : `${L}: "We went in carefully, sir. No heroics."`, `${L}: "The boys need a rest. They're seeing bandits in every cloud."`, `${L}: "We engaged as best we could, sir."`],
     ],
   };
-  // A leader doesn't say the same thing two debriefs running.
-  // Not what he said last time, nor a dead man's saying.
+  // What happened today gives every character something particular to say.
+  const cloudy = raid && raid.weather !== 'clear' && !defending;
+  const heavy = lostN >= 2 && lostN / sent >= 0.3;
+  const situational: Record<typeof sq.leader.archetype, string[]> = {
+    braggart: [cloudy ? `${L}: "Cloud? Never noticed it."` : '', heavy ? `${L}: "Bad luck, that's all. Bad luck."` : '', !hard && sent >= 4 ? `${L}: "${sent} out, ${sent} back. Write that down."` : ''],
+    pessimist: [cloudy ? `${L}: "Bombed through cloud. Could have hit a cow."` : '', heavy ? `${L}: "${lostN} more. I've stopped learning the new names."` : '', report.enemyFightersReported >= 8 ? `${L}: "They had ${report.enemyFightersReported} up. Next time it'll be twenty."` : ''],
+    gloryHunter: [heavy ? `${L}: "We paid for it. It was worth it."` : '', cloudy ? `${L}: "We went down under the cloud to be sure. Somebody had to."` : '', report.claims >= 3 ? `${L}: "${report.claims} of them. Mark it on the board."` : ''],
+    byTheBook: [cloudy ? `${L}: "Bombing on dead reckoning. Results should be treated with caution."` : '', heavy ? `${L}: "Losses are listed in the appendix, sir. With the names."` : '', !hard ? `${L}: "No losses. Procedure held."` : ''],
+    timid: [heavy ? `${L}: "${lostN} crews, sir. I knew most of them."` : '', cloudy ? `${L}: "The cloud was a blessing. They couldn't find us either."` : '', !hard ? `${L}: "Everyone came home. Let's keep it that way."` : ''],
+  };
+  // A leader doesn't repeat himself: not one of his last three remarks, nor a dead man's saying.
   // Each man has his own handful of sayings from his type's repertoire, so two leaders of the same
   // character don't sound the same.
   const retired = side.usedLines ?? [];
-  const all = remarks[sq.leader.archetype][defending ? 1 : 0];
+  const recent = sq.leader.recent ?? [];
+  const all = [...remarks[sq.leader.archetype][defending ? 1 : 0], ...situational[sq.leader.archetype].filter(Boolean)];
   const seed = [...sq.leader.name].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
-  const own = all.filter((_, i) => ((seed >>> (i % 16)) & 1) === 1 || all.length <= 3);
-  const mine = (own.length >= 2 ? own : all).filter((x) => x !== sq.lastRemark && !retired.some((r) => x.includes(`"${r}"`)));
-  const pool = mine.length ? mine : all.filter((x) => !retired.some((r) => x.includes(`"${r}"`)));
+  const own = all.filter((x, i) => ((seed >>> (i % 16)) & 1) === 1 || all.length <= 3 || situational[sq.leader.archetype].includes(x));
+  const fresh = (x: string) => x !== sq.lastRemark && !recent.includes(x) && !retired.some((r) => x.includes(`"${r}"`));
+  const mine = (own.filter(fresh).length >= 1 ? own : all).filter(fresh);
+  const pool = mine.length ? mine : all.filter((x) => x !== sq.lastRemark && !retired.some((r) => x.includes(`"${r}"`)));
   const ledHimself = recs.some((r) => r.lead) || sq.kind === 'recon';
   const said = ledHimself ? rng.pick(pool.length ? pool : all) : `${L} stayed behind to rebuild the squadron and debriefed the crews himself on their return.`;
   sq.lastRemark = said;
+  if (ledHimself) sq.leader.recent = [...recent, said].slice(-3);
   const quote = ledHimself ? said.match(/"(.+)"/) : null;
   if (quote) sq.leader.said = quote[1];
   report.remarks.push(said);
@@ -220,11 +233,13 @@ export function buildDebrief(
   }
 
   const defenseSummary: string[] = [];
+  let enemySeen = 0;
   const about = (n: number) => (n <= 1 ? 'a single enemy aircraft' : n === 2 ? 'a pair of enemy aircraft' : `a formation of about ${n} enemy aircraft`);
   const sectorName = (n: number) => sectorNames[n] ?? `sector ${n + 1}`;
   for (const enemyRaid of enemyRaids) {
     const enemyPlanes = enemyRaid.planes.filter((p) => p.side !== side.id);
     const seen = Math.max(1, Math.round(enemyPlanes.length * (1 + rng.gauss(0.3)) * 1.15));
+    enemySeen += seen;
     const enemyLost = enemyPlanes.filter((p) => p.fate === 'lost').length;
     // Flak batteries and observers claim everything that falls, and some that doesn't.
     const groundClaims = Math.round(enemyLost * rng.range(0.4, 1.0) + rng.poisson(1.5));
@@ -261,6 +276,7 @@ export function buildDebrief(
     recon,
     theaterNews: [],
     defenseSummary,
+    enemySeen,
     facilityDamageTaken: damageTaken,
     hqResponse: [],
   };

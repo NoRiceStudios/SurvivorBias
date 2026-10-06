@@ -19,9 +19,9 @@ export function defaultPlan(state: GameState, side: SideId): TurnPlan {
   };
 }
 
-/** Keep the previous plan's assignments, dropping squadrons that no longer exist. */
+/** Keep the previous plan's assignments, dropping squadrons that no longer exist or have no aircraft left. */
 export function carryPlan(state: GameState, side: SideId, prev: TurnPlan): TurnPlan {
-  const ids = new Set(state.sides[side].squadrons.map((q) => q.id));
+  const ids = new Set(state.sides[side].squadrons.filter((q) => q.airframes.length > 0).map((q) => q.id));
   const t = state.theater;
   const enemySite = (id?: string) => t.sites.find((x) => x.id === id && x.owner !== side);
   let raid = prev.raid ? { ...prev.raid, squadronIds: prev.raid.squadronIds.filter((i) => ids.has(i)) } : null;

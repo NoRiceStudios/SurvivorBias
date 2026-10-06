@@ -223,8 +223,8 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
   strategic damage and the industrial balance. Every 24 points of pressure
   captures the next sector, and its sites change hands at 30% condition.
   Captured airfields and works become yours. **At most one sector falls per
-  week**, and leftover pressure is capped at ±12, so a theater can't collapse
-  in a single turn.
+  week**, and leftover pressure is capped at ±6, so the next sector has to be
+  fought for and a theater can't collapse in two or three turns.
 - **Both sides learn.** Each side remembers the feints and close-support raids
   it has seen recently. Repeated feints draw fewer reserve fighters, and the
   Army masses anti-aircraft guns against repeated close support (more flak, less
@@ -245,16 +245,24 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
   counts as achieved when *you believe* the site is below 25%. If the belief came
   only from crews' reports, the reward is paid as a "claim", and High Command may
   later photograph the site working normally and withdraw it, with a trust
-  penalty. A recon photograph confirms it. If the Army takes the sector, its
-  engineers report what they find: a site already wrecked (25% or less)
-  confirms the objective, an intact one earns the wing no credit ("taken
+  penalty. A recon photograph confirms it. A claim is judged by the site's
+  condition when it was made, so enemy repairs since then do not discredit it.
+  If the Army takes the sector, its engineers report what they find: a site
+  already wrecked (25% or less), or wrecked when claimed and rebuilt since,
+  confirms the objective; an intact one earns the wing no credit ("taken
   intact"), and an intact one that was claimed is discredited.
 - **HQ orders** follow the theater: strikes on specific named sites, kill
   quotas, sortie quotas, and "advance" orders that are judged on the Army's own
   map and cannot be talked up. Strike orders always allow at least two weeks.
   Kill quotas follow the median of the wing's recent returns, so one inflated
   week doesn't set an impossible target. HQ only calls enemy fighter strength
-  "broken" after a run of big claims.
+  "broken" after a run of big claims. A photograph of a strike order's
+  target counts toward the order (measured from the target's believed
+  condition when the order was set). A strike whose results nobody saw gets
+  one extra week for photographs. Group Intelligence credits our defending
+  fighters with no more kills than the observers counted enemy aircraft over
+  our side. Confidence above 75 wears off by 2 a week unless an order is met,
+  and claims impress HQ half as much above 80.
 - **The strategic duel.**
   - **Intentions:** the AI fixes its next target a week ahead, and the
     Y-Service warns of it. The warning is right 55–90% of the time, depending

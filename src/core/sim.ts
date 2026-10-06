@@ -68,10 +68,12 @@ export interface Day {
   landing: RadioLine[];
   /** Aircraft per squadron kept on the ground by cratered runways today. */
   grounded: Map<string, number>;
+  /** Last calls heard today, so no two crews die on the same words in one week. */
+  finals: string[];
 }
 
 export function newDay(lethality: LethalityTable = DEFAULT_LETHALITY): Day {
-  return { fliers: new Map(), lethality, metFront: false, landing: [], grounded: new Map() };
+  return { fliers: new Map(), lethality, metFront: false, landing: [], grounded: new Map(), finals: [] };
 }
 
 const CLOCK: Record<FighterApproach, string[]> = {
@@ -100,7 +102,7 @@ export function hitLethality(zone: ZoneId, f: Flier, armor = f.sq.armor[zone]): 
   if (f.af.kind === 'heavy') p *= 0.8;
   p *= 1 + f.af.defect * 0.6;
   // The squadron leader is an old hand: he nurses a damaged aircraft home more often.
-  if (f.rec.lead) p *= f.sq.leader.trait === 'lucky' ? 0.35 : 0.5;
+  if (f.rec.lead) p *= f.sq.leader.trait === 'lucky' ? 0.3 : 0.4;
   p *= 0.75;
   return Math.min(0.95, p);
 }
@@ -118,7 +120,8 @@ export function applyHit(rng: Rng, f: Flier, approach: Approach): boolean {
   const hit: Hit = { zone, u: rng.next(), v: rng.next(), approach };
   f.rec.hits.push(hit);
   const armor = f.sq.armor[zone];
-  f.condition -= ZONE_DAMAGE[zone] * Math.pow(0.8, armor) * (f.af.kind === 'fighter' ? 1.4 : 1);
+  // An old hand flies the best-kept aircraft and keeps a damaged one in the air longer.
+  f.condition -= ZONE_DAMAGE[zone] * Math.pow(0.8, armor) * (f.af.kind === 'fighter' ? 1.4 : 1) * (f.rec.lead ? 0.65 : 1);
   const roll = rng.next();
   if (roll < hitLethality(zone, f) || f.condition <= 0) {
     hit.lethal = true;
@@ -168,6 +171,8 @@ interface RaidContext {
   attacker: SideState;
   defender: SideState;
   radio: RadioLine[];
+  /** Last calls already heard today, in this raid or another. */
+  finals?: string[];
   t: number;
 }
 
@@ -313,7 +318,8 @@ function witnessLoss(ctx: RaidContext, lost: Flier, flight: Flier[]) {
   const { rng } = ctx;
   const radios = lost.side.research.includes('radios');
   if (rng.chance(radios ? 0.85 : 0.3)) {
-    lost.rec.lastWords = lastWords(rng, lost, ctx.radio.filter((l) => l.final).map((l) => l.text));
+    lost.rec.lastWords = lastWords(rng, lost, [...ctx.radio.filter((l) => l.final).map((l) => l.text), ...(ctx.finals ?? [])]);
+    ctx.finals?.push(lost.rec.lastWords);
     say(ctx, lost.side.id, lost.callsign, lost.rec.lastWords, lost.side.id, true);
   }
   // How many got out has to agree with what killed her: a dead pilot in a single-seater, or an
@@ -378,7 +384,7 @@ export function resolveRaid(
   if (!raidPlan || raidPlan.squadronIds.length === 0) return null;
   const day = opts.day ?? newDay(state.lethality);
   const target: TargetId = raidPlan.target;
-  const ctx: RaidContext = { rng, state, attacker, defender, radio: [], t: 0 };
+  const ctx: RaidContext = { rng, state, attacker, defender, radio: [], t: 0, finals: day.finals };
 
   const raid = gatherFliers(attacker, raidPlan.squadronIds, (sq) =>
     target === 'feint' ? 'feint' : sq.kind === 'fighter' ? (target === 'sweep' ? 'raid' : 'escort') : 'raid', day,
@@ -487,7 +493,8 @@ export function resolveRaid(
     if (liveBombers.length > 0) {
       for (const i of liveInterceptors) {
         if (!i.alive || tied.has(i)) continue;
-        const passes = 1 + (rng.chance(i.sq.doctrine.aggression) ? 1 : 0);
+        // A CO runs the fight rather than pressing a second attack himself.
+        const passes = 1 + (!i.rec.lead && rng.chance(i.sq.doctrine.aggression) ? 1 : 0);
         for (let p = 0; p < passes; p++) {
           const pool = bombers.filter((b) => b.alive && !b.home);
           if (pool.length === 0) break;

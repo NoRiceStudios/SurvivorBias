@@ -179,14 +179,23 @@ function crewless(side: SideState): number {
   return Math.max(0, aircraft - crews);
 }
 
+/**
+ * How many crews the Ministry can usefully post: aircraft that have no crew now, or none coming from
+ * the school. A squadron with an idle aircraft needs a crew this week, even if trainees will graduate later.
+ */
+export function crewNeed(side: SideState): number {
+  const idleNow = side.squadrons.reduce((a, q) => a + Math.max(0, q.airframes.length - Math.max(0, q.crews)), 0);
+  return Math.max(idleNow, crewless(side));
+}
+
 /** Ask the Ministry for trained aircrew, posted straight to squadrons short of crews. */
 export function requestCrews(side: SideState, n: number): ActionResult {
-  const need = crewless(side);
+  const need = crewNeed(side);
   if (!Number.isFinite(n) || n < 1) return fail('Ask for at least one crew');
-  if (need <= 0) return fail('Every aircraft we have or have on order already has a crew. Order aircraft first: crews follow them');
+  if (need <= 0) return fail(`Every aircraft has a crew, counting the ${side.training.inTraining} at the training school. Order aircraft first: crews follow them`);
   const k = Math.min(Math.round(n), need);
   const cost = k * crewPrice(side);
-  if (side.resources.supplies < cost) return fail(`Not enough supplies (${cost} needed for ${k})`);
+  if (side.resources.supplies < cost) return fail(`Not enough supplies: ${k} crew${k === 1 ? '' : 's'} at ${crewPrice(side)} each cost ${cost}, and we have ${side.resources.supplies}`);
   side.resources.supplies -= cost;
   let left = k;
   for (const sq of [...side.squadrons].sort((a, b) => a.crews - a.airframes.length - (b.crews - b.airframes.length))) {
@@ -220,7 +229,8 @@ export function mergeSquadrons(state: GameState, side: SideState, fromId: string
     if (plan.recon?.squadronId === from.id) plan.recon = null;
   }
   const n = from.airframes.length;
-  side.memos.unshift({ turn: state.turn, from: 'Group HQ', kind: 'notice', subject: `${from.name} merged into ${into.name}`, body: `The last ${n === 0 ? 'men' : n === 1 ? 'crew and aircraft' : `${n} crews and aircraft`} of ${from.name} have carried their squadron badge across the field to ${into.name}. ${from.leader.rank} ${from.leader.name} becomes a flight commander there. ${from.name}'s name has been painted on the board in the mess, under the date.` });
+  into.notables = [`Week ${state.turn}: took in the last of ${from.name}; ${from.leader.rank} ${from.leader.name} now a flight commander.`, ...into.notables].slice(0, 5);
+  side.memos.unshift({ turn: state.turn, from: 'Group HQ', kind: 'notice', subject: `${from.name} merged into ${into.name}`, body: `The last ${n === 0 ? 'men' : n === 1 ? 'crew and aircraft' : `${n} crews and aircraft`} of ${from.name} have carried their squadron badge across the field to ${into.name}. ${from.leader.rank} ${from.leader.name} becomes a flight commander there. The name ${from.name} has been painted on the board in the mess, under the date.` });
   return ok;
 }
 

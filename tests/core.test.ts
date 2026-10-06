@@ -930,4 +930,41 @@ describe('designer decisions after round 2', () => {
     expect(b.airframes.length).toBe(total);
     expect(plan.raid?.squadronIds ?? []).not.toContain(a.id);
   });
+  it('the Ministry posts a crew to an idle aircraft even if another squadron has crews to spare', () => {
+    const s = startCampaign({ seed: 'idlecrew' });
+    const side = s.sides[0];
+    side.resources.supplies = 1000;
+    const [a, b] = side.squadrons.filter((q) => q.kind !== 'recon');
+    a.crews = a.airframes.length - 1;
+    b.crews = b.airframes.length + 3;
+    expect(applyCommand(s, 0, { k: 'crews', n: 1 }).ok).toBe(true);
+    expect(a.crews).toBe(a.airframes.length);
+  });
+
+  it('photographs count toward a strike order, and the enemy wing\'s letters stay secret in LAN', () => {
+    let fulfilled = 0;
+    for (let g = 0; g < 8; g++) {
+      const s = startCampaign({ seed: `photo${g}` });
+      const side = s.sides[0];
+      // A photo-reconnaissance flight, as the Research tree would bring.
+      const recon = JSON.parse(JSON.stringify(side.squadrons[0])) as typeof side.squadrons[0];
+      recon.id = 'rq';
+      recon.kind = 'recon';
+      recon.airframes = [{ ...recon.airframes[0], id: 'rqa', kind: 'recon', status: 'ready', condition: 100 }];
+      recon.crews = 1;
+      side.squadrons.push(recon);
+      const site = reachableSites(s, 0, 'medium')[0];
+      site.condition = 40;
+      s.weather = 'clear';
+      side.orders = [{ id: 'o1', kind: 'strike', siteId: site.id, target: site.type, amount: 20, goal: 20, from: 100, deadline: s.turn + 3, text: 'test' }];
+      const plan = emptyPlan();
+      plan.recon = { squadronId: recon.id, siteId: site.id };
+      endTurnSingle(s, plan);
+      if (s.lastDebriefs[0]?.hqResponse.some((l) => l.includes('Order fulfilled: "test"'))) fulfilled++;
+      const view = redactFor(s, 1);
+      expect(view.sides[0].post ?? []).toEqual([]);
+      expect(view.sides[0].roll ?? []).toEqual([]);
+    }
+    expect(fulfilled).toBeGreaterThan(0);
+  });
 });

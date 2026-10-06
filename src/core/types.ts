@@ -86,6 +86,8 @@ export interface Leader {
   log?: { week: number; text: string; kind?: RequestKind; approved?: boolean }[];
   /** Something he said in a recent debrief, for the squadron to remember him by. */
   said?: string;
+  /** His last few debrief remarks, so he does not repeat himself every other week. */
+  recent?: string[];
 }
 
 export interface Squadron {
@@ -152,6 +154,11 @@ export interface Order {
   deadline: number;
   done?: boolean;
   failed?: boolean;
+  /** Strike orders: the damage asked for, and the target's believed condition when it was set, so photographs can be measured against it. */
+  goal?: number;
+  from?: number;
+  /** A strike whose results nobody saw gets one extra week to be photographed. */
+  graced?: boolean;
 }
 
 export interface Memo {
@@ -231,7 +238,7 @@ export interface SideState {
   /** The AI's chosen next operation, fixed a week ahead so enemy intelligence can get wind of it. */
   intent?: { target: TargetId; siteId?: string };
   /** Letters still in the post: Red Cross cards about prisoners, delivered on their week. */
-  post?: { due: number; from: string; subject: string; body: string; returns?: { squadronId: string; leader: Leader }; serial?: string; fate?: 'prisoner' | 'returned' | 'killed' }[];
+  post?: { due: number; from: string; subject: string; body: string; returns?: { squadronId: string; leader: Leader }; /** An obituary is written when the letter goes out, so it names whoever leads the squadron then. */ obit?: { leader: Leader; squadronId: string; squadron: string; week: number; lastWords?: string }; serial?: string; fate?: 'prisoner' | 'returned' | 'killed' }[];
   /** Everyone posted missing in this war, and what became of them as far as we know. */
   roll?: { week: number; theater: number; name: string; serial: string; squadron: string; crew: number; fate: 'missing' | 'prisoner' | 'returned' | 'killed' }[];
   /** Graduates who joined squadrons last week, for station-life scenes. */
@@ -336,6 +343,8 @@ export interface SquadronReport {
   targetDamageReported: number | null;
   /** What the raid this report is about was doing. */
   mission?: TargetId;
+  /** Whether the squadron flew the raid or defended. */
+  role?: PlaneRecord['role'];
   remarks: string[];
   noReport?: boolean;
 }
@@ -354,6 +363,8 @@ export interface Debrief {
   theaterNews: string[];
   /** Enemy raid on us: what our defenders and ground observers say. */
   defenseSummary: string[];
+  /** Enemy aircraft the observers counted over our side this week: the most our defenders can be credited with. */
+  enemySeen?: number;
   facilityDamageTaken: Partial<Facilities>;
   hqResponse: string[];
   /** Station life: a scene or two from our own airfield. */
@@ -435,6 +446,8 @@ export interface SecondaryObjective {
   reward: { supplies?: number; trust?: number; research?: string };
   /** overrun: the Army took the site intact before the wing wrecked it, so the wing gets no credit. */
   status: 'open' | 'claimed' | 'confirmed' | 'discredited' | 'overrun';
+  /** The site's true condition when the claim was made: a claim is judged by that, not by what repairs made of it since. */
+  claimedAt?: number;
 }
 
 export interface TheaterState {

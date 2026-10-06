@@ -115,16 +115,36 @@ const SCENES: Scene[] = [
     if (!fresh.length) return null;
     const sq = c.rng.pick(fresh);
     const name = `${sq.leader.rank} ${sq.leader.name}`;
-    // One scene per man's reputation.
-    c.key = `trait:${sq.leader.name}`;
-    switch (sq.leader.trait) {
-      case 'ace': return `The local paper wants a photograph of ${name}. He has told them, twice, to photograph his ground crew instead.`;
-      case 'lucky': return `The men of ${sq.name} touch ${name}'s sleeve before every operation. He pretends not to notice.`;
-      case 'steady': return `${name} spent the evening going round the huts of ${sq.name}, a word for every crew. Nobody remembers what he said, only that he came.`;
-      case 'sharpEyed': return `${name} sent back two of his own squadron's claims as "not proven". The squadron grumbled, then bought him a drink.`;
-      case 'shaken': return `${name} was seen walking the perimeter track alone at three in the morning. ${sq.name}'s adjutant has asked the medical officer to "have a look at him, casually".`;
-      default: return `${TRAIT_INFO[sq.leader.trait!].label}: ${name}.`;
-    }
+    const t = sq.leader.trait!;
+    // One scene per man's reputation, and each wording told once in a war.
+    const scenes: Record<string, string[]> = {
+      ace: [
+        `The local paper wants a photograph of ${name}. He has told them, twice, to photograph his ground crew instead.`,
+        `A girl from ${LOCAL[c.side.id].town} sent ${name} a scarf she had knitted. He wears it on every operation and denies it is for luck.`,
+      ],
+      lucky: [
+        `The men of ${sq.name} touch ${name}'s sleeve before every operation. He pretends not to notice.`,
+        `${name} lost his lucky coin in the long grass by dispersal. Half of ${sq.name} spent the afternoon looking for it, and found it.`,
+      ],
+      steady: [
+        `${name} spent the evening going round the huts of ${sq.name}, a word for every crew. Nobody remembers what he said, only that he came.`,
+        `When the telegram boy cycled up the lane, ${name} met him at the gate himself, so that nobody else would have to.`,
+      ],
+      sharpEyed: [
+        `${name} sent back two of his own squadron's claims as "not proven". The squadron grumbled, then bought him a drink.`,
+        `${name} keeps a notebook of every claim his crews make, and what the photographs showed afterwards. He will not let anyone read it.`,
+      ],
+      shaken: [
+        `${name} was seen walking the perimeter track alone at three in the morning. The squadron adjutant has asked the medical officer to "have a look at him, casually".`,
+        `${name} has started smoking again. His hands, someone noticed, are not quite steady when he lights up.`,
+        `${name} read the casualty list twice at breakfast, then left his tea untouched.`,
+      ],
+    };
+    const ids = ['ace', 'lucky', 'steady', 'sharpEyed', 'shaken'];
+    const line = scenes[t] ? tpick(c, 10 + ids.indexOf(t), scenes[t]) : `${TRAIT_INFO[t].label}: ${name}.`;
+    if (!line) return null;
+    c.side.usedLines = [...(c.side.usedLines ?? []), `trait:${sq.leader.name}`];
+    return line;
   },
   // The ground crews.
   (c) => {
@@ -141,7 +161,9 @@ const SCENES: Scene[] = [
 /** This week's scenes for one side: more when the wing stood down. */
 export function stationLife(rng: Rng, state: GameState, side: SideState, rested: Squadron[], quiet: boolean): string[] {
   const c: Ctx = { rng, state, side, rested };
-  const n = quiet ? 2 : rested.length > 0 || (side.arrived?.length ?? 0) > 0 ? (rng.chance(0.6) ? 1 : 0) : rng.chance(0.25) ? 1 : 0;
+  // Hard weeks have their own scenes: a wake, a letter, kit to pack.
+  const lostThisWeek = (side.roll ?? []).some((e) => e.week === state.turn);
+  const n = quiet ? 2 : rested.length > 0 || (side.arrived?.length ?? 0) > 0 || lostThisWeek ? (rng.chance(0.65) ? 1 : 0) : rng.chance(0.3) ? 1 : 0;
   const out: string[] = [];
   // A wake or a bad week comes first when there is one; the other kinds are shuffled.
   const rest = [...SCENES.keys()].slice(2);

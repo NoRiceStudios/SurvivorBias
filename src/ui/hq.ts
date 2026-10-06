@@ -3,6 +3,7 @@ import {
   canBuild,
   COSTS,
   REPAIR_COST,
+  crewNeed,
   crewPrice,
   CONVOY,
   planCost,
@@ -194,7 +195,7 @@ export function adjutantNotes(app: App, side: SideState): string[] {
   const st = app.state!;
   const plan = app.plans[side.id];
   const notes: string[] = [];
-  const tired = side.squadrons.filter((q) => q.fatigue >= 0.7);
+  const tired = side.squadrons.filter((q) => q.fatigue >= 0.7 && q.airframes.length > 0);
   if (tired.length) notes.push(`${tired.map((q) => `${q.name} (${Math.round(q.fatigue * 10)}/10)`).join(', ')} ${tired.length > 1 ? 'are' : 'is'} exhausted. Tired crews shoot and fly worse, and their morale slides. Each week standing down takes off about a third of it; it takes two or three to restore them fully.`);
   const low = side.squadrons.filter((q) => q.morale <= 0.25 && q.airframes.length > 0);
   if (low.length) notes.push(`Morale in ${low.map((q) => q.name).join(', ')} is very low. If the whole wing's morale stays this low for three weeks, the crews will refuse to fly.`);
@@ -202,7 +203,10 @@ export function adjutantNotes(app: App, side: SideState): string[] {
   for (const kind of ['medium', 'heavy', 'fighter'] as const) {
     const have = side.squadrons.filter((q) => q.kind === kind).reduce((a, q) => a + q.airframes.length, 0);
     const onOrder = side.factory.queue.filter((k) => k === kind).length;
-    if (have > 0 && have < 6 && onOrder === 0) notes.push(`Only ${plural(have, 'aircraft', 'aircraft')} of type ${AIRCRAFT[kind].name[side.id]} left and none on order. Order more at the Factory: crews follow the aircraft (or ask the Ministry for crews, Training).`);
+    // Early warning: losses over the last three weeks outrunning what is on order.
+    const lost3 = (side.roll ?? []).filter((e) => e.week >= st.turn - 3 && side.squadrons.find((q) => q.name === e.squadron)?.kind === kind).length;
+    if (have > 0 && have <= 6 && onOrder === 0) notes.push(`Only ${plural(have, 'aircraft', 'aircraft')} of type ${AIRCRAFT[kind].name[side.id]} left and none on order. Order more at the Factory: crews follow the aircraft (or ask the Ministry for crews, Training).`);
+    else if (have > 0 && lost3 >= 4 && onOrder * 2 < lost3) notes.push(`We have lost ${lost3} ${AIRCRAFT[kind].name[side.id]} in three weeks and have ${onOrder === 0 ? 'none' : onOrder} on order. At this rate the type will be gone in ${Math.max(1, Math.round((have / lost3) * 3))} weeks.`);
   }
   const gutted = side.squadrons.filter((q) => q.airframes.length <= 2 && side.squadrons.some((o) => o !== q && o.kind === q.kind));
   if (gutted.length) notes.push(`${gutted.map((q) => q.name).join(', ')} ${gutted.length > 1 ? 'are' : 'is'} down to one or two aircraft and could be merged into another squadron of the same type (Squadrons).`);
@@ -559,12 +563,12 @@ function training(app: App, side: SideState): HTMLElement {
         h('div', null, h('span', null, 'Intake per week'), h('b', null, `${1 + t.level * 2} crews`)),
         h('div', null, h('span', null, 'In training'), h('b', null, `${t.inTraining}`)),
         h('div', null, h('span', null, 'Awaiting intake'), h('b', null, `${side.resources.replacements}`)),
-        h('div', null, h('span', null, 'Aircraft without a crew'), h('b', null, `${crewShortfall(side)}`)),
+        h('div', null, h('span', null, 'Aircraft without a crew'), h('b', null, `${crewNeed(side)}`)),
       ),
       h('button', { class: 'btn', disabled: t.level >= 5, onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'training' }) }, `Expand school (${COSTS.trainingUpgrade(t.level)} supplies)`),
       h('div', { class: 'crew-request' },
         h('span', null, `Ask the Ministry for trained aircrew (${crewPrice(side)} supplies each; dearer the less it trusts you):`),
-        [1, 3].map((n) => h('button', { class: 'btn small', disabled: crewShortfall(side) === 0 || side.resources.supplies < n * crewPrice(side), onclick: () => app.cmd(side.id, { k: 'crews', n }) }, `+${n}`))),
+        [1, 3].map((n) => h('button', { class: 'btn small', disabled: crewNeed(side) === 0 || side.resources.supplies < n * crewPrice(side), onclick: () => app.cmd(side.id, { k: 'crews', n }) }, `+${n}`))),
       h('p', { class: 'muted' }, 'Graduates fill squadrons that have more aircraft than crews. A squadron without crews cannot fly, however many aircraft it has.'),
       h('p', { class: 'muted' }, 'The Air Ministry posts aircrew, and the school takes pupils, only for aircraft the wing has or has on order. To grow the wing, order aircraft at the Factory: crews follow. Spare crews move to squadrons of the same type that are short.'),
       h('p', { class: 'muted' }, `Expanding the school takes more pupils at once and turns out better shots (each level adds to a graduate's starting skill). It pays when many aircraft are waiting for crews (now ${crewShortfall(side)}).`),

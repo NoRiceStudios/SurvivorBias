@@ -22,6 +22,13 @@ const LEANING: Record<Archetype, Partial<Record<RequestKind, number>>> = {
 
 const who = (sq: Squadron) => `${sq.leader.rank} ${sq.leader.name} (${sq.name})`;
 
+/** Each leader puts a request in his own words, and not the same words every time he asks. */
+function vary(sq: Squadron, kind: RequestKind, words: string[]): string {
+  const seed = [...sq.leader.name].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 11);
+  const asked = (sq.leader.log ?? []).filter((e) => e.kind === kind).length;
+  return words[(seed + asked) % words.length];
+}
+
 export function generateRequests(rng: Rng, state: GameState, side: SideState, d: Debrief): LeaderRequest[] {
   const candidates: (LeaderRequest & { weight: number })[] = [];
   const add = (sq: Squadron, kind: RequestKind, base: number, req: Omit<LeaderRequest, 'id' | 'squadronId' | 'kind'>) =>
@@ -37,31 +44,31 @@ export function generateRequests(rng: Rng, state: GameState, side: SideState, d:
     const L = who(sq);
 
     if (sq.fatigue >= 0.7) {
-      add(sq, 'rest', 1.2, { text: `${L} requests a week's stand-down. "The boys are dead on their feet, sir."`, effect: 'The squadron stands down this week: fatigue falls, morale recovers.', cost: 0 });
+      add(sq, 'rest', 1.2, { text: `${L} requests a week's stand-down. ${vary(sq, 'rest', ['"The boys are dead on their feet, sir."', '"They\'re falling asleep in the crew room between briefings."', '"Give them a week and they\'ll fly for you again. Not before."', '"Two of my pilots were sick before take-off this morning, sir."'])}`, effect: 'The squadron stands down this week: fatigue falls, morale recovers.', cost: 0 });
     }
     if (bomber && lost > 0 && sq.doctrine.formation < 0.8) {
-      add(sq, 'tighterBox', 1, { text: `${L} asks to fly a tighter box. "We lost ${lost} who straggled. Close up and the gunners cover each other."`, effect: 'Formation +0.25: more defensive fire and fewer stragglers picked off.', cost: 0 });
+      add(sq, 'tighterBox', 1, { text: `${L} asks to fly a tighter box. ${vary(sq, 'tighterBox', [`"We lost ${lost} who straggled. Close up and the gunners cover each other."`, `"The ones they pick off are the ones who drift. ${lost} this week."`, '"Wingtip to wingtip, sir. It\'s the only thing that works."'])}`, effect: 'Formation +0.25: more defensive fire and fewer stragglers picked off.', cost: 0 });
     }
     if (bomber && recs.length) {
       const flak = recs.reduce((a, r) => a + r.hits.filter((h) => h.approach === 'flak').length, 0) / recs.length;
       if (flak >= 1.2 && sq.doctrine.altitude < 0.85) {
-        add(sq, 'higher', 1, { text: `${L} asks to bomb from higher up. "The flak was murderous at that height."`, effect: 'Altitude +0.2: less flak, but bombs fall less accurately.', cost: 0 });
+        add(sq, 'higher', 1, { text: `${L} asks to bomb from higher up. ${vary(sq, 'higher', ['"The flak was murderous at that height."', '"Another two thousand feet and their guns can\'t reach us half as well."', '"We came back with holes you could put your fist through. All flak."'])}`, effect: 'Altitude +0.2: less flak, but bombs fall less accurately.', cost: 0 });
       }
     }
     if (sent > 0 && lost / sent >= 0.3 && sq.doctrine.breakOff > 0.25) {
-      add(sq, 'breakOffSooner', 1, { text: `${L} asks for authority to turn back sooner when losses mount.`, effect: 'Break off at 15% fewer losses: fewer crews lost, more raids abandoned short of the target.', cost: 0 });
+      add(sq, 'breakOffSooner', 1, { text: `${L} asks for authority to turn back sooner when losses mount. ${vary(sq, 'breakOffSooner', ['"No target is worth the whole squadron, sir."', '"When it goes wrong, let me bring the rest home."', '"I\'d rather fly it again next week with the crews I\'ve got."'])}`, effect: 'Break off at 15% fewer losses: fewer crews lost, more raids abandoned short of the target.', cost: 0 });
     }
     if (lost === 0 && sent > 0 && sq.doctrine.aggression < 0.85) {
-      add(sq, 'pressHome', 0.5, { text: `${L}: "We're holding back, sir. Let us press our attacks home."`, effect: 'Aggression +0.2: more hits on the enemy, and more exposure for our crews.', cost: 0 });
+      add(sq, 'pressHome', 0.5, { text: `${L}: ${vary(sq, 'pressHome', ['"We\'re holding back, sir. Let us press our attacks home."', '"We\'re bombing from too far out. Let us go in properly."', '"The boys are ready to go in harder. Let them."'])}`, effect: 'Aggression +0.2: more hits on the enemy, and more exposure for our crews.', cost: 0 });
     }
     if (sq.kind === 'fighter' && side.approach.tail > 0.45) {
       const hitByGunners = recs.filter((r) => r.role === 'defense' && r.hits.length > 0).length + lost;
       if (hitByGunners >= 2) {
-        add(sq, 'headOn', 1, { text: `${L} wants to try head-on attacks. "Their tail gunners are murdering us coming in from astern."`, effect: 'Interceptor tactics shift 20% from astern to head-on: fewer guns facing our fighters, a briefer firing pass.', cost: 0 });
+        add(sq, 'headOn', 1, { text: `${L} wants to try head-on attacks. ${vary(sq, 'headOn', ['"Their tail gunners are murdering us coming in from astern."', '"From behind we fly straight into every gun they\'ve got."', '"Head-on, they\'ve only the nose guns. And the nerve to hold course."'])}`, effect: 'Interceptor tactics shift 20% from astern to head-on: fewer guns facing our fighters, a briefer firing pass.', cost: 0 });
       }
     }
     if (sq.skill < 0.45 && side.training.focus !== 'gunnery' && sent > 0) {
-      add(sq, 'gunnery', 0.5, { text: `${L} asks the training school to put more weight on gunnery. "The new boys can't hit a barn."`, effect: 'Training syllabus switches to gunnery: graduates arrive more skilled.', cost: 0 });
+      add(sq, 'gunnery', 0.5, { text: `${L} asks the training school to put more weight on gunnery. ${vary(sq, 'gunnery', ['"The new boys can\'t hit a barn."', '"They come to us having fired at a drogue twice."', '"Half of them shoot at the right range by luck."'])}`, effect: 'Training syllabus switches to gunnery: graduates arrive more skilled.', cost: 0 });
     }
     if (side.training.focus !== 'reporting' && sq.leader.archetype === 'byTheBook' && sent > 0) {
       add(sq, 'reporting', 0.25, { text: `${L} asks the school to drill observation and reporting. "Half the claims in this wing are wishful thinking."`, effect: 'Training syllabus switches to reporting: debriefs grow more accurate, graduates fight a little worse.', cost: 0 });
@@ -78,7 +85,7 @@ export function generateRequests(rng: Rng, state: GameState, side: SideState, d:
         const from = full ? ZONES.filter((z) => sq.armor[z] > 0 && z !== worst[0]).sort((a, b) => (holes[a] ?? 0) - (holes[b] ?? 0))[0] : undefined;
         if (!full || from) {
           add(sq, 'plateTheHoles', 0.55, {
-            text: `${L} asks for more plate on the ${ZONE_LABEL[worst[0]].toLowerCase()}. "That's where we keep getting hit, sir. ${worst[1]} holes there this week alone."`,
+            text: `${L} asks for more plate on the ${ZONE_LABEL[worst[0]].toLowerCase()}. ${vary(sq, 'plateTheHoles', [`"That's where we keep getting hit, sir. ${worst[1]} holes there this week alone."`, `"The riggers counted ${worst[1]} holes there. Stands to reason, sir."`, `"${worst[1]} patches on the ${ZONE_LABEL[worst[0]].toLowerCase()} this week. Armour it and we'll stop worrying."`])}`,
             effect: `One plate fitted to the ${ZONE_LABEL[worst[0]].toLowerCase()}${from ? `, taken from the ${ZONE_LABEL[from].toLowerCase()}` : ''}.`,
             cost: COSTS.armorChange,
             zone: worst[0],

@@ -32,6 +32,13 @@ function blankSide(s: SideState): SideState {
     caught: 0,
     observed: { feints: 0, support: 0 },
     requests: [],
+    post: [],
+    roll: [],
+    usedNames: [],
+    usedLines: [],
+    arrived: [],
+    repaired: undefined,
+    intent: undefined,
   };
 }
 

@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  countedSites,
   AIRCRAFT,
   APPROACH_LABEL,
   ARCHETYPE_INFO,
@@ -172,11 +173,14 @@ function adjutant(): string[] {
   const notes: string[] = [];
   for (const kind of ['medium', 'heavy', 'fighter'] as const) {
     const have = me().squadrons.filter((q) => q.kind === kind).reduce((a, q) => a + q.airframes.length, 0);
-    if (have > 0 && have < 6 && !me().factory.queue.includes(kind)) notes.push(`Only ${have} ${AIRCRAFT[kind].name[0]} left and none on order: order more (build ${kind}); crews follow aircraft, or ask the Ministry (crews N).`);
+    const onOrder = me().factory.queue.filter((k) => k === kind).length;
+    const lost3 = (me().roll ?? []).filter((e) => e.week >= state!.turn - 3 && me().squadrons.find((q) => q.name === e.squadron)?.kind === kind).length;
+    if (have > 0 && have <= 6 && onOrder === 0) notes.push(`Only ${have} ${AIRCRAFT[kind].name[0]} left and none on order: order more (build ${kind}); crews follow aircraft, or ask the Ministry (crews N).`);
+    else if (have > 0 && lost3 >= 4 && onOrder * 2 < lost3) notes.push(`We have lost ${lost3} ${AIRCRAFT[kind].name[0]} in three weeks and have ${onOrder} on order. At this rate the type will be gone in ${Math.max(1, Math.round((have / lost3) * 3))} weeks (build ${kind}).`);
   }
   const gutted = me().squadrons.filter((q) => q.airframes.length <= 2 && me().squadrons.some((o) => o !== q && o.kind === q.kind));
   for (const q of gutted) notes.push(`${sqCode(q)} ${q.name} is down to ${q.airframes.length} aircraft: merge it into another of its type (merge ${sqCode(q)} S#).`);
-  const tired = side.squadrons.filter((q) => q.fatigue >= 0.7);
+  const tired = side.squadrons.filter((q) => q.fatigue >= 0.7 && q.airframes.length > 0);
   if (tired.length) notes.push(`${tired.map((q) => `${sqCode(q)} ${q.name} (${Math.round(q.fatigue * 10)}/10)`).join(', ')} ${tired.length > 1 ? 'are' : 'is'} exhausted. Tired crews shoot and fly worse, and their morale slides. Each week standing down takes off about a third of it; it takes two or three to restore them fully.`);
   for (const sq of side.squadrons) {
     if (sq.morale <= 0.25) notes.push(`Morale in ${sqCode(sq)} ${sq.name} is very low. If the whole wing's morale stays this low for three weeks, the crews will refuse to fly.`);
@@ -291,7 +295,15 @@ function intel() {
     `  Our airfields ${ours.airfield}%${eo.crippled.airfield ? ' CRIPPLED' : ''}: ${Math.round(eo.grounded * 100)}% of each operation grounded · their airfields ~${theirs.airfield}%${et.crippled.airfield ? ' CRIPPLED' : ''}: ~${Math.round(et.grounded * 100)}% grounded`,
     `  Our fuel depots ${ours.fuel}%${eo.crippled.fuel ? ' CRIPPLED' : ''}: stores deliveries ${Math.round(eo.stores * 100)}% · theirs ~${theirs.fuel}%${et.crippled.fuel ? ' CRIPPLED' : ''}: ~${Math.round(et.stores * 100)}%`,
     `  Our works ${ours.industry}%${eo.crippled.industry ? ' CRIPPLED' : ''}: production ${Math.round(eo.production * 100)}% · theirs ~${theirs.industry}%${et.crippled.industry ? ' CRIPPLED' : ''}: ~${Math.round(et.production * 100)}%`,
-    `  Emergency repairs: \`repair airfield|fuel|industry\` (${REPAIR_COST} supplies, +20% to each of our sites of that type, once a week each).`);
+    `  Emergency repairs: \`repair airfield|fuel|industry\` (${REPAIR_COST} supplies, +20% to each of our sites of that type, once a week each).`,
+    `  Their works that count (within two sectors of the front): ${(['airfield', 'fuel', 'industry'] as const).map((k) => countedSites(st.theater, 1, k).map((x) => x.name).join(', ')).filter(Boolean).join('; ') || 'none'}. A side with no works of a type left counts as 40%.`);
+}
+
+/** In a chain of commands the plan is shown once, after the last change, not after every one. */
+let planDirty = false;
+function planChanged() {
+  if (commands.length > 1) planDirty = true;
+  else planView();
 }
 
 function planView() {
@@ -303,7 +315,7 @@ function planView() {
   const v = validatePlan(side, p, state!);
   say(
     target ? `Plan: ${target} with ${name(p.raid?.squadronIds ?? [])}` : 'Plan: no operation this week (a defensive week).',
-    `Defence: ${p.defense.map((id) => { const sq = side.squadrons.find((q) => q.id === id)!; const cv = p.cover[id]; return `${sqCode(sq)} ${cv === undefined ? 'in reserve' : `patrolling ${sectorName(cv)} [${cv + 1}]`}`; }).join(', ') || 'none'}`,
+    `Defence: ${p.defense.map((id) => { const sq = side.squadrons.find((q) => q.id === id)!; const cv = p.cover[id]; return `${sqCode(sq)} ${cv === undefined ? 'defending the airfields and works (scrambled against raids)' : `patrolling ${sectorName(cv)} [${cv + 1}]`}`; }).join(', ') || 'none'}`,
     `Feint: ${p.feint ? `${name(p.feint.squadronIds)} over ${sectorName(p.feint.sector)} [${p.feint.sector + 1}]` : 'none'} · Recon: ${p.recon ? `${name([p.recon.squadronId])} photographing ${state!.theater.sites.find((x) => x.id === p.recon!.siteId)?.name}` : 'none'}`,
     `Returns policy: ${p.embellish === 0 ? 'accurate' : p.embellish < 0.6 ? 'optimistic' : 'creative'} · Cost: stores ${c.stores}/${side.resources.stores}`,
     v.ok ? 'Orders are valid.' : `PROBLEM: ${v.reason}`,
@@ -382,6 +394,12 @@ function launch() {
     say(`  ${r.squadronName} (${r.leader.rank} ${r.leader.name}): returned ${r.returned}/${r.sent} · claims ${r.claims} destroyed · ${r.mission ? 'enemy fighters' : 'escorts seen'} ${r.enemyFightersReported ? `~${r.enemyFightersReported}` : 'none seen'} · attacks mostly ${mostly ? APPROACH_LABEL[mostly].toLowerCase() : '—'} · flak ${r.flakReported} · results: ${results}`);
     for (const x of r.remarks) say(`      ${x}`);
   }
+  // The Intelligence Section cross-checks the squadrons' estimates of the enemy.
+  const est = d.reports.filter((r) => !r.noReport).map((r) => r.enemyFightersReported);
+  if (me().research.includes('intelOfficer') && est.length >= 2) {
+    const lo = Math.min(...est), hi = Math.max(...est);
+    say(hi > lo * 1.8 ? `  Intelligence Section: estimates of enemy fighters range from ${lo} to ${hi}. At least one squadron is badly wrong.` : `  Intelligence Section: squadron estimates broadly agree (${lo}–${hi}).`);
+  }
   if (d.missing.length) {
     say('Missing:');
     for (const m of d.missing) say(`  ${m.serial} ${AIRCRAFT[m.kind].name[0]} — ${m.captain}${AIRCRAFT[m.kind].crew > 1 && !m.captain?.includes('(') ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}. Last heard: ${m.lastWords ? `"${m.lastWords}"` : 'nothing'}${m.witnessed ? ` · ${m.witnessed}` : ''}`);
@@ -434,7 +452,7 @@ function run(cmd: string) {
     say(
       'Views: brief | map | squadrons | hangar S# | factory | training | research | intel | plan',
       'Orders: mission strike P# | mission support | mission sweep | mission none',
-      '        assign S# bomb|escort|sweep|defend|feint|photo|rest · patrol S# <sector#>|reserve · feint <sector#> · photo P#',
+      '        assign S# bomb|escort|sweep|defend|feint|photo|rest · patrol S# <sector#>|base · feint <sector#> · photo P#',
       '        returns accurate|optimistic|creative · tactics tail=N headon=N beam=N',
       'Management: armor S# <zone> <0-3> (zones: nose cockpit engines fuel wingRoot outerWing fuselage tail)',
       '        doctrine S# aggression=0..1 formation=0..1 altitude=0..1 breakoff=0.1..1',
@@ -489,31 +507,32 @@ function run(cmd: string) {
         if (site.owner === 0) throw new Error('That site is ours');
         plan.raid = { target: site.type, siteId: site.id, squadronIds: plan.raid?.squadronIds.length ? plan.raid.squadronIds : autoAssign('strike') };
       } else throw new Error('mission strike P# | support | sweep | none');
-      return planView();
+      return planChanged();
     }
-    case 'assign': assign(a[0], a[1]); return planView();
+    case 'assign': assign(a[0], a[1]); return planChanged();
     case 'patrol': {
       const sq = findSq(a[0]);
-      if (!plan.defense.includes(sq.id)) throw new Error(`${a[0]} is not assigned to defend`);
-      if (a[1] === 'reserve') delete plan.cover[sq.id];
+      // Patrolling is a defensive job: put the squadron on defence if it isn't already.
+      if (!plan.defense.includes(sq.id)) assign(a[0], 'defend');
+      if (a[1] === 'reserve' || a[1] === 'base') delete plan.cover[sq.id];
       else {
         const sec = sectorArg(a[1]);
         if (sec >= state.theater.held0) throw new Error('You can only patrol sectors we hold');
         plan.cover[sq.id] = sec;
       }
-      return planView();
+      return planChanged();
     }
     case 'feint': {
       if (!plan.feint) throw new Error('Assign a squadron to feint first (assign S# feint)');
       plan.feint.sector = sectorArg(a[0]);
-      return planView();
+      return planChanged();
     }
     case 'photo': {
       if (!plan.recon) throw new Error('Assign a recon squadron first (assign S# photo)');
       plan.recon.siteId = findSite(a[0]).id;
-      return planView();
+      return planChanged();
     }
-    case 'returns': plan.embellish = { accurate: 0, optimistic: 0.4, creative: 0.9 }[a[0] as 'accurate'] ?? 0; return planView();
+    case 'returns': plan.embellish = { accurate: 0, optimistic: 0.4, creative: 0.9 }[a[0] as 'accurate'] ?? 0; return planChanged();
     case 'tactics': {
       const kv = Object.fromEntries(a.map((x) => x.split('=')));
       check(setApproach(side, { tail: Number(kv.tail ?? 0), headOn: Number(kv.headon ?? kv.headOn ?? 0), beam: Number(kv.beam ?? 0) }));
@@ -533,8 +552,17 @@ function run(cmd: string) {
     case 'launch':
       // A launch after a failed order in the same chain would fly a plan the commander didn't mean.
       if (failed.length) throw new Error(`Not launched: ${failed.length} earlier command${failed.length > 1 ? 's' : ''} in this chain failed. Fix ${failed.length > 1 ? 'them' : 'it'} and launch again.`);
+      planDirty = false;
       return launch();
-    case 'crews': check(requestCrews(side, Number(a[0] ?? 1))); say(`Crews posted. Replacement pool ${side.resources.replacements}; supplies ${side.resources.supplies}.`); return;
+    case 'crews': {
+      const before = new Map(side.squadrons.map((q) => [q.id, q.crews]));
+      const pool = side.resources.replacements;
+      check(requestCrews(side, Number(a[0] ?? 1)));
+      const to = side.squadrons.filter((q) => q.crews > (before.get(q.id) ?? 0)).map((q) => `${sqCode(q)} +${q.crews - before.get(q.id)!}`);
+      const spare = side.resources.replacements - pool;
+      say(`Crews posted: ${[...to, ...(spare > 0 ? [`${spare} to the replacement pool`] : [])].join(', ')}. Supplies ${side.resources.supplies}.`);
+      return;
+    }
     case 'merge': {
       const from = findSq(a[0]);
       const into = findSq(a[1]);
@@ -577,6 +605,7 @@ for (const c of commands) {
     failed.push(`${c}: ${(e as Error).message}`);
   }
 }
+if (planDirty && state && plan && !state.outcome) planView();
 // Failures inside a long chain are easy to miss: repeat them at the end.
 if (failed.length > 1 || (failed.length && commands.length > 1)) say('', `!! ${failed.length} command${failed.length > 1 ? 's' : ''} failed:`, ...failed.map((f) => `   ${f}`));
 if (state && plan) writeFileSync(file, JSON.stringify({ state: serialize(state), plan } satisfies SaveFile));
