@@ -18,6 +18,8 @@ import {
   remember,
   emergencyRepair,
   applyCommand,
+  syncFacilities,
+  STRIKE_DAMAGE,
   RESEARCH,
   startResearch,
   theaterDecision,
@@ -854,5 +856,20 @@ describe('designer decisions after round 2', () => {
     }
     expect(warned).toBeGreaterThan(20);
     expect(right / warned).toBeGreaterThan(0.6);
+  });
+
+  it('capturing ground does not wreck the works behind it; three good raids cripple a type', () => {
+    const s = startCampaign({ seed: 'cripple' });
+    const before = s.sides[1].facilities.airfield;
+    s.front = SECTOR_PRESSURE;
+    applyPressure(s);
+    syncFacilities(s);
+    expect(s.sides[1].facilities.airfield).toBe(before);
+    expect(s.sides[0].facilities.airfield).toBeLessThanOrEqual(100);
+    const fields = s.theater.sites.filter((x) => x.owner === 1 && x.type === 'airfield' && (x.sector < s.theater.start0 ? 0 : 1) === 1);
+    // Three good raids (about 14% each before the multiplier) spread over their airfields.
+    for (let i = 0; i < 3; i++) fields[i % fields.length].condition -= Math.round(14 * STRIKE_DAMAGE);
+    syncFacilities(s);
+    expect(facilityEffects(s.sides[1].facilities).crippled.airfield).toBe(true);
   });
 });

@@ -179,11 +179,25 @@ export function syncFacilities(state: GameState) {
   const t = state.theater;
   for (const side of state.sides) {
     for (const type of ['industry', 'airfield', 'fuel'] as FacilityType[]) {
-      const own = t.sites.filter((s) => s.owner === side.id && s.type === type);
-      const base = Math.max(1, t.baseline[side.id][type]);
-      side.facilities[type] = Math.min(150, Math.round(own.reduce((a, s) => a + s.condition, 0) / base));
+      side.facilities[type] = facilityCondition(t, side.id, type, (s) => s.condition);
     }
   }
+}
+
+/** A side's home sites of one type that it still holds (captured works are wrecked and don't count). */
+export function homeSites(t: TheaterState, side: SideId, type: FacilityType): Site[] {
+  return t.sites.filter((s) => s.owner === side && s.type === type && (s.sector < t.start0 ? 0 : 1) === side);
+}
+
+/**
+ * The condition of a type of works: the average of the home sites still held.
+ * Losing ground doesn't wreck the works left behind it; only bombing does. With
+ * none left, the wing makes do with improvised facilities.
+ */
+export function facilityCondition(t: TheaterState, side: SideId, type: FacilityType, condition: (s: Site) => number): number {
+  const own = homeSites(t, side, type);
+  if (own.length === 0) return 40;
+  return Math.round(own.reduce((a, s) => a + condition(s), 0) / own.length);
 }
 
 export function currentStage(state: GameState): StageDef {

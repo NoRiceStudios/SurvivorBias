@@ -73,6 +73,7 @@ import {
   CRIPPLED,
   REPAIR_COST,
   emergencyRepair,
+  facilityCondition,
 } from '../src/core';
 
 interface SaveFile {
@@ -269,7 +270,7 @@ function intel() {
   say(`Our interceptor tactics: ${Object.entries(me().approach).map(([k, v]) => `${APPROACH_LABEL[k as 'tail']} ${pct(v)}`).join(', ')}`);
   say(`Claims per week: ${state!.archive.map((e) => e.claimed[0]).join(', ') || 'none yet'}`);
   const st = state!;
-  const est = (type: 'industry' | 'airfield' | 'fuel') => Math.round(st.theater.sites.filter((x) => x.owner === 1 && x.type === type).reduce((a, x) => a + (p.sites[x.id] ?? 100), 0) / Math.max(1, st.theater.baseline[1][type]));
+  const est = (type: 'industry' | 'airfield' | 'fuel') => facilityCondition(st.theater, 1, type, (x) => p.sites[x.id] ?? 100);
   const ours = me().facilities;
   const theirs = { industry: est('industry'), airfield: est('airfield'), fuel: est('fuel') };
   const eo = facilityEffects(ours);

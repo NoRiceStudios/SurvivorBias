@@ -76,8 +76,13 @@ export function aiBonus(state: GameState, side: SideState): number {
 function reinforce(rng: Rng, state: GameState, side: SideState, news: string[]) {
   const planes = side.squadrons.reduce((x, q) => x + q.airframes.length, 0);
   const shortfall = Math.max(0, 28 - planes);
-  const n = Math.round(shortfall * (0.3 + 0.4 * side.trust / 100));
-  if (n <= 0) return;
+  // The Ministry makes good what a trusted commander has lost; a doubted one gets little or nothing.
+  const share = Math.max(0, Math.min(0.7, (side.trust - 30) / 100));
+  const n = Math.round(shortfall * share);
+  if (n <= 0) {
+    if (shortfall > 0) news.push(`The Air Ministry declines to replace the wing's losses: "Confidence in the conduct of operations does not at present justify it."`);
+    return;
+  }
   let delivered = 0;
   for (let i = 0; i < n; i++) {
     const fighters = side.squadrons.filter((q) => q.kind === 'fighter').reduce((x, q) => x + q.airframes.length, 0);
@@ -335,11 +340,14 @@ function prisonerPost(rng: Rng, state: GameState, side: SideState, sq: Squadron,
   }];
 }
 
+export const STRIKE_DAMAGE = 2.5;
+
 function applyDamage(state: GameState, siteId: string | undefined, dmg: number): number {
   const site = state.theater.sites.find((x) => x.id === siteId);
   if (!site || dmg <= 0) return 0;
   const before = site.condition;
-  site.condition = Math.max(0, Math.round(site.condition - dmg));
+  // Bombs on works do lasting harm: about three good raids cripple a type of works.
+  site.condition = Math.max(0, Math.round(site.condition - dmg * STRIKE_DAMAGE));
   return before - site.condition;
 }
 
@@ -548,6 +556,8 @@ interface Reported {
   /** Reported damage, by site id. */
   damage: Record<string, number>;
   sorties: number;
+  /** Our own aircraft lost: these can't be talked down. */
+  lost: number;
 }
 
 function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideState, reported: Reported, plan: TurnPlan, hqLines: string[]) {
@@ -557,6 +567,7 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
     kills: Math.round(reported.kills * (1 + e * 0.8)),
     damage: Object.fromEntries(Object.entries(reported.damage).map(([k, v]) => [k, Math.round((v ?? 0) * (1 + e * 0.8))])),
     sorties: reported.sorties,
+    lost: reported.lost,
   };
   let trustDelta = 0;
   const failedKinds: Order['kind'][] = [];
@@ -594,6 +605,12 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
     }
   }
   trustDelta += Math.min(6, toHq.kills * 0.4) + 1;
+  // Our own losses are counted by the Air Ministry, not by us: a bloody week costs confidence.
+  const bloody = Math.max(0, reported.lost - 2);
+  if (bloody > 0) {
+    trustDelta -= bloody * 1.5;
+    hqLines.push(`The Air Ministry notes the loss of ${reported.lost} aircraft this week. Losses on this scale will have to be justified by results.`);
+  }
   // Inspection: HQ's own photo-recon may contradict an embellished report.
   if (e > 0.05) {
     const p = 0.08 + e * 0.35 + side.caught * 0.05;
@@ -856,7 +873,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   const parts = {
     air: (lost1 - lost0) * 2 + rng.gauss(3),
     support: (supportPush[0] - supportPush[1]) * 1.15,
-    strikes: (strat0 - strat1) * 0.3,
+    strikes: (strat0 - strat1) * 0.15,
     // Wrecked works keep telling at the front, week after week.
     works:
       (Math.min(120, s0.facilities.industry) - Math.min(120, s1.facilities.industry)) * 0.06 +
@@ -909,6 +926,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       kills: d.reports.reduce((a, r) => a + r.claims, 0),
       damage: {},
       sorties: d.reports.reduce((a, r) => a + r.sent, 0),
+      lost: d.missing.length + d.returned.filter((r) => r.fate === 'crashed').length,
     };
     const sid = raids[id]?.siteId;
     if (sid) reported.damage[sid] = d.reports.filter((r) => r.targetDamageReported !== null).reduce((a, r) => a + (r.targetDamageReported ?? 0), 0);

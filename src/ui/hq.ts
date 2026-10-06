@@ -19,7 +19,7 @@ import {
 } from '../core/data';
 import { CRIPPLED, facilityEffects } from '../core/effects';
 import { flyable } from '../core/sim';
-import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS, WEATHER_LABEL } from '../core/theaters';
+import { bomberRange, currentStage, facilityCondition, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS, WEATHER_LABEL } from '../core/theaters';
 import { crewShortfall, STORES_CAP } from '../core/turn';
 import type { AircraftKind, FighterApproach, Hit, SideId, SideState, Squadron, TargetId, TrainingFocus } from '../core/types';
 import { ZONES } from '../core/types';
@@ -599,10 +599,7 @@ function strategicPanel(app: App, side: SideState): HTMLElement {
   const st = app.state!;
   const t = st.theater;
   const enemy = (1 - side.id) as SideId;
-  const est = (type: 'industry' | 'airfield' | 'fuel') => {
-    const sites = t.sites.filter((x) => x.owner === enemy && x.type === type);
-    return Math.round(sites.reduce((a, x) => a + believed(st, side.id, x), 0) / Math.max(1, t.baseline[enemy][type]));
-  };
+  const est = (type: 'industry' | 'airfield' | 'fuel') => facilityCondition(t, enemy, type, (x) => believed(st, side.id, x));
   const theirs = { industry: est('industry'), airfield: est('airfield'), fuel: est('fuel') };
   const ours = side.facilities;
   const eo = facilityEffects(ours);
