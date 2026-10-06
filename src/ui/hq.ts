@@ -353,7 +353,7 @@ function operations(app: App, side: SideState): HTMLElement {
         h('h3', null, 'Or strike a site (believed condition)'),
         h('table', { class: 'site-table' }, h('tbody', null, siteRows))),
     )),
-    side.perceived.warning ? h('div', { class: 'paper panel warning-line' }, h('span', { class: 'stamp intel' }, 'Y-SERVICE'), ' ', side.perceived.warning.text, h('span', { class: 'muted small' }, ' Fighters patrolling that sector would meet such a raid; the warning may be wrong.')) : null,
+    side.perceived.warning ? h('div', { class: 'paper panel warning-line' }, h('span', { class: 'stamp intel' }, 'Y-SERVICE'), ' ', side.perceived.warning.text, h('span', { class: 'muted small' }, side.perceived.warning.sector !== undefined ? ' Fighters patrolling that sector would meet such a raid; the warning may be wrong.' : ' The warning may be wrong.')) : null,
     panel('Squadron Assignments',
       h('p', { class: 'muted small' }, 'A feint sends a squadron over another enemy sector first, to draw their reserve away from the real raid. Fighters on defence either patrol one sector (they will almost certainly meet a raid there, and rarely anywhere else) or wait in central reserve (they meet most raids, given warning).'),
       h('table', { class: 'sq-table' },
@@ -544,7 +544,8 @@ function training(app: App, side: SideState): HTMLElement {
       ),
       h('button', { class: 'btn', disabled: t.level >= 5, onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'training' }) }, `Expand school (${COSTS.trainingUpgrade(t.level)} supplies)`),
       h('p', { class: 'muted' }, 'Graduates fill squadrons that have more aircraft than crews. A squadron without crews cannot fly, however many aircraft it has.'),
-      h('p', { class: 'muted' }, 'The Air Ministry posts aircrew, and the school takes pupils, only for aircraft the wing has or has on order. To grow the wing, order aircraft at the Factory: crews follow.'),
+      h('p', { class: 'muted' }, 'The Air Ministry posts aircrew, and the school takes pupils, only for aircraft the wing has or has on order. To grow the wing, order aircraft at the Factory: crews follow. Spare crews move to squadrons of the same type that are short.'),
+      h('p', { class: 'muted' }, `Expanding the school takes more pupils at once and turns out better shots (each level adds to a graduate's starting skill). It pays when many aircraft are waiting for crews (now ${crewShortfall(side)}).`),
     ),
     panel('Syllabus',
       h('div', { class: 'focus-list' }, focus.map(([id, label, desc]) =>

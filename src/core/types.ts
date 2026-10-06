@@ -184,7 +184,9 @@ export interface Perceived {
   survivorHitsByKind: Partial<Record<AircraftKind, ZoneMap<number>>>;
   claimedKillsTotal: number;
   /** Y-Service guess at the enemy's next operation (may be wrong). */
-  warning?: { text: string; sector?: number };
+  warning?: { text: string; sector?: number; guess?: { target: TargetId; siteId?: string } | null };
+  /** Whether the Y-Service's recent warnings came true (most recent last). */
+  warningRecord?: boolean[];
 }
 
 export interface SideState {

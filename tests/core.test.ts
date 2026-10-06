@@ -144,10 +144,19 @@ describe('survivorship bias', () => {
     expect(startCampaign({ seed: 'prof-a' }).lethality).toEqual(a);
     for (const k of ['fighter', 'medium', 'heavy', 'recon'] as const) {
       for (const z of ZONES) expect(a[k][z]).toBeGreaterThan(0);
-      // Outer wings and fuselage are always forgiving.
-      expect(a[k].outerWing).toBeLessThan(0.05);
-      expect(a[k].fuselage).toBeLessThan(0.05);
     }
+    // The big "safe" areas are usually forgiving, but in some wars, on some types, they are not.
+    let deadlySafeZone = 0;
+    let types = 0;
+    for (let g = 0; g < 40; g++) {
+      const t = startCampaign({ seed: `safe${g}` }).lethality;
+      for (const k of ['fighter', 'medium', 'heavy', 'recon'] as const) {
+        types++;
+        if (t[k].outerWing >= 0.1 || t[k].fuselage >= 0.1) deadlySafeZone++;
+      }
+    }
+    expect(deadlySafeZone / types).toBeGreaterThan(0.15);
+    expect(deadlySafeZone / types).toBeLessThan(0.45);
   });
 
   it('armoring where survivors are NOT hit beats armoring the holes', () => {

@@ -313,11 +313,16 @@ function witnessLoss(ctx: RaidContext, lost: Flier, flight: Flier[]) {
     lost.rec.lastWords = lastWords(rng, lost);
     say(ctx, lost.side.id, lost.callsign, lost.rec.lastWords, lost.side.id, true);
   }
-  const chutes = rng.int(0, AIRCRAFT[lost.af.kind].crew);
+  // How many got out has to agree with what killed her: a dead pilot in a single-seater, or an
+  // aircraft that blew up, leaves few or no parachutes.
+  const crew = AIRCRAFT[lost.af.kind].crew;
+  const what = rng.pick(SEEN_WHAT);
+  const lethal = lost.rec.hits.find((x) => x.lethal)?.zone;
+  const max = crew === 1 && lethal === 'cockpit' ? 0 : /blew up|broke up/.test(what) ? Math.min(1, crew) : crew;
+  const chutes = rng.int(0, max);
   lost.rec.chutes = chutes;
   const mate = flight.find((f) => f.alive && !f.home && f.sq === lost.sq);
   if (mate && rng.chance(0.75)) {
-    const what = rng.pick(SEEN_WHAT);
     lost.rec.witnessed = `${mate.callsign} reported it "${what}", ${chutes > 0 ? `${chutes} chute${chutes > 1 ? 's' : ''} seen` : 'no chutes'}.`;
     const count = chutes > 0 ? rng.pick([`I count ${chutes} chute${chutes > 1 ? 's' : ''}.`, `${chutes === 1 ? 'One chute' : `${chutes} chutes`}, I think.`]) : rng.pick(['No chutes.', 'Nobody got out.', 'No chutes. None.']);
     say(ctx, mate.side.id, mate.callsign, rt(rng, SEEN_GO, { lost: lost.callsign, what, chutes: count }));
@@ -464,7 +469,10 @@ export function resolveRaid(
       const foe = rng.pick(free);
       tied.add(foe);
       dogfight(ctx, e, foe);
-      if (!foe.alive) say(ctx, attacker.id, e.callsign, rt(rng, ESCORT_KILL));
+      if (!foe.alive) {
+        say(ctx, attacker.id, e.callsign, rt(rng, ESCORT_KILL));
+        witnessLoss(ctx, foe, interceptors);
+      }
       if (!e.alive) witnessLoss(ctx, e, raid);
     }
     // Free interceptors attack bombers.
@@ -484,7 +492,10 @@ export function resolveRaid(
           const target = pool[Number(rng.weighted(weights))];
           bomberPass(ctx, i, target, bombers);
           if (!target.alive) witnessLoss(ctx, target, raid);
-          if (!i.alive) break;
+          if (!i.alive) {
+            witnessLoss(ctx, i, interceptors);
+            break;
+          }
         }
       }
     } else if (target === 'sweep') {
@@ -496,6 +507,7 @@ export function resolveRaid(
         const foe = rng.pick(foes);
         dogfight(ctx, i, foe);
         if (!foe.alive) witnessLoss(ctx, foe, raid);
+        if (!i.alive) witnessLoss(ctx, i, interceptors);
       }
     }
     checkBreakOff(ctx, raid, startCounts, aborted);
@@ -511,8 +523,16 @@ export function resolveRaid(
     const talkers = raid.filter((f) => f.alive && !f.home);
     if (interceptors.length > 0 && talkers.length > 1 && rng.chance(0.5)) {
       const who = rng.pick(talkers);
-      const otherF = rng.pick(talkers.filter((f) => f !== who));
-      say(ctx, attacker.id, who.callsign, rt(rng, who.af.kind === 'fighter' ? CHATTER.fighter : CHATTER.bomber, { other: otherF.callsign }));
+      const gone = raid.filter((f) => !f.alive && f.sq === who.sq);
+      const mate = rng.pick(talkers.filter((f) => f !== who));
+      // Lines about the bombers only when there are bombers; "anyone seen…" only about someone actually gone.
+      const pool = (who.af.kind === 'fighter' ? CHATTER.fighter : CHATTER.bomber)
+        .filter((l) => (target !== 'sweep' || !l.includes('bombers')) && (!l.includes('Anyone seen') || gone.length > 0))
+        .filter((l) => !ctx.radio.some((x) => x.text === l.replace('{other}', gone[0]?.callsign ?? mate.callsign)));
+      if (pool.length) {
+        const line = rng.pick(pool);
+        say(ctx, attacker.id, who.callsign, rt(rng, [line], { other: line.includes('Anyone seen') ? gone[0].callsign : mate.callsign }));
+      }
     }
   }
 
@@ -557,6 +577,7 @@ export function resolveRaid(
     const s = rng.pick(stragglers);
     bomberPass(ctx, i, s, bombers);
     if (!s.alive) witnessLoss(ctx, s, raid);
+    if (!i.alive) witnessLoss(ctx, i, interceptors);
   }
 
   ctx.t += 25;

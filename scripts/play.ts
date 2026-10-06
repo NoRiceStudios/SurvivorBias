@@ -86,6 +86,7 @@ if (!file) {
   process.exit(1);
 }
 const commands = rest.join(' ').split(';').map((c) => c.trim()).filter(Boolean);
+const failed: string[] = [];
 let state: GameState | null = null;
 let plan: TurnPlan | null = null;
 if (existsSync(file)) {
@@ -148,7 +149,7 @@ function brief() {
     `Army liaison puts the pressure on the front at ${side.perceived.front >= 0 ? '+' : ''}${side.perceived.front} (a sector usually falls at about ±${SECTOR_PRESSURE}, at most one a week; liaison figures run a little optimistic).`,
     `Primary objective: gain ${DECISIVE_GAIN} sectors from the enemy (so far ${gain >= 0 ? '+' : ''}${gain}). If neither side breaks through by week ${def.weeks}, the theater goes to whoever holds the advantage, but only if they have taken at least one sector. Otherwise it is a stalemate.`,
     `Secondary objective: ${obj.text} [${obj.status.toUpperCase()}]`,
-    ...(side.perceived.warning ? [`Intelligence warning: ${side.perceived.warning.text} (may be wrong; patrols over that sector would meet the raid)`] : []),
+    ...(side.perceived.warning ? [`Intelligence warning: ${side.perceived.warning.text} (may be wrong${side.perceived.warning.sector !== undefined ? '; patrols over that sector would meet the raid' : ''})`] : []),
     `Theater record: ${THEATERS.map((th, i) => { const res = st.theaterResults.find((x) => x.index === i); return `${th.name}: ${res ? (res.winner === 0 ? 'WON' : res.winner === null ? 'DRAWN' : 'LOST') : i === t.index ? 'in progress' : 'to come'}`; }).join(' | ')}`,
     'Standing orders:',
     ...(side.orders.length ? side.orders.map((o) => `  - ${o.text}${o.deadline <= st.turn ? ' [DUE THIS WEEK]' : ''}`) : ['  (none)']),
@@ -373,7 +374,8 @@ function launch() {
     for (const m of d.missing) say(`  ${m.serial} ${AIRCRAFT[m.kind].name[0]} — ${m.captain}${AIRCRAFT[m.kind].crew > 1 ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}. Last heard: ${m.lastWords ? `"${m.lastWords}"` : 'nothing'}${m.witnessed ? ` · ${m.witnessed}` : ''}`);
   }
   say('Home front:', ...d.defenseSummary.map((x) => `  ${x}`));
-  if (d.recon) say(`  PHOTOGRAPHIC INTERPRETATION: ${st.theater.sites.find((x) => x.id === d.recon!.siteId)?.name} at ${d.recon.condition}% capacity.`);
+  const photographed = d.recon && st.theater.sites.find((x) => x.id === d.recon!.siteId);
+  if (d.recon && photographed) say(`  PHOTOGRAPHIC INTERPRETATION: ${photographed.name} at ${d.recon.condition}% capacity.`);
   if (d.pressure?.length) say('Army liaison, the front this week:', ...d.pressure.map((p) => `  ${p.label}: ${p.effect}`));
   say('Signal from High Command:', ...(d.hqResponse.length ? d.hqResponse.map((x) => `  ${x}`) : ['  Returns acknowledged.']));
   say('');
@@ -541,7 +543,10 @@ for (const c of commands) {
     run(c);
   } catch (e) {
     say(`ERROR (${c}): ${(e as Error).message}`);
+    failed.push(`${c}: ${(e as Error).message}`);
   }
 }
+// Failures inside a long chain are easy to miss: repeat them at the end.
+if (failed.length > 1 || (failed.length && commands.length > 1)) say('', `!! ${failed.length} command${failed.length > 1 ? 's' : ''} failed:`, ...failed.map((f) => `   ${f}`));
 if (state && plan) writeFileSync(file, JSON.stringify({ state: serialize(state), plan } satisfies SaveFile));
 console.log(out.join('\n'));

@@ -116,10 +116,15 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
       kills += r.trueKills;
       if (r.fate === 'lost') {
         lost++;
-        // Escape hatches and air-sea rescue bring some crews home without their aircraft.
-        if (!r.lead && rng.chance(tech(side, 'escape'))) {
-          news.push(`The crew of ${r.serial} (${sq.name}) got out and has been brought home.`);
-          r.captain = `${captainName(side.id, r.serial, state.seed)} (rescued with his crew, back with the squadron)`;
+        // Escape hatches and air-sea rescue bring home some of those who got out.
+        const crew = AIRCRAFT[r.kind].crew;
+        const out = r.chutes ?? 0;
+        if (!r.lead && out > 0 && rng.chance(tech(side, 'escape'))) {
+          const all = out >= crew;
+          news.push(crew === 1 ? `The pilot of ${r.serial} (${sq.name}) baled out and has been brought home.` : `${all ? 'The crew' : `${out} of the crew`} of ${r.serial} (${sq.name}) got out and ${all ? 'have' : 'have'} been brought home.`);
+          r.captain = `${captainName(side.id, r.serial, state.seed)} (${crew === 1 ? 'rescued, back with the squadron' : all ? 'rescued with his crew, back with the squadron' : `rescued with ${out - 1 > 0 ? `${out - 1} of his crew` : 'nobody else'}`})`;
+          // A crew is a crew only if enough of it came back.
+          if (out * 2 < crew) sq.crews--;
         } else {
           sq.crews--;
           // Men seen to bale out may turn up later as prisoners.
@@ -154,7 +159,7 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
     sq.fatigue = Math.min(1, sq.fatigue + 0.22 + (sq.leader.trait === 'shaken' ? 0.06 : 0));
     if (frac >= 0.4 && lost >= 2) remember(sq.leader, state.turn, `lost ${lost} of ${mine.length} aircraft in one operation`);
     // The leader's operations in command, and the reputation he earns after five of them.
-    if (mine.some((r) => r.lead) && !leaderLost) {
+    if ((mine.some((r) => r.lead) || sq.kind === 'recon') && !leaderLost) {
       sq.leader.ops = (sq.leader.ops ?? 0) + 1;
       if (sq.leader.ops >= 5 && !sq.leader.trait) {
         sq.leader.trait = earnTrait(rng, sq);
@@ -254,7 +259,7 @@ function leaderFate(rng: Rng, state: GameState, side: SideState, sq: Squadron, r
   const out = (r.chutes ?? 0) > 0;
   const roll = rng.next();
   const evade = old.trait === 'lucky' ? 0.3 : 0.12;
-  const due = state.turn + rng.int(2, 3);
+  const due = state.turn + rng.int(3, 4);
   const name = `${old.rank} ${old.name}`;
   if (out && roll < evade) {
     side.post = [...(side.post ?? []), { due, from: 'Group HQ', subject: `${name} is back`, body: `${name} of ${sq.name}, missing since week ${state.turn}, has made his way back through the lines. He resumes command of his squadron.`, returns: { squadronId: sq.id, leader: old }, serial: r.serial, fate: 'returned' }];
@@ -303,8 +308,11 @@ function intelligenceWarnings(state: GameState, raids: [RaidResult | null, RaidR
       sector = site?.sector;
       text = `${prefix}: signals traffic points to a raid on our ${site?.name ?? 'works'}${sector !== undefined ? ` (${names[sector]})` : ''}.`;
     }
-    side.perceived.warning = { text, sector };
-    memo(side, state.turn + 1, 'intel', 'Warning of enemy intentions', `${text} Reliability: ${accuracy >= 0.75 ? 'fair' : 'doubtful'}. Fighters patrolling that sector would meet such a raid.`, 'Air Intelligence');
+    const rec = side.perceived.warningRecord ?? [];
+    const record = rec.length ? ` (Their record: right ${rec.filter(Boolean).length} of the last ${rec.length}.)` : '';
+    text += record;
+    side.perceived.warning = { text, sector, guess };
+    memo(side, state.turn + 1, 'intel', 'Warning of enemy intentions', `${text} Reliability: ${accuracy >= 0.75 ? 'fair' : 'doubtful'}.${sector !== undefined ? ' Fighters patrolling that sector would meet such a raid.' : ''}`, 'Air Intelligence');
   }
 }
 
@@ -312,7 +320,8 @@ function intelligenceWarnings(state: GameState, raids: [RaidResult | null, RaidR
 function prisonerPost(rng: Rng, state: GameState, side: SideState, sq: Squadron, r: PlaneRecord) {
   const chutes = r.chutes ?? 0;
   if (chutes === 0 || !rng.chance(0.6)) return;
-  const due = state.turn + rng.int(2, 4);
+  // Delivered at the end of week `due - 1`, i.e. two to four weeks after the loss.
+  const due = state.turn + rng.int(3, 5);
   const captain = captainName(side.id, r.serial, state.seed);
   const one = AIRCRAFT[r.kind].crew === 1 || chutes === 1;
   const who = AIRCRAFT[r.kind].crew === 1 ? `${captain}, pilot of ${r.serial} (${sq.name})` : chutes === 1 ? `one man of the crew of ${r.serial} (${sq.name})` : `${chutes} of the crew of ${r.serial} (${sq.name}), ${captain} among them`;
@@ -403,6 +412,20 @@ function economy(rng: Rng, state: GameState, side: SideState) {
       pool--;
     }
   }
+  // Crews move between squadrons of the same type, to where the aircraft are.
+  for (const sq of side.squadrons) {
+    let spare = sq.crews - sq.airframes.length;
+    for (const to of side.squadrons) {
+      if (spare <= 0) break;
+      if (to === sq || to.kind !== sq.kind) continue;
+      const need = Math.min(spare, to.airframes.length - to.crews);
+      if (need <= 0) continue;
+      to.skill = (to.skill * to.crews + sq.skill * need) / (to.crews + need);
+      to.crews += need;
+      sq.crews -= need;
+      spare -= need;
+    }
+  }
   // Excess graduates wait in the pool as replacements.
   r.replacements += pool;
   const capacity = 1 + t.level * 2;
@@ -446,7 +469,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
 }
 
 /** What moved the front, from one side's point of view, in the Army liaison's words. */
-function pressureLedger(parts: Record<'air' | 'support' | 'strikes' | 'works' | 'escalation', number>, sign: number) {
+function pressureLedger(parts: Record<'air' | 'support' | 'strikes' | 'works' | 'escalation', number>, sign: number, supportFlown: boolean) {
   const labels: Record<keyof typeof parts, string> = {
     air: 'Fighting in the air (losses on both sides)',
     support: 'Close support over the front',
@@ -456,10 +479,15 @@ function pressureLedger(parts: Record<'air' | 'support' | 'strikes' | 'works' | 
   };
   const word = (v: number) =>
     v >= 8 ? 'strongly in our favour' : v >= 3 ? 'in our favour' : v > -3 ? 'little either way' : v > -8 ? 'against us' : 'strongly against us';
-  return (Object.keys(parts) as (keyof typeof parts)[])
+  const lines = (Object.keys(parts) as (keyof typeof parts)[])
     .map((k) => ({ k, v: parts[k] * sign }))
-    .filter(({ k, v }) => Math.abs(v) >= 1.5 || k === 'air')
+    .filter(({ k, v }) => Math.abs(v) >= 1.5 || k === 'air' || (k === 'support' && supportFlown))
     .map(({ k, v }) => ({ label: labels[k], effect: word(v), sign: v >= 3 ? 1 : v <= -3 ? -1 : 0 }));
+  // One word for the size of the whole week's change.
+  const total = Object.values(parts).reduce((a, b) => a + b, 0) * sign;
+  const size = total >= 10 ? 'a large gain' : total >= 4 ? 'a gain' : total > -4 ? 'little change' : total > -10 ? 'a loss' : 'a large loss';
+  lines.push({ label: 'Overall this week', effect: size, sign: total >= 4 ? 1 : total <= -4 ? -1 : 0 });
+  return lines;
 }
 
 function newOrder(rng: Rng, state: GameState, side: SideState, exclude: Order['kind'][] = []): Order | null {
@@ -502,7 +530,9 @@ function newOrder(rng: Rng, state: GameState, side: SideState, exclude: Order['k
     const recent = state.archive.slice(-5).map((e) => e.reportedToHq[side.id]).sort((x, y) => x - y);
     const rate = recent.length ? recent[Math.floor(recent.length / 2)] : 4;
     const weeks = Math.min(2, lastWeek - next + 1);
-    const amount = Math.max(3, Math.round(rate * weeks * rng.range(0.8, 1.0)));
+    // ...but never more than a fair share of the enemy fighters it believes are out there.
+    const ceiling = Math.max(3, Math.round(side.perceived.enemyFighters * 0.35 * weeks));
+    const amount = Math.max(3, Math.min(ceiling, Math.round(rate * weeks * rng.range(0.8, 1.0))));
     const deadline = due(weeks);
     return { id, kind, amount, deadline, text: `Destroy no fewer than ${amount} enemy aircraft ${weeks === 1 ? 'this coming week' : `in the next ${weeks} weeks`} (by week ${deadline}).` };
   }
@@ -780,6 +810,16 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   }
 
   // Losses & morale.
+  // Did last week's warnings come true?
+  for (const id of [0, 1] as SideId[]) {
+    const p = state.sides[id].perceived;
+    if (!p.warning || p.warning.guess === undefined) continue;
+    const actual = raids[other(id)];
+    const bomb = actual && actual.target !== 'sweep' ? actual : null;
+    const g = p.warning.guess;
+    const right = g === null || g.target === 'sweep' ? !bomb : !!bomb && bomb.target === g.target && (bomb.siteId ?? null) === (g.siteId ?? null);
+    p.warningRecord = [...(p.warningRecord ?? []), right].slice(-8);
+  }
   const lossNews: [string[], string[]] = [[], []];
   for (const id of [0, 1] as SideId[]) {
     const n = state.sides[id].squadrons.reduce((a, q) => a + (day.grounded.get(q.id) ?? 0), 0);
@@ -825,6 +865,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     escalation: s1.isAI ? -0.8 * (act(state) - 1) : 0,
   };
   const delta = parts.air + parts.support + parts.strikes + parts.works + parts.escalation;
+  const front0 = state.front;
   state.front = Math.round(state.front + delta);
   t.week++;
   const flew = (id: SideId) => !!(raids[id] || feints[id]) || plans[id].defense.length > 0;
@@ -832,10 +873,13 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   for (const id of [0, 1] as SideId[]) news[id].unshift(...lossNews[id]);
   // The Army warns a week ahead when a line is close to giving way, on either side.
   for (const id of [0, 1] as SideId[]) {
+    // Only when a line first comes close to breaking, not every week it stays there.
     const f = id === 0 ? state.front : 0 - state.front;
+    const f0 = id === 0 ? front0 : 0 - front0;
+    const near = SECTOR_PRESSURE - 8;
     const names = theaterDef(state).sectors;
-    if (f <= -(SECTOR_PRESSURE - 8)) news[id].push(`Army liaison: the line at ${names[frontSector(t, other(id))] ?? 'the front'} is cracking. Another week like this one and it will give way.`);
-    else if (f >= SECTOR_PRESSURE - 8) news[id].push(`Army liaison: the enemy line at ${names[frontSector(t, id)] ?? 'the front'} is wavering. One more good week could break it.`);
+    if (f <= -near && f0 > -near) news[id].push(`Army liaison: the line at ${names[frontSector(t, other(id))] ?? 'the front'} is cracking. Another week like this one and it will give way.`);
+    else if (f >= near && f0 < near) news[id].push(`Army liaison: the enemy line at ${names[frontSector(t, id)] ?? 'the front'} is wavering. One more good week could break it.`);
   }
   syncFacilities(state);
 
@@ -857,7 +901,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       [raids[id], feints[id]].filter((x): x is RaidResult => !!x),
       [raids[other(id)], feints[other(id)]].filter((x): x is RaidResult => !!x),
       allRecs, reconResult, !!rc && !rc.ok, damageTaken[id], day.landing, theaterDef(state).sectors, state.seed);
-    d.pressure = pressureLedger(parts, id === 0 ? 1 : -1);
+    d.pressure = pressureLedger(parts, id === 0 ? 1 : -1, !!(raids[0]?.target === 'support' || raids[1]?.target === 'support'));
     updatePerceived(rng, side, d, raids[id]);
     // Army liaison: honest about towns, optimistic about pressure.
     side.perceived.front = Math.round(state.front * (id === 0 ? 1 : -1) + 4 + rng.gauss(3)) || 0;
