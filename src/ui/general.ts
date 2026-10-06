@@ -1228,7 +1228,8 @@ export function memoDispatch(side: SideState, turn: number, maxPages = 4): Dispa
         stamp: STAMP[m.kind],
         kind: m.kind,
         from: `${m.from} — ${m.subject}`,
-        text: summarise(m),
+        // An obituary is read out in full: it is the last word on a man.
+        text: summarise(m, m.subject.startsWith('In memoriam') ? 600 : 150),
         ...(who ? { portrait: leaderPortrait(who, side.id, 3), caption: `${who.rank} ${who.name.split(' ').slice(-1)[0]}`.toUpperCase(), mourning: /memoriam|presumed killed/i.test(m.subject) } : {}),
       };
     }),
