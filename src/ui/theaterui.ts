@@ -184,6 +184,19 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
           h('div', null, h('span', null, 'Enemy aircraft claimed by our crews'), h('b', null, String(claimed))),
           h('div', null, h('span', null, 'Sectors taken'), h('b', null, String(Math.max(0, (side === 0 ? 1 : -1) * (res.gain ?? 0))))));
       })(),
+      (() => {
+        // The roll of those posted missing in this theater, and what has become of them so far.
+        const roll = (st.sides[side].roll ?? []).filter((e) => e.theater === res.index);
+        if (!roll.length) return null;
+        const fate = { missing: 'missing', prisoner: 'prisoner of war', returned: 'returned', killed: 'killed' };
+        return h('div', { class: 'roll' },
+          h('h3', null, 'Roll of the missing'),
+          h('ul', null, roll.slice(-12).map((e) => h('li', null,
+            h('span', null, `${e.name}${e.crew > 1 ? ` and ${e.crew - 1} crew` : ''}`),
+            h('span', { class: 'muted' }, ` · ${e.serial}, ${e.squadron}, week ${e.week}`),
+            h('b', { class: `fate ${e.fate}` }, ` ${fate[e.fate]}`)))),
+          roll.length > 12 ? h('p', { class: 'muted small' }, `…and ${roll.length - 12} more.`) : null);
+      })(),
       nextDef ? h('div', { class: 'next-theater' },
         h('h2', null, `Redeployment: ${nextDef.name}`),
         h('div', { class: 'muted' }, `${nextDef.season} · ${nextDef.weeks} weeks`),

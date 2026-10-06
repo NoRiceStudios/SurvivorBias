@@ -17,7 +17,7 @@ export const FORM_UP: Record<Archetype, Pool> = {
   braggart: [
     '{c} Leader, {n} aircraft formed up. Let\'s give them something to remember.',
     '{c} Leader, all {n} up and pretty. Setting course, chaps; drinks are on whoever bags the first one.',
-    '{c} Leader to all {c}s: {n} aboard, nobody gets lost and nobody gets clever. Except me.',
+    '{c} Leader to all {c} aircraft: {n} aboard, nobody gets lost and nobody gets clever. Except me.',
   ],
   pessimist: [
     '{c} Leader, {n} aircraft formed up. Setting course. Keep it tight; it\'s a long way.',
@@ -158,8 +158,8 @@ export const SEEN_WHAT: Pool = ['is going down', 'has gone in', 'is falling out 
 
 export const BREAK_OFF: Pool = [
   '{leader}: break off, break off, all {c} aircraft turn for home.',
-  '{leader} to all {c}s: that\'s enough. Turn for home. Now.',
-  '{leader}: we can\'t take any more of this. {c}s, follow me out.',
+  '{leader} to all {c} aircraft: that\'s enough. Turn for home. Now.',
+  '{leader}: we can\'t take any more of this. All {c} aircraft, follow me out.',
 ];
 
 export const RUN_IN: Record<Weather, Pool> = {

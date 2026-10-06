@@ -1,8 +1,9 @@
 import { tech } from './tech';
 import { remember } from './leaders';
+import { plural } from './text';
 import { aiIntent } from './ai';
 import { planCost, researchTurns } from './actions';
-import { AIRCRAFT, ARCHETYPE_INFO, REQUEST_SHORT, RESEARCH, SQUADRON_NAMES, TARGETS, TRAIT_INFO } from './data';
+import { AIRCRAFT, ARCHETYPE_INFO, RANKS, REQUEST_SHORT, RESEARCH, SQUADRON_NAMES, TARGETS, TRAIT_INFO } from './data';
 import { buildDebrief, updatePerceived } from './reports';
 import { facilityEffects } from './effects';
 import { generateRequests } from './requests';
@@ -11,6 +12,8 @@ import { captainName, makeAirframe, makeLeader, makeSquadron } from './setup';
 import { finishDay, flyable, gatherFliers, newDay, resolveRaid, resolveRecon, type Flier } from './sim';
 import {
   applyPressure,
+  bomberRange,
+  depthFor,
   enterTheater,
   frontSector,
   reachableSites,
@@ -122,16 +125,13 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
           // Men seen to bale out may turn up later as prisoners.
           if (!r.lead) prisonerPost(rng, state, side, sq, r);
         }
-        // The leader flies callsign 1. Old hands get out more often than most: about half bale out and make it back.
+        // The leader flies callsign 1: if that aircraft is lost, he is missing. What became of him is only known weeks later.
         if (r.lead) {
-          if (rng.chance(sq.leader.trait === 'lucky' ? 0.75 : 0.5)) {
-            r.captain = `${sq.leader.rank} ${sq.leader.name} (baled out and made it back; his crew is missing)`;
-            news.push(`${sq.leader.rank} ${sq.leader.name} of ${sq.name} baled out of ${r.serial} and has made his way back to the squadron.`);
-            remember(sq.leader, state.turn, `baled out of ${r.serial} and walked back to the squadron`);
-          } else {
-            leaderLost = true;
-            r.captain = `${sq.leader.rank} ${sq.leader.name}`;
-          }
+          leaderLost = true;
+          r.captain = `${sq.leader.rank} ${sq.leader.name}`;
+        }
+        if (!r.captain?.includes('rescued')) {
+          side.roll = [...(side.roll ?? []), { week: state.turn, theater: state.theater.index, name: r.captain ?? captainName(side.id, r.serial, state.seed), serial: r.serial, squadron: sq.name, crew: AIRCRAFT[r.kind].crew, fate: 'missing' }];
         }
         sq.airframes = sq.airframes.filter((a) => a.id !== r.airframeId);
       } else if (r.fate === 'crashed') {
@@ -173,15 +173,18 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
       // Never reuse a name already heard in this war, so a new CO is never mistaken for the man he replaces.
       side.usedNames = [...new Set([...(side.usedNames ?? []), old.name])];
       sq.leader = makeLeader(rng, side.id, undefined, [...side.squadrons.map((q) => q.leader.name), ...side.usedNames]);
+      // A replacement is never senior to the man he replaces: usually a step junior, or the same rank.
+      const ranks = RANKS[side.id];
+      const oldRank = Math.max(0, ranks.indexOf(old.rank));
+      sq.leader.rank = ranks[Math.max(0, oldRank - (rng.chance(0.6) ? 1 : 0))];
       const lostLead = mine.find((r) => r.lead && r.fate === 'lost');
       sq.leader.since = state.turn + 1;
       sq.leader.ops = 0;
       const line = `${old.rank} ${old.name}, commanding ${sq.name}, is missing${lostLead ? ` with ${lostLead.serial}` : ''}. ${sq.leader.rank} ${sq.leader.name} takes command.`;
       news.push(line);
-      if ((old.ops ?? 0) >= 3) memo(side, state.turn + 1, 'notice', `In memoriam: ${old.rank} ${old.name}`, obituary(old, sq.name, state.turn), 'Group HQ');
-      if (lostLead) prisonerPost(rng, state, side, sq, lostLead, old);
+      if (lostLead) leaderFate(rng, state, side, sq, lostLead, old);
       sq.notables.unshift(`Week ${state.turn}: ${old.rank} ${old.name} missing; ${sq.leader.rank} ${sq.leader.name} in command.`);
-      memo(side, state.turn + 1, 'notice', `${sq.name}: change of command`, `${line} The new commanding officer is described by the squadron as ${ARCHETYPE_INFO[sq.leader.archetype].label.toLowerCase()}: "${ARCHETYPE_INFO[sq.leader.archetype].blurb}"`, 'Group HQ');
+      memo(side, state.turn + 1, 'notice', `${sq.name}: change of command`, `${line} The squadron's first impression of the new commanding officer: "${ARCHETYPE_INFO[sq.leader.archetype].label}". ${ARCHETYPE_INFO[sq.leader.archetype].blurb}`, 'Group HQ');
     }
     sq.notables = [...new Set(sq.notables)].slice(0, 5);
   }
@@ -190,7 +193,7 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
 /** The reputation a leader earns, coloured by what his squadron went through. */
 function earnTrait(rng: Rng, sq: Squadron): Trait {
   const fighter = sq.kind === 'fighter';
-  const baledOut = (sq.leader.log ?? []).some((l) => l.text.startsWith('baled out'));
+  const baledOut = (sq.leader.log ?? []).some((l) => l.text.startsWith('came back'));
   const w: Record<Trait, number> = {
     ace: fighter ? 2 + sq.skill * 2 : 0.5,
     lucky: 0.8 + (baledOut ? 2 : 0),
@@ -204,24 +207,64 @@ function earnTrait(rng: Rng, sq: Squadron): Trait {
 const times = (n: number) => (n === 1 ? 'once' : n === 2 ? 'twice' : n === 3 ? 'three times' : `${n} times`);
 
 /** A short obituary for a leader who had been in command a while, built from what the squadron remembers. */
-export function obituary(l: Leader, squadron: string, week: number): string {
-  const log = l.log ?? [];
-  const parts: string[] = [`${l.rank} ${l.name} led ${squadron} on ${l.ops ?? 0} operations${l.since ? ` from week ${l.since}` : ''}.`];
-  if (l.trait) parts.push(`The wing knew him as "${TRAIT_INFO[l.trait].label}".`);
+const SUCCESSOR_SAYS: Record<Leader['archetype'], string[]> = {
+  braggart: ['He\'d want us to give them hell. So we will.', 'Big boots to fill. I\'ve got big feet.'],
+  pessimist: ['He was the best of us. That\'s usually how it goes.', 'We\'ll miss him. We\'ll be missing more of us before this is over.'],
+  gloryHunter: ['We\'ll finish what he started.', 'He went in first. So will I.'],
+  byTheBook: ['The squadron will carry on as he trained it.', 'His orders stand until I have reason to change them.'],
+  timid: ['We\'ll bring the boys home. That\'s what he wanted.', 'I\'ll try to keep them alive. He always did.'],
+};
+
+/**
+ * A veteran leader's obituary, written when he is presumed killed: one or two
+ * human details rather than a list. His last call, something he used to say,
+ * the request that mattered most, and a word from the man who took over.
+ */
+export function obituary(l: Leader, squadron: string, missingSince: number, lastWords?: string, successor?: Leader): string {
+  const parts: string[] = [`${l.rank} ${l.name}, missing since week ${missingSince}, is now presumed killed. He led ${squadron} on ${plural(l.ops ?? 0, 'operation')}.`];
+  if (lastWords && !lastWords.startsWith('[')) parts.push(`His last call was: "${lastWords}"`);
+  else if (lastWords) parts.push('His last call was a carrier wave and nothing more.');
+  if (l.said) parts.push(`The squadron remembers him saying: "${l.said}"`);
+  else if (l.trait) parts.push(`The wing knew him as "${TRAIT_INFO[l.trait].label}".`);
+  // The request he pressed hardest, and what you said to it.
   const byKind = new Map<RequestKind, { asked: number; approved: number }>();
-  for (const e of log) if (e.kind) {
+  for (const e of l.log ?? []) if (e.kind) {
     const k = byKind.get(e.kind) ?? { asked: 0, approved: 0 };
     k.asked++;
     if (e.approved) k.approved++;
     byKind.set(e.kind, k);
   }
-  for (const [kind, k] of byKind) {
+  const top = [...byKind.entries()].sort((a, b) => b[1].asked - a[1].asked)[0];
+  if (top) {
+    const [kind, k] = top;
     parts.push(`He asked ${times(k.asked)} ${REQUEST_SHORT[kind]}; ${k.approved === 0 ? 'you never agreed' : k.approved === k.asked ? (k.asked === 1 ? 'you agreed' : 'you agreed every time') : `you agreed ${times(k.approved)}`}.`);
   }
-  const other = log.filter((e) => !e.kind && !e.text.startsWith('became known') && e.week !== week);
-  if (other.length) parts.push(`In week ${other[other.length - 1].week} he ${other[other.length - 1].text}.`);
+  if (successor) parts.push(`${successor.rank} ${successor.name}, who took over: "${SUCCESSOR_SAYS[successor.archetype][(l.ops ?? 0) % 2]}"`);
   parts.push('A letter to his family has gone out over your signature.');
   return parts.join(' ');
+}
+
+/**
+ * What became of a missing leader, decided now and told weeks later. Only men
+ * seen to bale out can turn up again: a few evade and come back, some are
+ * taken prisoner. The rest are presumed killed, and only then is the letter
+ * written.
+ */
+function leaderFate(rng: Rng, state: GameState, side: SideState, sq: Squadron, r: PlaneRecord, old: Leader) {
+  const out = (r.chutes ?? 0) > 0;
+  const roll = rng.next();
+  const evade = old.trait === 'lucky' ? 0.3 : 0.12;
+  const due = state.turn + rng.int(2, 3);
+  const name = `${old.rank} ${old.name}`;
+  if (out && roll < evade) {
+    side.post = [...(side.post ?? []), { due, from: 'Group HQ', subject: `${name} is back`, body: `${name} of ${sq.name}, missing since week ${state.turn}, has made his way back through the lines. He resumes command of his squadron.`, returns: { squadronId: sq.id, leader: old }, serial: r.serial, fate: 'returned' }];
+  } else if (out && roll < evade + 0.2) {
+    side.post = [...(side.post ?? []), { due: due + 1, from: 'International Red Cross', subject: `${name} is alive`, body: `We are informed that ${name}, commanding ${sq.name}, missing since week ${state.turn}, is alive and a prisoner of war. Next-of-kin have been told.`, serial: r.serial, fate: 'prisoner' }];
+  } else if ((old.ops ?? 0) >= 3) {
+    side.post = [...(side.post ?? []), { due, from: 'Group HQ', subject: `In memoriam: ${name}`, body: obituary(old, sq.name, state.turn, r.lastWords, sq.leader), serial: r.serial, fate: 'killed' }];
+  } else {
+    side.post = [...(side.post ?? []), { due, from: 'Group HQ', subject: `${name} presumed killed`, body: `${name}, missing with ${r.serial} since week ${state.turn}, is now presumed killed. He had commanded ${sq.name} for only ${plural(old.ops ?? 0, 'operation')}. Next-of-kin have been told.`, serial: r.serial, fate: 'killed' }];
+  }
 }
 
 /**
@@ -266,16 +309,20 @@ function intelligenceWarnings(state: GameState, raids: [RaidResult | null, RaidR
 }
 
 /** Crews seen to bale out may be reported as prisoners by the Red Cross a few weeks later. */
-function prisonerPost(rng: Rng, state: GameState, side: SideState, sq: Squadron, r: PlaneRecord, leader?: Leader) {
+function prisonerPost(rng: Rng, state: GameState, side: SideState, sq: Squadron, r: PlaneRecord) {
   const chutes = r.chutes ?? 0;
   if (chutes === 0 || !rng.chance(0.6)) return;
   const due = state.turn + rng.int(2, 4);
-  const who = leader ? `${leader.rank} ${leader.name}, commanding ${sq.name}` : AIRCRAFT[r.kind].crew === 1 ? `${captainName(side.id, r.serial, state.seed)}, pilot of ${r.serial} (${sq.name})` : `${chutes} of the crew of ${r.serial} (${sq.name}), ${captainName(side.id, r.serial, state.seed)} among them`;
+  const captain = captainName(side.id, r.serial, state.seed);
+  const one = AIRCRAFT[r.kind].crew === 1 || chutes === 1;
+  const who = AIRCRAFT[r.kind].crew === 1 ? `${captain}, pilot of ${r.serial} (${sq.name})` : chutes === 1 ? `one man of the crew of ${r.serial} (${sq.name})` : `${chutes} of the crew of ${r.serial} (${sq.name}), ${captain} among them`;
   side.post = [...(side.post ?? []), {
     due,
     from: 'International Red Cross',
-    subject: leader ? `${leader.rank} ${leader.name} is alive` : `Prisoners of war: ${r.serial}`,
-    body: `We are informed that ${who}, missing since week ${state.turn}, ${leader || AIRCRAFT[r.kind].crew === 1 ? 'is' : 'are'} alive and ${leader || AIRCRAFT[r.kind].crew === 1 ? 'a prisoner' : 'prisoners'} of war. Next-of-kin have been told.`,
+    subject: `Prisoners of war: ${r.serial}`,
+    body: `We are informed that ${who}, missing since week ${state.turn}, ${one ? 'is' : 'are'} alive and ${one ? 'a prisoner' : 'prisoners'} of war. Next-of-kin have been told.`,
+    serial: r.serial,
+    fate: 'prisoner',
   }];
 }
 
@@ -490,6 +537,14 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
     if (o.kind === 'strike' && o.siteId && state.theater.sites.find((x) => x.id === o.siteId)?.owner === side.id) {
       o.done = true;
       hqLines.push(`Order rescinded: "${o.text}" The site is now in our hands.`);
+      continue;
+    }
+    // Nor can the wing be held to a strike its bombers can no longer reach.
+    const strikeSite = o.kind === 'strike' ? state.theater.sites.find((x) => x.id === o.siteId) : undefined;
+    const reach = Math.max(0, ...side.squadrons.filter((q) => (q.kind === 'medium' || q.kind === 'heavy') && q.airframes.length > 0).map((q) => bomberRange(q.kind)));
+    if (strikeSite && depthFor(state.theater.held0, side.id, strikeSite.sector) > reach) {
+      o.done = true;
+      hqLines.push(`Order rescinded: "${o.text}" The target is now beyond the reach of our bombers.`);
       continue;
     }
     if (o.kind === 'kills') o.amount -= toHq.kills;
@@ -737,6 +792,16 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     const arriving = (sd.post ?? []).filter((p) => p.due <= state.turn + 1);
     sd.post = (sd.post ?? []).filter((p) => p.due > state.turn + 1);
     for (const p of arriving) {
+      // A leader who got back through the lines takes his squadron again.
+      const back = p.returns && sd.squadrons.find((q) => q.id === p.returns!.squadronId);
+      if (back && p.returns) {
+        remember(p.returns.leader, state.turn, 'came back through the lines after being posted missing');
+        remember(back.leader, state.turn, `handed the squadron back to ${p.returns.leader.name}`);
+        back.leader = p.returns.leader;
+      }
+      // The roll of the missing learns what became of them.
+      const entry = p.serial ? sd.roll?.find((e) => e.serial === p.serial) : undefined;
+      if (entry && p.fate) entry.fate = p.fate;
       memo(sd, state.turn + 1, 'notice', p.subject, p.body, p.from);
       lossNews[id].push(`${p.from}: ${p.body}`);
     }

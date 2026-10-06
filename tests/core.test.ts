@@ -807,10 +807,13 @@ describe('designer decisions after round 2', () => {
     remember(l, 3, 'asked', 'pressHome', false);
     remember(l, 5, 'asked', 'pressHome', false);
     remember(l, 8, 'asked', 'pressHome', true);
-    const text = obituary(l, 'No. 9', 10);
+    const text = obituary({ ...l, said: undefined }, 'No. 9', 10, 'Tail\'s shot away—', { name: 'Neville Garside', rank: 'Flt Lt', archetype: 'byTheBook' });
+    expect(text).toContain('presumed killed');
+    expect(text).toContain('His last call was: "Tail\'s shot away—"');
     expect(text).toContain('He asked three times to press his attacks home');
     expect(text).toContain('you agreed once');
     expect(text).toContain('"Ace"');
+    expect(text).toContain('Flt Lt Neville Garside, who took over');
   });
 
   it('emergency repairs patch our works once a week per type, and replay as a command', () => {

@@ -308,8 +308,8 @@ export const FIRST_NAMES: [string[], string[]] = [
   ['Anton', 'Ewald', 'Gerrit', 'Lothar', 'Matthis', 'Konrad', 'Henrik', 'Jaro', 'Ulrich', 'Waldemar', 'Bastian', 'Falk', 'Emil', 'Reinhold', 'Torben', 'Viktor'],
 ];
 export const LAST_NAMES: [string[], string[]] = [
-  ['Ashworth', 'Penrose', 'Hale', 'Brackley', 'Carrow', 'Thorne', 'Mabey', 'Fenwick', 'Lisle', 'Wexford', 'Dunmore', 'Ridley', 'Sallow', 'Pryce', 'Cobham', 'Garside'],
-  ['Kessler', 'Brandt', 'Voigt', 'Ahlers', 'Reinke', 'Strahl', 'Lindqvist', 'Haber', 'Ostrow', 'Falkner', 'Merz', 'Rauch', 'Tiede', 'Brückner', 'Sommer', 'Kranz'],
+  ['Ashworth', 'Penrose', 'Hale', 'Brackley', 'Carrow', 'Thorne', 'Mabey', 'Fenwick', 'Lisle', 'Wexford', 'Dunmore', 'Ridley', 'Sallow', 'Pryce', 'Cobham', 'Garside', 'Aldridge', 'Bancroft', 'Blakeney', 'Brereton', 'Calloway', 'Carver', 'Chalcott', 'Coverley', 'Dacre', 'Danvers', 'Ellerby', 'Fairbairn', 'Farrant', 'Gilchrist', 'Granville', 'Hadley', 'Harcourt', 'Hensley', 'Keswick', 'Lancing', 'Latimer', 'Linley', 'Maitland', 'Marlowe', 'Melbury', 'Northcote', 'Ormsby', 'Pagett', 'Pelham', 'Quarrie', 'Radcliffe', 'Rawdon', 'Selwyn', 'Shelford', 'Stanmore', 'Tavener', 'Thursby', 'Trevelyan', 'Upton', 'Vane', 'Verity', 'Waverley', 'Westlake', 'Whitcombe', 'Wraxall', 'Yardley'],
+  ['Kessler', 'Brandt', 'Voigt', 'Ahlers', 'Reinke', 'Strahl', 'Lindqvist', 'Haber', 'Ostrow', 'Falkner', 'Merz', 'Rauch', 'Tiede', 'Brückner', 'Sommer', 'Kranz', 'Adler', 'Bergmann', 'Bohlen', 'Dorn', 'Eckhart', 'Falk', 'Gerlach', 'Hagen', 'Heller', 'Hollmann', 'Jäger', 'Kemper', 'Kohl', 'Landau', 'Lenz', 'Marquardt', 'Nagel', 'Oberle', 'Pfeiffer', 'Quandt', 'Reuter', 'Ritter', 'Sander', 'Seeger', 'Stein', 'Thalmann', 'Ulrich', 'Vogt', 'Wendt', 'Winkler', 'Zander', 'Arndt', 'Baumann', 'Dressler', 'Eichler', 'Fendt', 'Grote', 'Henning', 'Ihlenfeld', 'Kessel', 'Lüders', 'Mahler', 'Nolte', 'Pahl', 'Rehberg', 'Schott'],
 ];
 /** Aircrew names: a larger pool than the squadron leaders', drawn afresh each campaign. */
 export const CREW_FIRST: [string[], string[]] = [
@@ -317,13 +317,14 @@ export const CREW_FIRST: [string[], string[]] = [
   ['Alfons', 'Bruno', 'Dieter', 'Egon', 'Erich', 'Ernst', 'Franz', 'Friedrich', 'Fritz', 'Georg', 'Gerhard', 'Günther', 'Hans', 'Heinz', 'Helmut', 'Herbert', 'Horst', 'Johann', 'Josef', 'Karl', 'Klaus', 'Kurt', 'Ludwig', 'Manfred', 'Max', 'Otto', 'Paul', 'Peter', 'Richard', 'Rudolf', 'Siegfried', 'Walter', 'Werner', 'Wilhelm', 'Willi', 'Wolfgang'],
 ];
 export const CREW_LAST: [string[], string[]] = [
-  ['Abbott', 'Archer', 'Bailey', 'Barker', 'Bennett', 'Bishop', 'Booth', 'Bradshaw', 'Burton', 'Chapman', 'Clarke', 'Collins', 'Cooper', 'Dawson', 'Dixon', 'Ellis', 'Fletcher', 'Foster', 'Gibson', 'Graham', 'Harding', 'Harper', 'Hayes', 'Holmes', 'Hughes', 'Jennings', 'Kemp', 'Lawrence', 'Lloyd', 'Marsh', 'Mason', 'Morgan', 'Newman', 'Osborne', 'Parker', 'Payne', 'Porter', 'Reed', 'Rowe', 'Shaw', 'Spencer', 'Stevens', 'Turner', 'Walsh', 'Ward', 'Webb', 'Wells', 'Wood'],
-  ['Albrecht', 'Bauer', 'Beck', 'Berger', 'Busch', 'Dietrich', 'Ebert', 'Engel', 'Fischer', 'Frank', 'Fuchs', 'Graf', 'Hahn', 'Hartmann', 'Hoffmann', 'Huber', 'Jung', 'Kaiser', 'Keller', 'Klein', 'Koch', 'König', 'Krause', 'Kuhn', 'Lang', 'Lehmann', 'Lorenz', 'Maier', 'Meyer', 'Möller', 'Neumann', 'Peters', 'Pohl', 'Richter', 'Roth', 'Schäfer', 'Schmitt', 'Schneider', 'Schulz', 'Schwarz', 'Seidel', 'Thiel', 'Vogel', 'Wagner', 'Weber', 'Werner', 'Winter', 'Wolf'],
+  ['Abbott', 'Archer', 'Bailey', 'Barker', 'Bennett', 'Bishop', 'Booth', 'Bradshaw', 'Burton', 'Chapman', 'Clarke', 'Collins', 'Cooper', 'Dawson', 'Dixon', 'Ellis', 'Fletcher', 'Foster', 'Gibson', 'Graham', 'Harding', 'Harper', 'Hayes', 'Holmes', 'Hughes', 'Jennings', 'Kemp', 'Lawrence', 'Lloyd', 'Marsh', 'Mason', 'Morgan', 'Newman', 'Osborne', 'Parker', 'Payne', 'Porter', 'Reed', 'Rowe', 'Shaw', 'Spencer', 'Stevens', 'Turner', 'Walsh', 'Ward', 'Webb', 'Wells', 'Wood', 'Atkins', 'Baxter', 'Bell', 'Brooks', 'Carter', 'Cole', 'Cross', 'Dale', 'Day', 'Doyle', 'Edwards', 'Evans', 'Farmer', 'Ford', 'Fox', 'Gardner', 'Gray', 'Green', 'Hall', 'Hart', 'Hill', 'Hunt', 'Jarvis', 'Kelly', 'King', 'Knight', 'Lane', 'Long', 'Lucas', 'Mills', 'Moore', 'Nash', 'Nicholls', 'Owen', 'Page', 'Palmer', 'Pearce', 'Price', 'Rees', 'Rose', 'Ross', 'Russell', 'Simmons', 'Stone', 'Swift', 'Tucker', 'Wade', 'Watts', 'West', 'Wilkins', 'Wright', 'Young'],
+  ['Albrecht', 'Bauer', 'Beck', 'Berger', 'Busch', 'Dietrich', 'Ebert', 'Engel', 'Fischer', 'Frank', 'Fuchs', 'Graf', 'Hahn', 'Hartmann', 'Hoffmann', 'Huber', 'Jung', 'Kaiser', 'Keller', 'Klein', 'Koch', 'König', 'Krause', 'Kuhn', 'Lang', 'Lehmann', 'Lorenz', 'Maier', 'Meyer', 'Möller', 'Neumann', 'Peters', 'Pohl', 'Richter', 'Roth', 'Schäfer', 'Schmitt', 'Schneider', 'Schulz', 'Schwarz', 'Seidel', 'Thiel', 'Vogel', 'Wagner', 'Weber', 'Werner', 'Winter', 'Wolf', 'Albers', 'Arnold', 'Bach', 'Beyer', 'Brandt', 'Dahl', 'Ernst', 'Franke', 'Friedrich', 'Geiger', 'Hesse', 'Horn', 'Jansen', 'Kraft', 'Krüger', 'Kühn', 'Lange', 'Lindner', 'Ludwig', 'Martin', 'Mayer', 'Otto', 'Paul', 'Pieper', 'Ramm', 'Rieger', 'Sauer', 'Scholz', 'Seidl', 'Simon', 'Sommerfeld', 'Stahl', 'Thomas', 'Unger', 'Vetter', 'Voss', 'Walter', 'Weiss', 'Wolff', 'Ziegler', 'Brauer', 'Fink', 'Haas', 'Kurz', 'Lindemann', 'Möbius', 'Nowak', 'Pohle', 'Reich', 'Schuster'],
 ];
 
+/** Squadron commanders' ranks, most junior first. */
 export const RANKS: [string[], string[]] = [
-  ['Sqn Ldr', 'Wg Cdr', 'Flt Lt'],
-  ['Major', 'Hauptmann', 'Oberst'],
+  ['Flt Lt', 'Sqn Ldr', 'Wg Cdr'],
+  ['Hauptmann', 'Major', 'Oberst'],
 ];
 
 export const SQUADRON_NAMES: [string[], string[]] = [

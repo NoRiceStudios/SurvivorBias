@@ -82,6 +82,8 @@ export interface Leader {
   trait?: Trait;
   /** What the squadron remembers: his requests and how they were answered, close calls, losses. */
   log?: { week: number; text: string; kind?: RequestKind; approved?: boolean }[];
+  /** Something he said in a recent debrief, for the squadron to remember him by. */
+  said?: string;
 }
 
 export interface Squadron {
@@ -221,7 +223,9 @@ export interface SideState {
   /** The AI's chosen next operation, fixed a week ahead so enemy intelligence can get wind of it. */
   intent?: { target: TargetId; siteId?: string };
   /** Letters still in the post: Red Cross cards about prisoners, delivered on their week. */
-  post?: { due: number; from: string; subject: string; body: string }[];
+  post?: { due: number; from: string; subject: string; body: string; returns?: { squadronId: string; leader: Leader }; serial?: string; fate?: 'prisoner' | 'returned' | 'killed' }[];
+  /** Everyone posted missing in this war, and what became of them as far as we know. */
+  roll?: { week: number; theater: number; name: string; serial: string; squadron: string; crew: number; fate: 'missing' | 'prisoner' | 'returned' | 'killed' }[];
   /** Leaders' names already used in this war (lost leaders included). */
   usedNames?: string[];
 }

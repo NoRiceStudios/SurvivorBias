@@ -192,8 +192,11 @@ export function adjutantNotes(app: App, side: SideState): string[] {
   const notes: string[] = [];
   const tired = side.squadrons.filter((q) => q.fatigue >= 0.7);
   if (tired.length) notes.push(`${tired.map((q) => `${q.name} (${Math.round(q.fatigue * 10)}/10)`).join(', ')} ${tired.length > 1 ? 'are' : 'is'} exhausted. Tired crews shoot and fly worse, and their morale slides. A week standing down restores them.`);
+  const low = side.squadrons.filter((q) => q.morale <= 0.25);
+  if (low.length) notes.push(`Morale in ${low.map((q) => q.name).join(', ')} is very low. If the whole wing's morale stays this low for three weeks, the crews will refuse to fly.`);
+  const thin = (plan.raid?.squadronIds ?? []).map((id) => side.squadrons.find((q) => q.id === id)).filter((q): q is Squadron => !!q && flyable(q).length > 0 && flyable(q).length <= 2);
+  if (thin.length) notes.push(`${thin.map((q) => `${q.name} can put up only ${plural(flyable(q).length, 'aircraft', 'aircraft')}`).join('; ')}. A handful flying alone is easy prey.`);
   for (const sq of side.squadrons) {
-    if (sq.morale <= 0.25) notes.push(`Morale in ${sq.name} is very low. If the whole wing's morale stays this low for three weeks, the crews will refuse to fly.`);
     const idleAircraft = sq.airframes.filter((a) => a.status === 'ready').length - Math.max(0, sq.crews);
     if (idleAircraft >= 2) notes.push(`${sq.name} has ${idleAircraft} serviceable aircraft with no crews to fly them. The training school fills gaps as crews graduate.`);
   }

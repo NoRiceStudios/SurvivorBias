@@ -174,6 +174,7 @@ export function planCost(side: SideState, plan: TurnPlan): { stores: number } {
 /** Check a plan against the rules. Pass the game state to also check ranges and sites. */
 export function validatePlan(side: SideState, plan: TurnPlan, state?: GameState): ActionResult {
   const raidIds = plan.raid?.squadronIds ?? [];
+  if (plan.raid && raidIds.length === 0) return fail('No squadrons are assigned to the operation. Assign some, or choose No operation');
   if (state && plan.raid && raidIds.length) {
     const t = state.theater;
     const r = plan.raid;

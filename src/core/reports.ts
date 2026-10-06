@@ -107,7 +107,7 @@ export function squadronReport(
   const hard = lostN > 0;
   const remarks: Record<typeof sq.leader.archetype, [string[], string[]]> = {
     braggart: [
-      [`${L}: "They scattered like pigeons. Put us up again tomorrow."`, `${L}: "Best day's shooting this squadron has had."`, `${L}: "Tell the papers. They'll want a photograph."`, hard ? `${L}: "Lost a couple, but you should see what we did to them."` : `${L}: "Not a scratch on us. Not one."`, `${L}: "Easy. Too easy, really."`],
+      [`${L}: "They scattered like pigeons. Put us up again tomorrow."`, `${L}: "Best day's shooting this squadron has had."`, `${L}: "Tell the papers. They'll want a photograph."`, hard ? `${L}: "Lost a couple, but you should see what we did to them."` : `${L}: "Not a scratch on us. Not one."`, hard ? `${L}: "They got lucky. Next time they won't."` : `${L}: "Easy. Too easy, really."`],
       [`${L}: "They never got near the works. Not while we were up."`, `${L}: "Sent them home with their tails on fire."`, `${L}: "Like shooting rabbits, sir."`, `${L}: "They won't try that again in a hurry."`],
     ],
     pessimist: [
@@ -123,14 +123,16 @@ export function squadronReport(
       [`${L}: "Interception report attached. Claims marked unconfirmed where not seen to crash."`, `${L} declines to confirm claims not witnessed by two pilots.`, `${L}: "Scramble to contact took eleven minutes. That can be improved."`],
     ],
     timid: [
-      [`${L}: "The flak was the worst I have seen."`, escort ? `${L}: "We were spread too thin to cover the bombers."` : sweep ? `${L}: "We were bounced from above before we saw them."` : `${L} recommends the target be given to the heavies.`, `${L}: "We kept together. That's the main thing."`, hard ? `${L}: "I can't keep sending them out like this, sir."` : `${L}: "Everyone home, thank God."`],
-      [`${L}: "We were heavily outnumbered, sir."`, `${L}: "The boys need a rest. They're seeing bandits in every cloud."`, `${L}: "We engaged as best we could, sir."`],
+      [`${L}: "The flak was the worst I have seen."`, escort ? `${L}: "We were spread too thin to cover the bombers."` : sweep ? `${L}: "We were bounced from above before we saw them."` : side.squadrons.some((q) => q.kind === 'heavy') ? `${L} recommends the target be given to the heavies.` : `${L}: "The target's too well defended for what we've got, sir."`, `${L}: "We kept together. That's the main thing."`, hard ? `${L}: "I can't keep sending them out like this, sir."` : `${L}: "Everyone home, thank God."`],
+      [report.enemyFightersReported >= 6 ? `${L}: "We were heavily outnumbered, sir."` : `${L}: "We went in carefully, sir. No heroics."`, `${L}: "The boys need a rest. They're seeing bandits in every cloud."`, `${L}: "We engaged as best we could, sir."`],
     ],
   };
   // A leader doesn't say the same thing two debriefs running.
   const pool = remarks[sq.leader.archetype][defending ? 1 : 0].filter((x) => x !== sq.lastRemark);
   const said = rng.pick(pool.length ? pool : remarks[sq.leader.archetype][defending ? 1 : 0]);
   sq.lastRemark = said;
+  const quote = said.match(/"(.+)"/);
+  if (quote) sq.leader.said = quote[1];
   report.remarks.push(said);
   if (raid && raid.weather !== 'clear' && !defending) report.remarks.push(raid.weather === 'storm' ? 'Weather: storms and heavy cloud throughout.' : 'Weather: solid cloud over the target area.');
   if (lostN > 0 && report.enemyFightersReported === 0) {
@@ -138,7 +140,7 @@ export function squadronReport(
       ? `${lostN === 1 ? 'One aircraft' : `${lostN} aircraft`} lost to the bombers' return fire.`
       : `No fighters seen. ${lostN === 1 ? 'The aircraft lost is' : `The ${lostN} aircraft lost are`} believed to have fallen to flak.`);
   }
-  if (lostN > 0 && lostN / sent > 0.3) report.remarks.push(`${lostN} crews missing. Morale in the squadron is shaken.`);
+  if (lostN > 0 && lostN / sent > 0.3) report.remarks.push(`${lostN === 1 ? 'One crew' : `${lostN} crews`} missing. Morale in the squadron is shaken.`);
   // What the ground crews say about the holes.
   const holes: Record<string, number> = {};
   for (const r of survivors) for (const h of r.hits) holes[h.zone] = (holes[h.zone] ?? 0) + 1;

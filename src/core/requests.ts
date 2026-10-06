@@ -14,10 +14,10 @@ import { ZONES } from './types';
 /** How likely each character is to ask for each thing. */
 const LEANING: Record<Archetype, Partial<Record<RequestKind, number>>> = {
   braggart: { pressHome: 2, headOn: 1.5, rest: 0.5, breakOffSooner: 0.3, plateTheHoles: 0.8 },
-  pessimist: { breakOffSooner: 2, plateTheHoles: 2, rest: 1.5, higher: 1.5, pressHome: 0.3 },
+  pessimist: { breakOffSooner: 2, plateTheHoles: 2, rest: 1.5, higher: 1.5, pressHome: 0 },
   gloryHunter: { pressHome: 2.5, headOn: 2, rest: 0.4, breakOffSooner: 0.2, higher: 0.5 },
   byTheBook: { strictQc: 2, reporting: 2, plateTheHoles: 1.6, tighterBox: 1.5, gunnery: 1.2 },
-  timid: { higher: 2, rest: 2, breakOffSooner: 1.8, tighterBox: 1.3, pressHome: 0.2 },
+  timid: { higher: 2, rest: 2, breakOffSooner: 1.8, tighterBox: 1.3, pressHome: 0, headOn: 0.3 },
 };
 
 const who = (sq: Squadron) => `${sq.leader.rank} ${sq.leader.name} (${sq.name})`;
@@ -108,7 +108,7 @@ export function generateRequests(rng: Rng, state: GameState, side: SideState, d:
     const k = Number(rng.weighted(w));
     const [pick] = pool.splice(k, 1);
     const { weight: _w, ...req } = pick;
-    out.push({ ...req, id: `r${state.nextId++}`, n: out.length + 1, week: state.turn });
+    out.push({ ...req, id: `r${state.nextId++}`, n: out.length + 1, week: state.turn + 1 });
     const sq = side.squadrons.find((q) => q.id === pick.squadronId)!;
     sq.asked = { ...sq.asked, [pick.kind]: state.turn };
     for (let j = pool.length - 1; j >= 0; j--) if (pool[j].squadronId === pick.squadronId || pool[j].kind === pick.kind) pool.splice(j, 1);

@@ -100,7 +100,7 @@ export function hitLethality(zone: ZoneId, f: Flier, armor = f.sq.armor[zone]): 
   if (f.af.kind === 'heavy') p *= 0.8;
   p *= 1 + f.af.defect * 0.6;
   // The squadron leader is an old hand: he nurses a damaged aircraft home more often.
-  if (f.rec.lead) p *= f.sq.leader.trait === 'lucky' ? 0.5 : 0.8;
+  if (f.rec.lead) p *= f.sq.leader.trait === 'lucky' ? 0.5 : 0.7;
   p *= 0.75;
   return Math.min(0.95, p);
 }
