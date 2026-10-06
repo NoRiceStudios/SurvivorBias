@@ -485,3 +485,8 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .dispatch-photo.mourning canvas { filter: grayscale(1) sepia(0.45) contrast(1.05); }
 .dispatch-photo.mourning::after { content: ''; position: absolute; right: -16px; top: 10px; width: 64px; height: 8px; background: #16171a; transform: rotate(45deg); }
 .gallery .leader-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 14px; color: var(--paper-2); width: 128px; text-align: center; }
+/* The map column keeps the map's width; notes under it wrap instead of widening it. */
+.radio-left { width: 450px; max-width: 40vw; }
+.radio-body { grid-template-columns: minmax(0, auto) minmax(0, 1fr); }
+/* The general's card is narrower, so the map and targets stay in view beside it. */
+.dispatch { width: min(560px, calc(100vw - 40px)); }

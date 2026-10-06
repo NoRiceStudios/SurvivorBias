@@ -228,6 +228,8 @@ export interface SideState {
   post?: { due: number; from: string; subject: string; body: string; returns?: { squadronId: string; leader: Leader }; serial?: string; fate?: 'prisoner' | 'returned' | 'killed' }[];
   /** Everyone posted missing in this war, and what became of them as far as we know. */
   roll?: { week: number; theater: number; name: string; serial: string; squadron: string; crew: number; fate: 'missing' | 'prisoner' | 'returned' | 'killed' }[];
+  /** Graduates who joined squadrons last week, for station-life scenes. */
+  arrived?: { squadronId: string; n: number }[];
   /** Leaders' names already used in this war (lost leaders included). */
   usedNames?: string[];
 }
@@ -346,6 +348,8 @@ export interface Debrief {
   defenseSummary: string[];
   facilityDamageTaken: Partial<Facilities>;
   hqResponse: string[];
+  /** Station life: a scene or two from our own airfield. */
+  station?: string[];
   /** Army liaison's rough account of what moved the front this week (words, not numbers). */
   pressure?: { label: string; effect: string; sign: number }[];
 }

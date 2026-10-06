@@ -2,12 +2,13 @@ import { aiPlan } from '../core/ai';
 import { emptyPlan, validatePlan } from '../core/actions';
 import { deserialize, serialize, startCampaign } from '../core/game';
 import { resolveTurn } from '../core/turn';
+import { THEATERS } from '../core/theaters';
 import { applyCommand, type Command } from '../core/commands';
 import { carryPlan, defaultPlan, fitPlanToStores } from '../core/plans';
 import type { GameState, SideId, TurnPlan } from '../core/types';
 import { sfxClick, sfxStamp, stopDrone } from './audio';
 import { clear, h } from './dom';
-import { clearDispatches, memoDispatch, showDispatch, type Dispatch } from './general';
+import { clearDispatches, HIGH_COMMAND, memoDispatch, showDispatch, type Dispatch } from './general';
 import { renderEnd } from './end';
 import { renderHq } from './hq';
 import { renderDebrief, renderRadio } from './battle';
@@ -66,6 +67,37 @@ export class App {
     this.screen = screen;
     this.render();
     if (screen.kind === 'hq' && screen.tab === 'briefing' && prev.kind !== 'hq') this.announceWeek(screen.side);
+    if (screen.kind === 'theater' && prev.kind !== 'theater') this.announceTheater(screen.side);
+  }
+
+  /** At the end of a theater the commander's own general reads the verdict (each side its own, in every mode). */
+  announceTheater(side: SideId) {
+    const st = this.state;
+    const res = st?.theaterResults[st.theaterResults.length - 1];
+    if (!st || !res) return;
+    const key = `${st.seed}:${side}:theater${res.index}`;
+    if (this.announced.has(key)) return;
+    this.announced.add(key);
+    const won = res.winner === side;
+    const weeks = st.archive.filter((e) => e.theater === res.index);
+    const lost = weeks.reduce((a, e) => a + e.trueLosses[side], 0);
+    const roll = (st.sides[side].roll ?? []).filter((e) => e.theater === res.index);
+    const count = (f: string) => roll.filter((e) => e.fate === f).length;
+    const next = st.outcome ? null : THEATERS[st.theater.index];
+    const hc = HIGH_COMMAND[side];
+    this.dispatch({
+      speaker: 'general',
+      side,
+      name: hc.name,
+      title: hc.title,
+      lines: [
+        { stamp: res.winner === null ? 'STALEMATE' : won ? 'VICTORY' : 'DEFEAT', kind: won ? 'commendation' : res.winner === null ? 'notice' : 'reprimand', from: res.name, text: res.winner === null
+          ? `${res.name} ends in stalemate after ${res.weeks} weeks. Nobody will write songs about it.`
+          : won ? `${res.name} is ours, after ${res.weeks} weeks. The Army sends its thanks, and so do I.` : `We have lost ${res.name} after ${res.weeks} weeks. I will not pretend otherwise.` },
+        { stamp: 'ROLL', kind: 'notice', from: 'The cost', text: `${lost} of our aircraft lost. ${roll.length} crews posted missing: ${count('killed')} known dead, ${count('prisoner')} prisoners, ${count('returned')} back with us, ${count('missing')} still unaccounted for.` },
+        ...(next ? [{ stamp: 'ORDERS', kind: 'order', from: next.name, text: `We go on to ${next.name}. ${next.blurb}` }] : []),
+      ],
+    });
   }
 
   /** Weeks whose High Command memos were already read out ("seed:side:turn"). */

@@ -296,6 +296,7 @@ function homeView(app: App, d: Debrief): HTMLElement {
     h('section', { class: 'paper panel' }, h('h2', null, 'Home Front'), d.defenseSummary.map((x) => h('p', null, x)),
       d.recon ? h('div', { class: 'recon-photo' }, h('span', { class: 'stamp intel' }, 'PHOTOGRAPHIC INTERPRETATION'), h('p', null, `Photographs of the ${siteName(d.recon.siteId)} show the facility at ${d.recon.condition}% of capacity.`)) : null,
     ),
+    d.station?.length ? h('section', { class: 'paper panel station' }, h('h2', null, 'Station Life'), d.station.map((x) => h('p', { class: 'handwritten' }, x))) : null,
     d.pressure?.length ? h('section', { class: 'paper panel' }, h('h2', null, 'Army Liaison: the Front This Week'),
       h('table', { class: 'ledger pressure-ledger' }, h('tbody', null, d.pressure.map((p) => h('tr', null,
         h('td', null, p.label), h('td', { class: p.sign > 0 ? 'good' : p.sign < 0 ? 'bad' : 'muted' }, p.effect))))),

@@ -20,6 +20,7 @@ import {
   applyCommand,
   syncFacilities,
   STRIKE_DAMAGE,
+  redactFor as redactView,
   RESEARCH,
   startResearch,
   theaterDecision,
@@ -871,5 +872,24 @@ describe('designer decisions after round 2', () => {
     for (let i = 0; i < 3; i++) fields[i % fields.length].condition -= Math.round(14 * STRIKE_DAMAGE);
     syncFacilities(s);
     expect(facilityEffects(s.sides[1].facilities).crippled.airfield).toBe(true);
+  });
+
+  it('station life: scenes from each side\'s own airfield, more in a quiet week', () => {
+    let scenes = 0;
+    let quiet = 0;
+    for (let g = 0; g < 6; g++) {
+      const s = startCampaign({ seed: `life${g}`, mode: 'hotseat' });
+      for (let w = 0; w < 8 && !s.outcome; w++) {
+        const rest = w % 3 === 2;
+        resolveTurn(s, [rest ? emptyPlan() : playerPlan(s), aiPlan(s, 1)]);
+        const d = s.lastDebriefs[0]!;
+        scenes += d.station?.length ?? 0;
+        if (rest) quiet += d.station?.length ?? 0;
+        // In a two-commander game each side sees only its own scenes.
+        expect(redactView(s, 0).lastDebriefs[1]).toBeNull();
+      }
+    }
+    expect(scenes).toBeGreaterThan(10);
+    expect(quiet).toBeGreaterThan(5);
   });
 });

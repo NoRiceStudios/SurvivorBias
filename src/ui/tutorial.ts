@@ -135,7 +135,7 @@ const STEPS: Step[] = [
     where: hq('hangar'),
     target: '.armor-table',
     title: 'Where to put the armor',
-    text: 'Armor is heavy, so each type carries only a few plates. The holes in returning aircraft show where an aircraft can be hit and still come home. Where should the plates go, then? Every type is different, and every war.',
+    text: 'Armor is heavy, so each type carries only a few plates. Your ground crew and your leaders will have firm opinions about where they belong. Before you take their advice, think about what the damage plot can show you, and what it cannot. Every type is different, and every war.',
   },
   {
     where: hq(),

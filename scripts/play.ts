@@ -377,6 +377,7 @@ function launch() {
   say('Home front:', ...d.defenseSummary.map((x) => `  ${x}`));
   const photographed = d.recon && st.theater.sites.find((x) => x.id === d.recon!.siteId);
   if (d.recon && photographed) say(`  PHOTOGRAPHIC INTERPRETATION: ${photographed.name} at ${d.recon.condition}% capacity.`);
+  if (d.station?.length) say('Station life:', ...d.station.map((x) => `  ~ ${x}`));
   if (d.pressure?.length) say('Army liaison, the front this week:', ...d.pressure.map((p) => `  ${p.label}: ${p.effect}`));
   say('Signal from High Command:', ...(d.hqResponse.length ? d.hqResponse.map((x) => `  ${x}`) : ['  Returns acknowledged.']));
   say('');

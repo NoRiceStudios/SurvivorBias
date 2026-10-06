@@ -1212,7 +1212,10 @@ export function memoDispatch(side: SideState, turn: number, maxPages = 4): Dispa
     fresh.push(m);
   }
   const memos = fresh.filter((m) => m.turn >= turn - 1 && m.kind !== 'supply');
-  if (!memos.length) return null;
+  // The general only comes in person for something that matters: new orders, praise or blame,
+  // and news of the wing's own men. Routine intelligence stays on the briefing.
+  const weighty = memos.some((m) => m.kind === 'order' || m.kind === 'reprimand' || m.kind === 'commendation' || leaderInMemo(side, m) || m.from === 'International Red Cross');
+  if (!memos.length || !weighty) return null;
   // News of the wing's own leaders ranks just above routine intelligence.
   const rank = (m: Memo) => (leaderInMemo(side, m) ? PRIORITY.indexOf('intel') - 0.5 : PRIORITY.indexOf(m.kind));
   memos.sort((a, b) => rank(a) - rank(b));

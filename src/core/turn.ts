@@ -1,5 +1,6 @@
 import { tech } from './tech';
 import { remember } from './leaders';
+import { stationLife } from './vignettes';
 import { plural } from './text';
 import { aiIntent } from './ai';
 import { planCost, researchTurns } from './actions';
@@ -413,12 +414,15 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   const gradSkill = 0.25 + t.level * 0.07 + tech(side, 'training') + (t.focus === 'gunnery' || t.focus === 'evasion' ? 0.06 : 0) - (t.focus === 'reporting' ? 0.04 : 0);
   // Squadrons with no crew at all come first (a new recon flight must not wait for weeks), then the most short-handed.
   const needy = [...side.squadrons].sort((a, b) => (a.crews <= 0 ? -100 : 0) - (b.crews <= 0 ? -100 : 0) || a.crews - a.airframes.length - (b.crews - b.airframes.length));
+  side.arrived = [];
   for (const sq of needy) {
+    const before = pool;
     while (pool > 0 && sq.crews < sq.airframes.length) {
       sq.skill = (sq.skill * sq.crews + gradSkill) / (sq.crews + 1);
       sq.crews++;
       pool--;
     }
+    if (before > pool) side.arrived.push({ squadronId: sq.id, n: before - pool });
   }
   // Crews move between squadrons of the same type, to where the aircraft are.
   for (const sq of side.squadrons) {
@@ -934,6 +938,13 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     debriefs[id] = d;
   }
   secondaryObjectives(rng, state, news);
+  // Station life, from each side's own airfield.
+  for (const id of [0, 1] as SideId[]) {
+    const side = state.sides[id];
+    const flying = new Set([...(plans[id].raid?.squadronIds ?? []), ...plans[id].defense, ...(plans[id].feint?.squadronIds ?? []), plans[id].recon?.squadronId]);
+    const rested = side.squadrons.filter((q) => !flying.has(q.id) && q.airframes.length > 0);
+    if (!side.isAI) debriefs[id].station = stationLife(rng.fork(`station-${id}-${state.turn}`), state, side, rested, !raids[id] && !feints[id]);
+  }
   // Squadron leaders bring their requests to the commander (the AI runs its own wing).
   for (const id of [0, 1] as SideId[]) {
     const side = state.sides[id];
