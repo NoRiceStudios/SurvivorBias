@@ -3,7 +3,7 @@ import { Rng } from '../core/rng';
 import { pickZone } from '../core/sim';
 import type { AircraftKind, Hit, SideId } from '../core/types';
 import { aircraftCanvas } from './sprites';
-import { portraitCanvas } from './general';
+import { leaderPortrait, portraitCanvas } from './general';
 import { schoolScene, worksScene } from './buildings';
 import { startCampaign } from '../core/game';
 import type { QcPolicy, TrainingFocus } from '../core/types';
@@ -56,7 +56,7 @@ app.prepend(faces);
 
 // Building scenes: every school and works level (gallery.html#school / #works shows only those).
 const only = location.hash.slice(1);
-if (only === 'school' || only === 'works') {
+if (only === 'school' || only === 'works' || only === 'leaders') {
   while (app.firstChild) app.removeChild(app.firstChild);
 }
 const state = startCampaign({ mode: 'single', seed: 'gallery' });
@@ -69,7 +69,7 @@ const sceneRow = (el: HTMLElement) => {
   r.append(el);
   app.append(r);
 };
-if (only !== 'works') {
+if (only !== 'works' && only !== 'leaders') {
   const focus: TrainingFocus[] = ['balanced', 'gunnery', 'reporting', 'evasion', 'balanced'];
   for (let lv = 1; lv <= 5; lv++) {
     const side = structuredClone(state.sides[lv === 5 ? 1 : 0]);
@@ -77,7 +77,7 @@ if (only !== 'works') {
     sceneRow(schoolScene(side));
   }
 }
-if (only !== 'school') {
+if (only !== 'school' && only !== 'leaders') {
   const qc: QcPolicy[] = ['standard', 'rushed', 'strict', 'standard', 'rushed'];
   const cond = [100, 85, 60, 35, 100];
   for (let lv = 1; lv <= 5; lv++) {
@@ -86,5 +86,28 @@ if (only !== 'school') {
     side.facilities.industry = cond[lv - 1];
     side.flak = lv * 0.3;
     sceneRow(worksScene(side));
+  }
+}
+
+// Squadron leaders: faces come from names; rank and reputation add marks (gallery.html#leaders).
+if (!only || only === 'leaders') {
+  const traits = [undefined, 'ace', 'lucky', 'steady', 'sharpEyed', 'shaken'] as const;
+  for (const side of [0, 1] as SideId[]) {
+    const r = document.createElement('div');
+    r.className = 'gallery-row';
+    r.style.gap = '8px';
+    const ranks = side === 0 ? ['Flt Lt', 'Sqn Ldr', 'Wg Cdr'] : ['Hauptmann', 'Major', 'Oberst'];
+    const firsts = side === 0 ? ['Hugh', 'Percy', 'Clive', 'Arthur', 'Neville', 'Rupert', 'Giles', 'Edmund', 'Basil', 'Roland', 'Denis', 'Miles'] : ['Kurt', 'Ernst', 'Otto', 'Walter', 'Dieter', 'Hans', 'Lothar', 'Egon', 'Fritz', 'Gerd', 'Rolf', 'Anton'];
+    const lasts = side === 0 ? ['Mabey', 'Thorne', 'Dunmore', 'Ashworth', 'Penrose', 'Hale', 'Brackley', 'Carrow', 'Fenwick', 'Lisle', 'Wexford', 'Ridley'] : ['Kessler', 'Brandt', 'Voigt', 'Ahlers', 'Reinke', 'Strahl', 'Lindqvist', 'Haber', 'Ostrow', 'Falkner', 'Merz', 'Rauch'];
+    for (let i = 0; i < 12; i++) {
+      const leader = { name: `${firsts[i]} ${lasts[i]}`, rank: ranks[i % 3], archetype: 'byTheBook' as const, trait: traits[i % traits.length] };
+      const cell = document.createElement('div');
+      cell.className = 'leader-cell';
+      const caption = document.createElement('div');
+      caption.textContent = `${leader.rank} ${lasts[i]}${leader.trait ? ` · ${leader.trait}` : ''}`;
+      cell.append(leaderPortrait(leader, side, 4), caption);
+      r.append(cell);
+    }
+    app.append(r);
   }
 }

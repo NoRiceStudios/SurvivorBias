@@ -3,14 +3,18 @@
  * bottom-right. Cards queue and show one at a time. Only the card itself takes
  * pointer events, so the rest of the screen (and automation) stays usable.
  */
-import type { Memo, SideId, SideState } from '../core/types';
+import type { Leader, Memo, SideId, SideState } from '../core/types';
 import { sfxClick, sfxKey } from './audio';
 import { h } from './dom';
 
 export type Speaker = 'general' | 'adjutant' | 'ministry';
 
-/** One page of a dispatch: plain text, or text with a stamp and a sender line. */
-export type DispatchLine = string | { text: string; stamp?: string; kind?: string; from?: string };
+/**
+ * One page of a dispatch: plain text, or text with a stamp and a sender line.
+ * A page may show a photograph (e.g. a leader's portrait) in place of the speaker,
+ * with a caption; `mourning` prints it in sepia with a black band.
+ */
+export type DispatchLine = string | { text: string; stamp?: string; kind?: string; from?: string; portrait?: HTMLCanvasElement; caption?: string; mourning?: boolean };
 
 export interface Dispatch {
   speaker: Speaker;
@@ -139,7 +143,7 @@ function bindKeys() {
 
 /* ---------------- Card ---------------- */
 
-let els: { text: HTMLElement; meta: HTMLElement; page: HTMLElement; btn: HTMLButtonElement; canvas: HTMLCanvasElement } | null = null;
+let els: { text: HTMLElement; meta: HTMLElement; page: HTMLElement; btn: HTMLButtonElement; canvas: HTMLCanvasElement; photo: HTMLElement; plate: HTMLElement; plateText: string } | null = null;
 
 function build() {
   const c = current!;
@@ -149,8 +153,11 @@ function build() {
   const meta = h('div', { class: 'dispatch-meta' });
   const page = h('span', { class: 'dispatch-page' });
   const btn = h('button', { class: 'btn small primary dispatch-btn', onclick: (e: MouseEvent) => { e.stopPropagation(); advance(); } }, 'Next ▸');
+  const plateText = c.d.speaker === 'adjutant' ? 'ADJUTANT' : c.d.speaker === 'ministry' ? 'MINISTRY' : 'HIGH COMMAND';
+  const plate = h('div', { class: 'dispatch-plate' }, plateText);
+  const photo = h('div', { class: 'dispatch-photo' });
   card = h('div', { class: `dispatch paper side${side} speaker-${c.d.speaker}`, role: 'dialog', 'aria-live': 'polite', onclick: () => advance() },
-    h('div', { class: 'dispatch-portrait' }, canvas, h('div', { class: 'dispatch-plate' }, c.d.speaker === 'adjutant' ? 'ADJUTANT' : c.d.speaker === 'ministry' ? 'MINISTRY' : 'HIGH COMMAND')),
+    h('div', { class: 'dispatch-portrait' }, canvas, photo, plate),
     h('div', { class: 'dispatch-main' },
       h('div', { class: 'dispatch-head' }, h('div', { class: 'dispatch-name' }, c.d.name), h('div', { class: 'dispatch-title' }, c.d.title)),
       meta,
@@ -158,7 +165,7 @@ function build() {
       h('div', { class: 'dispatch-foot' }, page, h('span', { class: 'dispatch-hint' }, 'Enter · Esc'), btn),
     ),
   );
-  els = { text, meta, page, btn, canvas };
+  els = { text, meta, page, btn, canvas, photo, plate, plateText };
   document.body.append(card);
   animateFace(canvas, LOOKS[c.d.speaker][side]);
 }
@@ -176,6 +183,12 @@ function startPage() {
     ...(obj.from ? [h('span', { class: 'dispatch-from' }, obj.from)] : []),
   );
   els.meta.style.display = obj.stamp || obj.from ? '' : 'none';
+  // A photograph on this page replaces the speaker until the next page.
+  const pic = typeof line === 'string' ? undefined : line.portrait;
+  els.photo.replaceChildren(...(pic ? [pic] : []));
+  els.photo.className = `dispatch-photo${pic ? ' on' : ''}${pic && typeof line !== 'string' && line.mourning ? ' mourning' : ''}`;
+  els.canvas.style.display = pic ? 'none' : '';
+  els.plate.textContent = pic && typeof line !== 'string' && line.caption ? line.caption : els.plateText;
   const last = c.page + 1 >= c.d.lines.length;
   els.btn.textContent = last ? (c.d.doneLabel ?? 'Understood') : 'Next ▸';
   els.page.textContent = c.d.lines.length > 1 ? `${c.page + 1} / ${c.d.lines.length}` : '';
@@ -714,6 +727,457 @@ function animateFace(canvas: HTMLCanvasElement, L: Look) {
   raf = requestAnimationFrame(tick);
 }
 
+/* ---------------- Squadron leaders ---------------- */
+
+/** Everything that makes one leader's face his own. Derived from his name, so it never changes. */
+interface Face {
+  side: SideId;
+  skin: [string, string, string];
+  hair: string;
+  hairStyle: 'short' | 'parted' | 'slick' | 'receding' | 'bald' | 'curly';
+  hat: 'none' | 'sideCap' | 'peaked' | 'field';
+  tache: 'none' | 'pencil' | 'walrus' | 'handlebar' | 'trim';
+  brows: 'thin' | 'bushy' | 'joined' | 'arched';
+  nose: 'small' | 'long' | 'broad' | 'hooked';
+  jaw: 'round' | 'narrow' | 'square';
+  mouth: 'flat' | 'smile' | 'grim';
+  ears: boolean;
+  outfit: 'tunic' | 'jacket' | 'sweater';
+  scarf: boolean;
+  scar: boolean;
+  eyepatch: boolean;
+  specs: boolean;
+  freckles: boolean;
+  pipe: boolean;
+  ribbon: boolean;
+  charm: boolean;
+  tired: boolean;
+  /** 0 Flt Lt / Hauptmann, 1 Sqn Ldr / Major, 2 Wg Cdr / Oberst. */
+  rank: number;
+}
+
+const SKINS: [string, string, string][] = [
+  ['#f0c49a', '#d9a27a', '#b07a58'],
+  ['#ecc8a8', '#d4a888', '#a87e62'],
+  ['#f2c8a0', '#e0a888', '#b8785e'],
+  ['#d8a878', '#bc8a5c', '#94683e'],
+  ['#e4b890', '#c89470', '#9e6c4c'],
+];
+const HAIRS = ['#2a2420', '#4a3424', '#6a4a2e', '#8a5a2a', '#c8a050', '#a04a22', '#3a3a38'];
+const BLUEGREY: [string, string, string] = ['#7888a0', '#5a6a84', '#3e4a60'];
+const LEATHER: [string, string, string] = ['#8a5a36', '#6a4428', '#4a2e1a'];
+const RANK_ORDER: [string[], string[]] = [['Flt Lt', 'Sqn Ldr', 'Wg Cdr'], ['Hauptmann', 'Major', 'Oberst']];
+
+/** FNV-1a hash of a string, then a small deterministic generator (mulberry32). */
+function nameRng(name: string): () => number {
+  let a = 2166136261;
+  for (let i = 0; i < name.length; i++) a = Math.imul(a ^ name.charCodeAt(i), 16777619);
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function faceFor(leader: Leader, side: SideId): Face {
+  const r = nameRng(`${side}:${leader.name}`);
+  const pick = <T,>(xs: T[]) => xs[Math.floor(r() * xs.length)];
+  const chance = (p: number) => r() < p;
+  const rank = Math.max(0, RANK_ORDER[side].indexOf(leader.rank));
+  // Seniority greys the hair and thins it.
+  const grey = chance(0.08 + rank * 0.18);
+  const hair = grey ? pick(['#9a968c', '#bdb8ac', '#7a7670']) : pick(HAIRS);
+  const thinning = chance(0.35);
+  const hairStyle = pick<Face['hairStyle']>(rank >= 1 && thinning ? ['receding', 'bald', 'receding'] : ['short', 'parted', 'slick', 'curly', 'short', 'parted']);
+  const hat = side === 0 ? pick<Face['hat']>(['none', 'sideCap', 'peaked', 'none', 'sideCap']) : pick<Face['hat']>(['none', 'field', 'peaked', 'field']);
+  const skin = pick(SKINS);
+  const fair = hair === HAIRS[4] || hair === HAIRS[5];
+  const trait = leader.trait;
+  return {
+    side,
+    skin: trait === 'shaken' ? SKINS[1] : skin,
+    hair,
+    hairStyle,
+    hat,
+    tache: pick<Face['tache']>(side === 0 ? ['none', 'none', 'pencil', 'walrus', 'handlebar', 'trim'] : ['none', 'none', 'none', 'pencil', 'trim', 'walrus']),
+    brows: pick<Face['brows']>(['thin', 'bushy', 'joined', 'arched', 'thin']),
+    nose: pick<Face['nose']>(['small', 'long', 'broad', 'hooked', 'small']),
+    jaw: pick<Face['jaw']>(['round', 'narrow', 'square']),
+    mouth: pick<Face['mouth']>(['flat', 'smile', 'grim', 'flat']),
+    ears: chance(0.3),
+    outfit: pick<Face['outfit']>(['tunic', 'tunic', 'jacket', side === 0 ? 'sweater' : 'tunic']),
+    scarf: chance(0.25),
+    scar: chance(0.1),
+    eyepatch: chance(0.04),
+    specs: chance(0.08),
+    freckles: fair && chance(0.6),
+    pipe: trait === 'steady',
+    ribbon: trait === 'ace',
+    charm: trait === 'lucky',
+    tired: trait === 'shaken',
+    rank,
+  };
+}
+
+const LEADER_FACE: Record<Face['jaw'], Record<number, number>> = {
+  round: FACE,
+  narrow: { 8: 5, 9: 6, 10: 7, 21: 6, 22: 6, 23: 5, 24: 4, 25: 3, 26: 2 },
+  square: { 8: 5, 9: 6, 10: 7, 22: 7, 23: 7, 24: 6, 25: 5, 26: 4 },
+};
+
+function leaderFigure(F: Face): Grid {
+  const g = new Grid(PW, PH);
+  const [sh, sb, ss] = F.skin;
+  const half = (y: number) => LEADER_FACE[F.jaw][y] ?? (y > 10 && y < 22 ? 7 : 0);
+  const cloth = F.side === 0 ? BLUEGREY : SLATE;
+  const [th, tb, ts] = F.outfit === 'jacket' ? LEATHER : F.outfit === 'sweater' ? ['#ece6d4', '#d8d0b8', '#b0a890'] as [string, string, string] : cloth;
+  const gold = '#d8b040';
+  // Shoulders.
+  [8, 12, 14, 16, 17, 17, 17, 17, 17, 17, 17].forEach((hw, i) => {
+    const y = 29 + i;
+    g.row(y, CX - hw, CX + hw - 1, tb);
+    g.px(CX - hw, y, th);
+    g.px(CX + hw - 1, y, ts);
+  });
+  g.row(29, CX - 7, CX + 6, th);
+  if (F.outfit === 'sweater') for (let y = 31; y < PH; y += 2) g.row(y, CX - 15, CX + 14, ts);
+  // Neck.
+  for (let y = 24; y <= 29; y++) g.row(y, CX - 3, CX + 2, ss);
+  // Collar.
+  if (F.outfit === 'jacket') {
+    // Sheepskin collar turned out over the leather.
+    const fleece = ['#efe6cc', '#d6c8a2'];
+    for (let i = 0; i < 5; i++) {
+      g.row(27 + i, CX - 9 + i, CX - 3 + Math.floor(i / 2), fleece[i % 2]);
+      g.row(27 + i, CX + 2 - Math.floor(i / 2), CX + 8 - i, fleece[(i + 1) % 2]);
+    }
+    for (let y = 32; y < PH; y++) g.px(CX, y, '#4a2e1a');
+  } else if (F.outfit === 'sweater') {
+    g.rect(CX - 4, 26, 8, 3, '#e4dcc4');
+    g.row(28, CX - 4, CX + 3, '#b0a890');
+  } else if (F.side === 1) {
+    for (let y = 26; y <= 30; y++) g.row(y, CX - 5, CX + 4, tb);
+    g.row(26, CX - 5, CX + 4, th);
+    for (let y = 27; y <= 30; y++) g.px(CX - 1, y, ts);
+    // Collar tabs with a pip for each grade.
+    g.rect(CX - 5, 28, 3, 2, gold);
+    g.rect(CX + 2, 28, 3, 2, gold);
+    for (let k = 0; k <= F.rank; k++) {
+      g.px(CX - 5 + k, 28, '#3a3020');
+      g.px(CX + 4 - k, 28, '#3a3020');
+    }
+  } else {
+    for (let i = 0; i < 5; i++) g.row(28 + i, CX - 4 + i, CX + 3 - i, '#a8b4c4');
+    for (let y = 29; y < PH; y++) g.row(y, CX - 1, CX, '#2a2e38');
+    for (let i = 0; i < 7; i++) {
+      g.px(CX - 5 + Math.min(i, 4), 28 + i, ts);
+      g.px(CX + 4 - Math.min(i, 4), 28 + i, ts);
+    }
+  }
+  if (F.scarf) {
+    const silk = F.side === 0 ? '#ece8da' : '#c8b878';
+    for (let y = 26; y <= 29; y++) g.row(y, CX - 4, CX + 3, silk);
+    g.rect(CX - 2, 30, 3, 4, silk);
+    g.px(CX - 1, 31, '#c8c0a8');
+    g.px(CX - 3, 27, '#c8c0a8');
+  }
+  // Rank on the shoulder straps: a ring per grade (side 0) or braid (side 1).
+  if (F.outfit === 'tunic') {
+    for (const sx of [CX - 15, CX + 10]) {
+      g.row(30, sx, sx + 4, ts);
+      if (F.side === 0) for (let k = 0; k < F.rank + 2; k++) g.px(sx + k + (k > 1 ? 1 : 0) - (F.rank === 2 ? 1 : 0) + 1, 30, '#c8d0dc');
+      else g.row(30, sx + 1, sx + 3, F.rank === 2 ? gold : '#c9ced2');
+    }
+  }
+  // Reputation on the chest.
+  if (F.ribbon) {
+    const rib = F.side === 0 ? ['#7a3a8a', '#e8e4d4'] : ['#1a1a1a', gold];
+    for (let k = 0; k < 4; k++) g.px(CX + 5 + k, 32, rib[k % 2]);
+    g.row(31, CX + 5, CX + 8, rib[0]);
+  }
+  if (F.charm) {
+    // A four-leaf clover pinned to the pocket.
+    const cl = '#5aa04a';
+    g.px(CX - 7, 31, cl); g.px(CX - 6, 32, cl); g.px(CX - 8, 32, cl); g.px(CX - 7, 33, cl);
+    g.px(CX - 7, 32, '#d8b040');
+  }
+  // Head.
+  for (let y = 8; y <= 26; y++) {
+    const hw = half(y);
+    if (!hw) continue;
+    g.row(y, CX - hw, CX + hw - 1, sb);
+    g.px(CX - hw, y, sh);
+    g.px(CX + hw - 1, y, ss);
+    if (hw > 4) g.px(CX + hw - 2, y, ss);
+  }
+  const chin = Object.keys(LEADER_FACE[F.jaw]).map(Number).filter((y) => y > 20).sort((a, b) => b - a)[0] ?? 26;
+  g.row(chin, CX - half(chin) + 1, CX + half(chin) - 2, ss);
+  // Ears, big or small.
+  const ey0 = F.ears ? 14 : 15;
+  for (let y = ey0; y <= 18; y++) {
+    g.px(CX - 8, y, y === ey0 || y === 18 ? ss : sb);
+    g.px(CX + 7, y, ss);
+    if (F.ears && y > ey0 && y < 18) {
+      g.px(CX - 9, y, sb);
+      g.px(CX + 8, y, ss);
+    }
+  }
+  leaderHair(g, F, half);
+  // Brows.
+  const bc = F.hairStyle === 'bald' && F.hair !== HAIRS[0] ? darker(F.hair) : darker(F.hair);
+  const by = EYE_Y - 2;
+  if (F.brows === 'bushy') {
+    g.row(by, CX - 6, CX - 3, bc); g.row(by, CX + 2, CX + 5, bc);
+    g.row(by - 1, CX - 6, CX - 4, bc); g.row(by - 1, CX + 3, CX + 5, bc);
+  } else if (F.brows === 'joined') {
+    g.row(by, CX - 6, CX + 5, bc);
+  } else if (F.brows === 'arched') {
+    g.row(by - 1, CX - 5, CX - 4, bc); g.px(CX - 6, by, bc); g.px(CX - 3, by, bc);
+    g.row(by - 1, CX + 3, CX + 4, bc); g.px(CX + 2, by, bc); g.px(CX + 5, by, bc);
+  } else {
+    g.row(by, CX - 6, CX - 4, bc); g.row(by, CX + 3, CX + 5, bc);
+  }
+  // Eyes; a shaken man's are heavy-lidded with dark rings.
+  for (const ex of [CX - 5, CX + 2]) {
+    g.px(ex, EYE_Y, '#e8e4d4');
+    g.px(ex + 1, EYE_Y, '#2a2620');
+    g.px(ex + 1, EYE_Y + 1, ss);
+    if (F.tired) {
+      g.row(EYE_Y, ex, ex + 1, ss);
+      g.px(ex + 1, EYE_Y, '#2a2620');
+      g.row(EYE_Y + 1, ex - 1, ex + 2, '#9a7272');
+    }
+  }
+  // Nose.
+  g.px(CX, 17, ss);
+  g.px(CX, 18, ss);
+  g.px(CX - 1, 17, sh);
+  if (F.nose === 'long') {
+    g.px(CX, 16, ss);
+    g.px(CX, 19, ss);
+    g.row(20, CX - 1, CX + 1, ss);
+  } else if (F.nose === 'broad') {
+    g.row(19, CX - 2, CX + 2, ss);
+    g.px(CX - 2, 18, sh);
+  } else if (F.nose === 'hooked') {
+    g.px(CX + 1, 17, ss);
+    g.px(CX + 1, 18, ss);
+    g.row(19, CX - 1, CX + 1, ss);
+  } else g.row(19, CX - 1, CX + 1, ss);
+  // Mouth.
+  const lip = '#8a4a3a';
+  g.row(MOUTH_Y, CX - 2, CX + 1, lip);
+  if (F.mouth === 'smile') {
+    g.px(CX - 3, MOUTH_Y - 1, lip);
+    g.px(CX + 2, MOUTH_Y - 1, lip);
+  } else if (F.mouth === 'grim') {
+    g.px(CX - 3, MOUTH_Y + 1, ss);
+    g.px(CX + 2, MOUTH_Y + 1, ss);
+    g.row(MOUTH_Y, CX - 2, CX + 1, '#6a3a2e');
+  }
+  // Moustache.
+  const m = F.hair;
+  if (F.tache === 'walrus') {
+    g.row(20, CX - 3, CX + 2, m);
+    g.row(21, CX - 4, CX + 3, m);
+    g.px(CX - 4, 22, darker(m)); g.px(CX + 3, 22, darker(m));
+  } else if (F.tache === 'handlebar') {
+    g.row(21, CX - 3, CX + 2, m);
+    g.px(CX - 4, 20, m); g.px(CX + 3, 20, m);
+    g.px(CX - 5, 19, m); g.px(CX + 4, 19, m);
+    g.px(CX - 5, 20, darker(m)); g.px(CX + 4, 20, darker(m));
+  } else if (F.tache === 'pencil') {
+    g.row(21, CX - 3, CX - 1, m); g.row(21, CX, CX + 2, m);
+  } else if (F.tache === 'trim') {
+    g.row(20, CX - 3, CX + 2, m);
+    g.row(21, CX - 3, CX + 2, darker(m));
+  }
+  if (F.freckles) for (const [x, y] of [[-5, 18], [-4, 19], [3, 18], [4, 19], [-6, 19]]) g.px(CX + x, y, ss);
+  if (F.scar) {
+    g.px(CX + 4, 18, '#c08a70'); g.px(CX + 3, 19, '#c08a70'); g.px(CX + 4, 20, '#c08a70'); g.px(CX + 5, 17, '#c08a70');
+  }
+  if (F.specs) {
+    const rim = '#3a3028';
+    for (const ex of [CX - 5, CX + 2]) {
+      g.row(EYE_Y - 1, ex, ex + 1, rim);
+      g.row(EYE_Y + 1, ex, ex + 1, rim);
+      g.px(ex - 1, EYE_Y, rim);
+      g.px(ex + 2, EYE_Y, rim);
+    }
+    g.row(EYE_Y, CX - 2, CX + 1, rim);
+  }
+  if (F.eyepatch) {
+    g.rect(CX - 6, EYE_Y - 1, 3, 3, '#1a1a1a');
+    for (let i = 0; i < 5; i++) g.px(CX - 3 + i, EYE_Y - 2 - Math.floor(i / 2), '#1a1a1a');
+    g.px(CX - 7, EYE_Y - 1, '#1a1a1a');
+  }
+  if (F.pipe) {
+    // Briar pipe from the corner of the mouth.
+    g.row(MOUTH_Y, CX + 1, CX + 4, '#3a2a1a');
+    g.rect(CX + 4, MOUTH_Y - 1, 2, 3, '#6a4428');
+    g.px(CX + 4, MOUTH_Y - 1, '#2a1a10');
+    g.px(CX + 5, MOUTH_Y - 1, '#2a1a10');
+  }
+  leaderHat(g, F);
+  g.outline();
+  return g;
+}
+
+function leaderHair(g: Grid, F: Face, half: (y: number) => number) {
+  const c = F.hair;
+  const d = darker(c);
+  const hi = F.hair === HAIRS[0] ? '#4a4440' : shadeHex(c, 1.25);
+  // Sideburns and temples show under any cap.
+  const side = F.hairStyle === 'bald' ? [13, 16] : [10, 15];
+  for (let y = side[0]; y <= side[1]; y++) {
+    g.px(CX - 7, y, c);
+    g.px(CX + 6, y, c);
+  }
+  if (F.hat === 'peaked') return;
+  // Top of the head: skull shape above row 8.
+  const crown: [number, number][] = [[6, 4], [7, 6], [8, 6], [9, 7], [10, 7]];
+  if (F.hairStyle === 'bald' || F.hairStyle === 'receding') {
+    for (const [y, hw] of crown) g.row(y, CX - hw, CX + hw - 1, F.skin[1]);
+    for (const [y, hw] of crown) { g.px(CX - hw, y, F.skin[0]); g.px(CX + hw - 1, y, F.skin[2]); }
+    g.row(6, CX - 2, CX - 1, '#ffffff');
+    g.px(CX - 3, 7, F.skin[0]);
+    if (F.hairStyle === 'receding') {
+      for (const y of [8, 9, 10, 11]) { g.row(y, CX - 7, CX - 5, c); g.row(y, CX + 4, CX + 6, c); }
+      g.px(CX - 4, 8, d);
+      g.px(CX + 3, 8, d);
+    } else {
+      for (const y of [11, 12]) { g.px(CX - 7, y, c); g.px(CX + 6, y, c); }
+    }
+    return;
+  }
+  const top: [number, number][] = F.hairStyle === 'curly' ? [[5, 5], [6, 7], [7, 7], [8, 8], [9, 8], [10, 7]] : [[6, 5], [7, 7], [8, 7], [9, 8], [10, 7]];
+  for (const [y, hw] of top) g.row(y, CX - hw, CX + hw - 1, c);
+  // Fringe line across the forehead.
+  for (let x = CX - 6; x < CX + 6; x++) if ((F.hairStyle === 'slick' ? 1 : x % 3) !== 0) g.px(x, 11, c);
+  if (F.hairStyle === 'parted') {
+    g.row(6, CX - 3, CX - 3, F.skin[2]);
+    g.px(CX - 3, 7, F.skin[2]);
+    g.row(7, CX - 2, CX + 4, hi);
+    g.row(10, CX - 2, CX + 5, d);
+  } else if (F.hairStyle === 'slick') {
+    g.row(7, CX - 4, CX + 2, hi);
+    g.row(8, CX - 5, CX - 2, hi);
+    g.row(10, CX - 6, CX + 5, d);
+  } else if (F.hairStyle === 'curly') {
+    for (let x = CX - 7; x < CX + 7; x++) if ((x + 5) % 2) g.px(x, 5 + (x % 3 === 0 ? 1 : 0), d);
+    for (let y = 6; y <= 10; y++) for (let x = CX - 6; x < CX + 6; x += 3) g.px(x + (y % 2), y, d);
+  } else {
+    g.row(7, CX - 3, CX + 1, hi);
+    g.row(10, CX - 6, CX + 5, d);
+  }
+  // The head beneath: hair edges meet the face.
+  void half;
+}
+
+function shadeHex(c: string, f: number): string {
+  const n = parseInt(c.slice(1), 16);
+  const v = (s: number) => Math.max(0, Math.min(255, Math.round(((n >> s) & 255) * f))).toString(16).padStart(2, '0');
+  return `#${v(16)}${v(8)}${v(0)}`;
+}
+
+function leaderHat(g: Grid, F: Face) {
+  const gold = '#d8b040';
+  if (F.hat === 'none') return;
+  if (F.hat === 'peaked') {
+    const col: [string, string, string] = F.side === 0 ? BLUEGREY : BLACKCAP;
+    for (const [y, hw] of [[3, 7], [4, 9], [5, 10], [6, 10], [7, 9]] as const) {
+      g.row(y, CX - hw, CX + hw - 1, col[1]);
+      g.px(CX - hw, y, col[0]);
+      g.px(CX + hw - 1, y, col[2]);
+    }
+    g.row(3, CX - 5, CX + 3, col[0]);
+    g.row(7, CX - 9, CX + 8, col[2]);
+    g.row(8, CX - 8, CX + 7, '#1f1f22');
+    g.row(9, CX - 8, CX + 7, '#1f1f22');
+    if (F.side === 1) g.row(6, CX - 9, CX + 8, F.rank === 2 ? gold : '#c9ced2');
+    // Badge: an eagle (side 0) or the Directorate diamond.
+    if (F.side === 0) {
+      g.row(8, CX - 3, CX + 2, gold);
+      g.px(CX - 1, 7, gold); g.px(CX, 7, gold);
+      g.px(CX - 1, 6, '#e8e4d4'); g.px(CX, 6, '#e8e4d4');
+    } else {
+      g.px(CX - 1, 4, gold); g.px(CX, 4, gold); g.row(5, CX - 2, CX + 1, gold); g.px(CX - 1, 5, '#1a1a1a'); g.px(CX, 5, '#1a1a1a');
+      g.row(8, CX - 2, CX + 1, '#c9ced2');
+    }
+    g.row(10, CX - 8, CX + 7, '#2a2a30');
+    g.row(11, CX - 7, CX + 5, '#1f1f22');
+    g.row(10, CX - 7, CX - 4, '#4a4a54');
+    if (F.rank === 2) for (let x = CX - 6; x <= CX + 5; x += 2) g.px(x, 10, gold);
+    g.row(12, CX - 6, CX + 5, F.skin[2]);
+  } else if (F.hat === 'sideCap') {
+    const [hh, hb, hs] = BLUEGREY;
+    for (let i = 0; i < 5; i++) g.row(4 + i, CX - 2 - i, CX + 7 - Math.max(0, i - 2), i === 0 ? hh : hb);
+    g.row(8, CX - 7, CX + 5, hs);
+    g.px(CX + 7, 5, hs);
+    g.rect(CX - 4, 6, 2, 2, gold);
+  } else {
+    // Directorate field cap: soft crown and a short peak.
+    const [hh, hb, hs] = SLATE;
+    for (const [y, hw] of [[4, 6], [5, 7], [6, 8], [7, 8], [8, 8]] as const) {
+      g.row(y, CX - hw, CX + hw - 1, hb);
+      g.px(CX - hw, y, hh);
+      g.px(CX + hw - 1, y, hs);
+    }
+    g.row(4, CX - 5, CX + 4, hh);
+    g.row(8, CX - 8, CX + 7, hs);
+    g.row(9, CX - 6, CX + 4, '#2a2e34');
+    g.row(10, CX - 5, CX + 3, F.skin[2]);
+    g.px(CX - 1, 6, gold); g.px(CX, 6, gold); g.px(CX - 1, 5, gold); g.px(CX, 7, gold);
+  }
+}
+
+/** Crop of the 36x40 portrait that keeps head and shoulders. */
+const LX = 3;
+const LY = 2;
+const LW = 30;
+const LH = 32;
+
+/** A squadron leader's own face: stable for his name, marked by rank and reputation. */
+export function leaderPortrait(leader: Leader, side: SideId, scale = 2): HTMLCanvasElement {
+  const c = h('canvas', { class: 'pix leader-face', width: LW, height: LH, style: `width:${LW * scale}px;height:${LH * scale}px`, title: `${leader.rank} ${leader.name}` });
+  const g = c.getContext('2d')!;
+  const wall = side === 0 ? ['#7a8478', '#6a7468', '#5a6458'] : ['#767c82', '#666c72', '#565c62'];
+  g.fillStyle = wall[2];
+  g.fillRect(0, 0, LW, LH);
+  // Studio backdrop: a soft light behind the head.
+  for (let y = 0; y < LH; y++) {
+    const hw = Math.round(Math.max(0, 11 - Math.abs(y - 12) * 0.5));
+    g.fillStyle = wall[1];
+    g.fillRect(LW / 2 - hw - 3, y, hw * 2 + 6, 1);
+    g.fillStyle = wall[0];
+    g.fillRect(LW / 2 - hw + 1, y, Math.max(0, hw * 2 - 2), 1);
+  }
+  leaderFigure(faceFor(leader, side)).draw(g, -LX, -LY);
+  return c;
+}
+
+/** The leader a memo is about (obituary, return, change of command), if he can be named. */
+export function leaderInMemo(side: SideState, m: Memo): Leader | null {
+  const s = m.subject;
+  const about = /^In memoriam:|is back$|is alive$|presumed killed$|change of command$/i.test(s);
+  if (!about) return null;
+  if (/change of command$/i.test(s)) {
+    const sq = side.squadrons.find((q) => s.startsWith(q.name));
+    if (sq) return sq.leader;
+  }
+  const current = side.squadrons.map((q) => q.leader).find((l) => s.includes(l.name));
+  if (current) return current;
+  // A man no longer on strength: read his rank and name from the subject.
+  for (const rank of [...RANK_ORDER[side.id]].sort((a, b) => b.length - a.length)) {
+    const i = s.indexOf(`${rank} `);
+    if (i < 0) continue;
+    const name = s.slice(i + rank.length + 1).replace(/\s+(is back|is alive|presumed killed)$/i, '').trim();
+    if (name) return { name, rank, archetype: 'byTheBook' };
+  }
+  return null;
+}
+
 /* ---------------- Weekly memos ---------------- */
 
 const STAMP: Record<Memo['kind'], string> = { order: 'DIRECTIVE', intel: 'INTELLIGENCE', supply: 'SUPPLY', reprimand: 'REPRIMAND', commendation: 'COMMENDED', notice: 'NOTICE' };
@@ -749,18 +1213,24 @@ export function memoDispatch(side: SideState, turn: number, maxPages = 4): Dispa
   }
   const memos = fresh.filter((m) => m.turn >= turn - 1 && m.kind !== 'supply');
   if (!memos.length) return null;
-  memos.sort((a, b) => PRIORITY.indexOf(a.kind) - PRIORITY.indexOf(b.kind));
+  // News of the wing's own leaders ranks just above routine intelligence.
+  const rank = (m: Memo) => (leaderInMemo(side, m) ? PRIORITY.indexOf('intel') - 0.5 : PRIORITY.indexOf(m.kind));
+  memos.sort((a, b) => rank(a) - rank(b));
   const hc = HIGH_COMMAND[side.id];
   return {
     speaker: 'general',
     side: side.id,
     name: hc.name,
     title: hc.title,
-    lines: memos.slice(0, maxPages).map((m) => ({
-      stamp: STAMP[m.kind],
-      kind: m.kind,
-      from: `${m.from} — ${m.subject}`,
-      text: summarise(m),
-    })),
+    lines: memos.slice(0, maxPages).map((m) => {
+      const who = leaderInMemo(side, m);
+      return {
+        stamp: STAMP[m.kind],
+        kind: m.kind,
+        from: `${m.from} — ${m.subject}`,
+        text: summarise(m),
+        ...(who ? { portrait: leaderPortrait(who, side.id, 3), caption: `${who.rank} ${who.name.split(' ').slice(-1)[0]}`.toUpperCase(), mourning: /memoriam|presumed killed/i.test(m.subject) } : {}),
+      };
+    }),
   };
 }
