@@ -6,7 +6,7 @@ import { aiIntent } from './ai';
 import { planCost, researchTurns } from './actions';
 import { AIRCRAFT, ARCHETYPE_INFO, RANKS, REQUEST_SHORT, RESEARCH, SQUADRON_NAMES, TARGETS, TRAIT_INFO } from './data';
 import { buildDebrief, updatePerceived } from './reports';
-import { facilityEffects } from './effects';
+import { CRIPPLED, facilityEffects } from './effects';
 import { generateRequests } from './requests';
 import { Rng } from './rng';
 import { captainName, makeAirframe, makeLeader, makeSquadron } from './setup';
@@ -69,7 +69,7 @@ export function factoryRate(side: SideState): number {
 
 /** The AI's resource multiplier: difficulty plus escalation through the theaters. */
 export function aiBonus(state: GameState, side: SideState): number {
-  const difficulty = 0.55 + 0.6 * side.insight; // green ~0.64, seasoned ~0.82, wald ~1.09
+  const difficulty = 0.4 + 0.75 * side.insight; // green ~0.51, seasoned ~0.74, wald ~1.08
   return difficulty * (1 + 0.15 * (act(state) - 1));
 }
 
@@ -361,6 +361,8 @@ function prisonerPost(rng: Rng, state: GameState, side: SideState, sq: Squadron,
 }
 
 export const STRIKE_DAMAGE = 2.5;
+/** The most one raid can move the front in a week. */
+export const SWING_CAP = 15;
 
 function applyDamage(state: GameState, siteId: string | undefined, dmg: number): number {
   const site = state.theater.sites.find((x) => x.id === siteId);
@@ -496,7 +498,8 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   }
 
   // Facility repair: each site the side holds is patched up a little.
-  for (const site of state.theater.sites) if (site.owner === side.id) site.condition = Math.min(100, site.condition + Math.round(4 * (1 + tech(side, 'repair'))));
+  // Crippled sites barely mend on their own: only paid emergency repairs bring them back quickly.
+  for (const site of state.theater.sites) if (site.owner === side.id) site.condition = Math.min(100, site.condition + Math.round((site.condition < CRIPPLED ? 1 : 4) * (1 + tech(side, 'repair'))));
 }
 
 /** What moved the front, from one side's point of view, in the Army liaison's words. */
@@ -844,7 +847,12 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   for (const id of [0, 1] as SideId[]) {
     const r = raids[id];
     if (!r) continue;
-    if (r.target === 'support') supportPush[id] = r.damage * mods.support / (1 + 0.25 * state.sides[other(id)].observed.support);
+    if (r.target === 'support') {
+      // Crippled airfields and depots can't sustain an offensive over the front.
+      const eff = facilityEffects(state.sides[id].facilities);
+      const crippled = (eff.crippled.airfield ? 0.6 : 1) * (eff.crippled.fuel ? 0.75 : 1);
+      supportPush[id] = (r.damage * mods.support * crippled) / (1 + 0.25 * state.sides[other(id)].observed.support);
+    }
     else if (r.target !== 'sweep' && r.target !== 'feint') {
       const dealt = applyDamage(state, r.siteId, r.damage);
       damageTaken[(1 - id) as SideId][r.target] = dealt;
@@ -899,8 +907,9 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   syncFacilities(state);
   const parts = {
     air: (lost1 - lost0) * 2 + rng.gauss(3),
-    support: (supportPush[0] - supportPush[1]) * 1.15,
-    strikes: (strat0 - strat1) * 0.15,
+    // No single raid can move the front by more than SWING_CAP in a week.
+    support: Math.min(SWING_CAP, supportPush[0] * 1.15) - Math.min(SWING_CAP, supportPush[1] * 1.15),
+    strikes: Math.min(SWING_CAP, strat0 * 0.15) - Math.min(SWING_CAP, strat1 * 0.15),
     // Wrecked works keep telling at the front, week after week.
     works:
       (Math.min(120, s0.facilities.industry) - Math.min(120, s1.facilities.industry)) * 0.06 +

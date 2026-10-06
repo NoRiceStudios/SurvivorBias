@@ -301,7 +301,7 @@ export function reachableSites(state: GameState, side: SideId, kind: AircraftKin
 }
 
 /** Pressure the winner of the last theater carries into the next one (it is shown to both sides). */
-export const HEAD_START = 8;
+export const HEAD_START = 4;
 
 /** Move the war into a theater: lay out its sites, reset beliefs, brief both commanders. */
 export function enterTheater(state: GameState, index: number, rng: Rng, headStart: SideId | null) {

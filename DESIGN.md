@@ -196,7 +196,7 @@ Between theaters the Ministry partly makes good a depleted wing, in proportion
 to its confidence: up to 70% of the shortfall below 28 aircraft, and nothing
 below a confidence of 30. Our own losses can't be talked down: more than two
 aircraft lost in a week costs confidence. Difficulty scales the
-AI's resources (Green ×0.64, Seasoned ×0.82, Wald ×1.09), and the AI gets 15%
+AI's resources (Green ×0.51, Seasoned ×0.74, Wald ×1.08), and the AI gets 15%
 more with each theater.
 
 ### 6.6 War theaters
@@ -273,6 +273,12 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
       cripple a type.
     - The immediate pressure from a strike is modest; the lasting effect does
       the work.
+    - Crippled sites barely mend on their own; only paid repairs bring them
+      back quickly.
+    - A side whose airfields or fuel depots are crippled gets much less out
+      of close support.
+  - **Swing cap:** no single raid can move the front by more than 15 points in
+    a week.
 - **Front warnings:** the Army warns a week ahead when either side's line is
   about to give way.
 - **No capture without air cover.** A sector cannot fall in a week in which the
@@ -288,7 +294,7 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
   weeks. A timeout goes to whoever holds the advantage *and has taken at least
   one sector*; otherwise it is a stalemate.
 
-**Between theaters:** the winner gets an 8-point pressure head start in the next
+**Between theaters:** the winner gets a 4-point pressure head start in the next
 theater (stated in the theater orders, and the Army liaison's estimate starts
 from it), +15 trust and 100 supplies, and the loser loses 12 trust. Aircraft in
 repair are made serviceable during the move and squadrons are rested. A
