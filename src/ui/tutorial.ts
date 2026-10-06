@@ -108,14 +108,14 @@ const STEPS: Step[] = [
   {
     where: debrief(),
     target: '[data-tab="home"]',
-    title: 'Home front and High Command',
-    text: 'Open Home Front & HQ.',
+    title: 'The front',
+    text: 'Open The Front. (The button at the bottom always takes you to the next sheet.)',
     done: (app) => app.screen.kind === 'debrief' && app.screen.tab === 'home',
   },
   {
     where: debrief('home'),
     title: 'The front and High Command',
-    text: 'The Army liaison says what moved the front this week; a sector falls when pressure builds up. High Command answers your returns. When you have read everything, file your reports to start the next week.',
+    text: 'The Army liaison says what moved the front this week; a sector falls when pressure builds up. When you have read everything, file your reports: High Command will answer them, then the next week begins.',
     done: (app) => app.screen.kind === 'hq',
   },
   {

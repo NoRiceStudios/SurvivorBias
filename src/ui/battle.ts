@@ -160,13 +160,20 @@ const DTABS: [string, string][] = [
   ['aircraft', 'Returned Aircraft'],
   ['reports', 'Squadron Reports'],
   ['missing', 'Missing'],
-  ['home', 'Home Front & HQ'],
+  ['home', 'The Front'],
 ];
 
+/**
+ * The debrief reads in order, one sheet after another: a summary strip on top,
+ * one button to the next sheet, and the reports filed (High Command answers in
+ * full screen) at the end. The tabs stay for going back.
+ */
 export function renderDebrief(app: App, sideId: SideId, tab: string): HTMLElement {
   const st = app.state!;
   const d = st.lastDebriefs[sideId]!;
   const side = st.sides[sideId];
+  // The missing sheet is skipped when everyone came home.
+  const order = DTABS.filter(([id]) => id !== 'missing' || d.missing.length > 0);
   const nav = h('nav', { class: 'tabs' },
     DTABS.map(([id, label]) => h('button', { class: `tab ${tab === id ? 'active' : ''}`, 'data-tab': id, onclick: () => { sfxClick(); app.go({ kind: 'debrief', side: sideId, tab: id }); } }, label,
       id === 'missing' && d.missing.length ? h('span', { class: 'badge' }, String(d.missing.length)) : null)),
@@ -176,15 +183,40 @@ export function renderDebrief(app: App, sideId: SideId, tab: string): HTMLElemen
   else if (tab === 'missing') body = missingView(app, d);
   else if (tab === 'home') body = homeView(app, d);
   else body = aircraftView(app, d);
-  const sent = d.reports.reduce((a, r) => a + r.sent, 0);
-  const back = d.reports.reduce((a, r) => a + r.returned, 0);
+  const at = order.findIndex(([id]) => id === tab);
+  const next = order[(at < 0 ? 0 : at) + 1];
+  const file = () => { sfxStamp(); app.fileReports(sideId); };
   return h('div', { class: 'hq debrief' },
     topBar(app, side, d.turn),
-    h('div', { class: 'hq-body' }, nav, h('main', { class: 'content', 'data-keep-scroll': `db-${tab}` }, body)),
+    h('div', { class: 'hq-body' }, nav, h('main', { class: 'content', 'data-keep-scroll': `db-${tab}` }, debriefSummary(app, d), body)),
     h('div', { class: 'launchbar' },
-      h('div', { class: 'launch-summary' }, `Week ${d.turn} debrief · ${back} of ${sent} aircraft returned`),
-      h('button', { class: 'btn primary', onclick: () => { sfxStamp(); app.afterDebrief(sideId); } }, st.outcome ? 'The war is over ▸' : 'File reports ▸'),
+      h('div', { class: 'launch-summary' },
+        h('span', { class: 'debrief-steps' }, order.map(([id, label], i) => h('span', { class: `step ${id === tab ? 'on' : i < at ? 'done' : ''}` }, `${i + 1}. ${label}`))),
+        next ? h('button', { class: 'btn small choice', onclick: file }, 'File now') : null),
+      next
+        ? h('button', { class: 'btn primary', onclick: () => { sfxClick(); app.go({ kind: 'debrief', side: sideId, tab: next[0] }); } }, `Next: ${next[1]} ▸`)
+        : h('button', { class: 'btn primary', onclick: file }, st.outcome ? 'The war is over ▸' : 'File reports ▸'),
     ),
+  );
+}
+
+/** The week at a glance, above every sheet of the debrief. */
+function debriefSummary(app: App, d: Debrief): HTMLElement {
+  const st = app.state!;
+  const side = st.sides[d.side];
+  const sent = d.reports.reduce((a, r) => a + r.sent, 0);
+  const back = d.reports.reduce((a, r) => a + r.returned, 0);
+  const claims = d.reports.reduce((a, r) => a + r.claims, 0);
+  const front = side.perceived.front;
+  const chip = (label: string, value: string, cls = '') => h('div', { class: `glance ${cls}` }, h('b', null, value), h('span', null, label));
+  return h('section', { class: 'paper panel debrief-glance' },
+    h('div', { class: 'glance-row' },
+      chip('aircraft back', sent ? `${back}/${sent}` : '—', sent && back < sent ? 'bad' : ''),
+      chip('missing', String(d.missing.length), d.missing.length ? 'bad' : 'good'),
+      chip('enemy claimed', String(claims)),
+      chip('front pressure', `${front >= 0 ? '+' : ''}${front}`, front >= 0 ? 'good' : 'bad'),
+      chip('confidence', `${side.trust}`, side.trust < 25 ? 'bad' : '')),
+    d.theaterNews.length ? h('div', { class: 'glance-news' }, d.theaterNews.map((x) => h('p', { class: 'typed' }, x))) : null,
   );
 }
 
@@ -205,7 +237,6 @@ function aircraftView(app: App, d: Debrief): HTMLElement {
     );
   });
   return h('div', { class: 'col' },
-    d.theaterNews.length ? h('section', { class: 'paper panel news' }, h('h2', null, 'News'), d.theaterNews.map((x) => h('p', { class: 'typed' }, x))) : null,
     bombersBack.length ? h('section', { class: 'paper panel' },
       h('h2', null, 'Ground Crew Damage Plot — this operation'),
       h('div', { class: 'composite-row' },
@@ -292,7 +323,7 @@ function missingView(app: App, d: Debrief): HTMLElement {
 
 function homeView(app: App, d: Debrief): HTMLElement {
   const siteName = (id: string) => app.state!.theater.sites.find((x) => x.id === id)?.name ?? 'target';
-  return h('div', { class: 'grid2' },
+  return h('div', { class: 'col' }, h('div', { class: 'grid2' },
     h('section', { class: 'paper panel' }, h('h2', null, 'Home Front'), d.defenseSummary.map((x) => h('p', null, x)),
       d.recon ? h('div', { class: 'recon-photo' }, h('span', { class: 'stamp intel' }, 'PHOTOGRAPHIC INTERPRETATION'), h('p', null, `Photographs of the ${siteName(d.recon.siteId)} show the facility at ${d.recon.condition}% of capacity.`)) : null,
     ),
@@ -302,10 +333,7 @@ function homeView(app: App, d: Debrief): HTMLElement {
         h('td', null, p.label), h('td', { class: p.sign > 0 ? 'good' : p.sign < 0 ? 'bad' : 'muted' }, p.effect))))),
       h('p', { class: 'muted small' }, 'The Army\'s impression, not a measurement. Weather and the fortunes of war are folded into the fighting in the air.'),
     ) : null,
-    h('section', { class: 'paper panel' }, h('h2', null, 'Signal from High Command'), d.hqResponse.length ? d.hqResponse.map((x) => h('p', { class: 'typed' }, x)) : h('p', { class: 'muted' }, 'Returns acknowledged. No comment.'),
-      h('p', { class: 'muted small' }, 'High Command judges you on the returns you send, not on what happened.'),
-    ),
-  );
+  ), h('p', { class: 'help-line' }, 'High Command answers when you file your reports. It judges you on the returns you send, not on what happened.'));
 }
 
 /** The chief fitter reads the holes he can see, and only those. */

@@ -64,9 +64,15 @@ Each turn is one **sortie cycle**, roughly a few days of in-game time.
    - the airframes that came back, with **accurate** damage overlays (the survivor sample);
    - squadron reports on claims, enemy strength and types, and what was seen, **distorted** by each squadron's bias and trauma;
    - an updated war-theatre estimate (front line, enemy production), also distorted.
-6. **High Command.** New orders, supply deliveries and memos. How much you get
-   depends on **Command Trust**, which is based on the results you *reported*,
-   and not on what actually happened.
+
+   The debrief reads in order: a summary strip (aircraft back, missing, claims,
+   front pressure, confidence) sits on top of every sheet, one button leads to
+   the next sheet (the Missing sheet is skipped when everyone came home), and
+   the last one files the reports.
+6. **High Command.** Filing the reports brings High Command's answer in full
+   screen: the signal on your returns, then new orders and memos. How much you
+   get depends on **Command Trust**, which is based on the results you
+   *reported*, and not on what actually happened.
 7. Repeat until the war ends or you lose.
 
 In PvP both players do steps 1–3 at the same time, the simulation resolves both
@@ -501,7 +507,10 @@ their own distorted debrief.
   redeployment phase, naming the commander it is for. Esc (or "Close folder")
   hides the screen at any time. The first commander's sealed orders are saved
   with the game, so a save made between the two planning phases resumes with
-  the second commander. After the war, a **Both War Diaries** view puts each
+  the second commander. Sealing shows each commander an overview of their
+  orders (tasks, doctrine, the route on the map, this week's changes); they can
+  go back and amend them until the folder is passed on (or, for the second
+  commander, until the week is fought). After the war, a **Both War Diaries** view puts each
   side's claims, its returns to High Command and the truth side by side, week
   by week.
 - **LAN / direct IP** *(implemented)*: one player hosts and commands Aldmere;
@@ -522,6 +531,10 @@ their own distorted debrief.
     and the host replays them under the same rules, so it never has to trust
     the joiner's copy of the game. If a replay fails, the joiner gets a fresh
     state and plans again.
+  - **Amending sealed orders:** while waiting, either commander sees an
+    overview of their sealed orders and can take them back (`unseal`) until
+    the other has sealed too. A seal carries only the commands made since the
+    previous seal, so nothing the host has already replayed is applied twice.
   - **Resilience:** the host autosaves to its own slot. A joining player who
     drops out (even after sealing) rejoins and continues; their sealed orders
     are safe with the host. Loading a LAN save reopens the port.

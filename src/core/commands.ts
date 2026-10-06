@@ -11,6 +11,7 @@ import {
   restLeader,
   requestCrews,
   cancelQueued,
+  copyArmor,
   emergencyRepair,
   queueAircraft,
   setApproach,
@@ -40,6 +41,7 @@ import type {
 
 export type Command =
   | { k: 'armor'; sq: string; zone: ZoneId; value: number }
+  | { k: 'armorAll'; sq: string }
   | { k: 'doctrine'; sq: string; d: Partial<Doctrine> }
   | { k: 'approach'; w: Record<FighterApproach, number> }
   | { k: 'upgrade'; what: 'factory' | 'training' | 'flak' }
@@ -61,6 +63,7 @@ export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?
   const side = state.sides[sideId];
   switch (c.k) {
     case 'armor': return setArmor(side, c.sq, c.zone, c.value);
+    case 'armorAll': return copyArmor(side, c.sq);
     case 'doctrine': return setDoctrine(side, c.sq, c.d);
     case 'approach': return setApproach(side, c.w);
     case 'upgrade': return c.what === 'factory' ? upgradeFactory(side) : c.what === 'training' ? upgradeTraining(side) : upgradeFlak(side);

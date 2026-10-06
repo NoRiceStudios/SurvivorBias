@@ -3,7 +3,7 @@
  * bottom-right. Cards queue and show one at a time. Only the card itself takes
  * pointer events, so the rest of the screen (and automation) stays usable.
  */
-import type { Leader, Memo, SideId, SideState } from '../core/types';
+import type { Debrief, Leader, Memo, SideId, SideState } from '../core/types';
 import { sfxClick, sfxKey } from './audio';
 import { h } from './dom';
 
@@ -30,7 +30,13 @@ export interface Dispatch {
   persist?: boolean;
   /** Label of the last page's button (default "Understood"). */
   doneLabel?: string;
+  /** Take the whole screen. High Command always does, unless told otherwise. */
+  fullscreen?: boolean;
+  /** Heading above a fullscreen card, e.g. "Signal from High Command". */
+  heading?: string;
 }
+
+const isFullscreen = (d: Dispatch) => d.fullscreen ?? d.speaker === 'general';
 
 /** Anything with a `covered` flag (the App): keys are ignored while the hotseat cover is up. */
 interface Host {
@@ -156,7 +162,8 @@ function build() {
   const plateText = c.d.speaker === 'adjutant' ? 'ADJUTANT' : c.d.speaker === 'ministry' ? 'MINISTRY' : 'HIGH COMMAND';
   const plate = h('div', { class: 'dispatch-plate' }, plateText);
   const photo = h('div', { class: 'dispatch-photo' });
-  card = h('div', { class: `dispatch paper side${side} speaker-${c.d.speaker}`, role: 'dialog', 'aria-live': 'polite', onclick: () => advance() },
+  const full = isFullscreen(c.d);
+  const inner = h('div', { class: `dispatch paper side${side} speaker-${c.d.speaker}${full ? ' full' : ''}`, role: 'dialog', 'aria-live': 'polite', onclick: full ? undefined : () => advance() },
     h('div', { class: 'dispatch-portrait' }, canvas, photo, plate),
     h('div', { class: 'dispatch-main' },
       h('div', { class: 'dispatch-head' }, h('div', { class: 'dispatch-name' }, c.d.name), h('div', { class: 'dispatch-title' }, c.d.title)),
@@ -166,6 +173,12 @@ function build() {
     ),
   );
   els = { text, meta, page, btn, canvas, photo, plate, plateText };
+  // Fullscreen: the card sits alone on a darkened desk, with a heading above it.
+  card = full
+    ? h('div', { class: `dispatch-veil side${side}`, onclick: () => advance() },
+      c.d.heading ? h('div', { class: 'dispatch-heading' }, c.d.heading) : null,
+      inner)
+    : inner;
   document.body.append(card);
   animateFace(canvas, LOOKS[c.d.speaker][side]);
 }
@@ -1236,5 +1249,35 @@ export function memoDispatch(side: SideState, turn: number, maxPages = 4): Dispa
         ...(who ? { portrait: leaderPortrait(who, side.id, 3), caption: `${who.rank} ${who.name.split(' ').slice(-1)[0]}`.toUpperCase(), mourning: /memoriam|presumed killed/i.test(m.subject) } : {}),
       };
     }),
+  };
+}
+
+/**
+ * High Command's answer to the week's returns, read out in full screen when the
+ * commander files the debrief: the signal itself, then the week's weighty memos.
+ */
+export function hqSignalDispatch(side: SideState, d: Debrief, turn: number): Dispatch {
+  const hc = HIGH_COMMAND[side.id];
+  const signal = d.hqResponse.length ? d.hqResponse : ['Returns acknowledged. No comment.'];
+  // A page holds two or three sentences; longer signals run over several pages.
+  const pages: string[] = [];
+  for (const line of signal) {
+    const last = pages.length - 1;
+    if (last >= 0 && pages[last].length + line.length < 280) pages[last] += ` ${line}`;
+    else pages.push(line);
+  }
+  const memos = memoDispatch(side, turn, 4);
+  return {
+    speaker: 'general',
+    side: side.id,
+    name: hc.name,
+    title: hc.title,
+    heading: 'Signal from High Command',
+    fullscreen: true,
+    doneLabel: 'Dismissed ▸',
+    lines: [
+      ...pages.map((text, i) => ({ text, stamp: 'SIGNAL', kind: 'notice', from: i === 0 ? `Re: your returns for week ${d.turn} · confidence in you ${side.trust}/100` : `Re: your returns for week ${d.turn}` })),
+      ...(memos?.lines ?? []),
+    ],
   };
 }

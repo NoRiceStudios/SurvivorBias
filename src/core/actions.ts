@@ -51,6 +51,33 @@ export function setArmor(side: SideState, sqId: string, zone: ZoneId, value: num
   return ok;
 }
 
+/**
+ * Copy one squadron's armor layout onto every other squadron of the same type.
+ * All or nothing: the refit is refused if the supplies cannot pay for every plate fitted.
+ */
+export function copyArmor(side: SideState, sqId: string): ActionResult {
+  const src = side.squadrons.find((s) => s.id === sqId);
+  if (!src) return fail('No such squadron');
+  const others = side.squadrons.filter((q) => q !== src && q.kind === src.kind);
+  if (!others.length) return fail('No other squadron flies this type');
+  const added = others.reduce((a, q) => a + ZONES.reduce((b, z) => b + Math.max(0, src.armor[z] - q.armor[z]), 0), 0);
+  const cost = added * COSTS.armorChange;
+  if (side.resources.supplies < cost) return fail(`Not enough supplies for the refit (${cost} needed)`);
+  side.resources.supplies -= cost;
+  for (const q of others) for (const z of ZONES) q.armor[z] = src.armor[z];
+  return ok;
+}
+
+/** Plates that copying a squadron's layout would fit across its type, and what that costs. */
+export function copyArmorCost(side: SideState, sqId: string): { squadrons: number; plates: number; cost: number } {
+  const src = side.squadrons.find((s) => s.id === sqId);
+  if (!src) return { squadrons: 0, plates: 0, cost: 0 };
+  const others = side.squadrons.filter((q) => q !== src && q.kind === src.kind);
+  const plates = others.reduce((a, q) => a + ZONES.reduce((b, z) => b + Math.max(0, src.armor[z] - q.armor[z]), 0), 0);
+  const differ = others.filter((q) => ZONES.some((z) => q.armor[z] !== src.armor[z])).length;
+  return { squadrons: differ, plates, cost: plates * COSTS.armorChange };
+}
+
 export function setDoctrine(side: SideState, sqId: string, d: Partial<Doctrine>): ActionResult {
   const sq = side.squadrons.find((s) => s.id === sqId);
   if (!sq) return fail('No such squadron');

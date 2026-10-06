@@ -50,9 +50,11 @@ export function meter(value: number, max = 1, cells = 10, cls = ''): HTMLElement
   return m;
 }
 
-export function slider(value: number, onChange: (v: number) => void, left: string, right: string, step = 0.05): HTMLElement {
+/** A 0..1 range input. `onInput` fires while dragging (previews), `onChange` when released. */
+export function slider(value: number, onChange: (v: number) => void, left: string, right: string, step = 0.05, onInput?: (v: number) => void): HTMLElement {
   const input = h('input', { type: 'range', min: '0', max: '1', step: String(step), value: String(value) }) as HTMLInputElement;
   input.addEventListener('change', () => onChange(Number(input.value)));
+  if (onInput) input.addEventListener('input', () => onInput(Number(input.value)));
   return h('div', { class: 'slider' }, h('span', { class: 'lbl' }, left), input, h('span', { class: 'lbl' }, right));
 }
 

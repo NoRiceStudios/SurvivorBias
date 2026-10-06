@@ -46,9 +46,18 @@ check(await p.isVisible('#cover'), 'Esc closes the folder');
 await p.keyboard.press('Escape');
 check(!(await p.isVisible('#cover')), 'Esc opens the folder again');
 
-// Seal orders, then save and reload: the game must resume with commander 2.
+// Seal orders: an overview of them, and the way back to amend them.
 await p.evaluate(() => (window.sb.fitToStores(0), window.sb.launch(0)));
 await p.waitForTimeout(200);
+check(await p.evaluate(() => window.sb.screen.kind === 'sealed' && !!document.querySelector('.orders-table')), 'sealed orders show an overview');
+await shot('h3b-sealed-overview');
+await p.click('text=Amend orders');
+check(await p.evaluate(() => window.sb.screen.kind === 'hq' && !window.sb.state.sealed[0]), 'amending reopens the orders');
+await p.click('.launch');
+await p.waitForTimeout(200);
+check(await p.evaluate(() => window.sb.screen.kind === 'sealed' && !!window.sb.state.sealed[0]), 'orders sealed again');
+
+// Then save and reload: the game must resume with commander 2.
 const resumed = await p.evaluate(async () => {
   const sb = window.sb;
   const sealed = !!sb.state.sealed[0];
@@ -59,12 +68,20 @@ const resumed = await p.evaluate(async () => {
 check(resumed.sealed && resumed.screen === 'handover' && resumed.side === 1 && resumed.feint, `resume after sealing: ${JSON.stringify(resumed)}`);
 await shot('h4-handover-sealed');
 await p.click('text=Open the folder');
-await p.evaluate(() => (window.sb.fitToStores(1), window.sb.launch(1)));
+await p.evaluate(() => { window.sb.fitToStores(1); return window.sb.seal(1); });
+check(await p.evaluate(() => window.sb.screen.kind === 'sealed'), 'second commander sees their sealed orders');
+await p.click('text=Fight the week');
 await p.waitForTimeout(300);
 await p.click('text=Open the folder');
 await p.evaluate(() => window.sb.go({ kind: 'debrief', side: 0, tab: 'home' }));
 await shot('h5-debrief-home');
-await p.evaluate(() => { window.sb.afterDebrief(0); });
+await p.click('text=File reports');
+await p.waitForTimeout(200);
+check(await p.evaluate(() => !!document.querySelector('.dispatch-veil')), 'High Command answers in full screen');
+await shot('h5b-hq-signal');
+for (let k = 0; k < 12 && (await p.evaluate(() => !!document.querySelector('.dispatch-veil'))); k++) await p.keyboard.press('Enter');
+await p.waitForTimeout(200);
+check(await p.evaluate(() => window.sb.screen.kind === 'handover' || window.sb.screen.kind === 'theater'), 'filing the reports moves on');
 await p.evaluate(() => window.sb.go({ kind: 'debrief', side: 1, tab: 'home' }));
 await shot('h6-debrief-home-side1');
 

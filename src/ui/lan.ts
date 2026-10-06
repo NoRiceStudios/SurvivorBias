@@ -6,9 +6,12 @@
  * resolves the week when both are sealed, and sends back the results.
  *
  * Messages (newline-delimited JSON over TCP, via the Electron main process):
- *   client → host  hello { v, name } · seal { plan, commands }
+ *   client → host  hello { v, name } · seal { plan, commands } · unseal { turn }
  *   host → client  welcome { state, plan, phase, opponent } · results { state, plan }
- *                  opponent-sealed · error { reason, state, plan } · reject { reason }
+ *                  opponent-sealed · opponent-unsealed · unsealed · error { reason, state, plan } · reject { reason }
+ *
+ * A seal carries only the commands made since the last seal: when a commander takes
+ * sealed orders back to amend them, the host keeps the changes it has already applied.
  */
 import { applyCommands, type Command } from '../core/commands';
 import { carryPlan, defaultPlan } from '../core/plans';
@@ -28,6 +31,9 @@ type Msg =
   | { t: 'welcome'; state: GameState; plan: TurnPlan; phase: 'plan' | 'sealed'; opponent: string }
   | { t: 'results'; state: GameState; plan: TurnPlan }
   | { t: 'opponent-sealed' }
+  | { t: 'unseal'; turn: number }
+  | { t: 'unsealed' }
+  | { t: 'opponent-unsealed' }
   | { t: 'error'; reason: string; state: GameState; plan: TurnPlan }
   | { t: 'reject'; reason: string };
 
@@ -37,6 +43,10 @@ export class LanSession {
   /** Host only: the address(es) to give the other player. */
   addresses: string[] = [];
   status = '';
+  /** Client: commands already sent to the host with an earlier seal this week. */
+  sentCommands = 0;
+  /** Client: asked the host for our orders back, waiting for the answer. */
+  unsealing = false;
 
   constructor(public app: App, public role: 'host' | 'client', public api: LanApi, public port = DEFAULT_PORT) {
     api.onMessage((m) => this.receive(m as Msg));
@@ -116,10 +126,32 @@ export class LanSession {
     return true;
   }
 
-  /** Client: send our sealed orders and the changes we made this week. */
+  /** Client: send our sealed orders and the changes we made since the last seal. */
   clientSealed(plan: TurnPlan, commands: Command[]) {
-    this.send({ t: 'seal', plan, commands });
+    this.send({ t: 'seal', plan, commands: commands.slice(this.sentCommands) });
+    this.sentCommands = commands.length;
     this.app.go({ kind: 'lanWait', side: 1 });
+  }
+
+  /** Take our sealed orders back to amend them, if the week has not been fought yet. */
+  unseal() {
+    const app = this.app;
+    const st = app.state!;
+    if (this.role === 'host') {
+      if (!st.sealed[0]) return;
+      st.sealed[0] = null;
+      void app.save(LAN_SAVE);
+      this.send({ t: 'opponent-unsealed' });
+      app.go({ kind: 'hq', side: 0, tab: 'operations' });
+      return;
+    }
+    if (!this.connected) {
+      app.toast('Not connected to the host.', true);
+      return;
+    }
+    this.unsealing = true;
+    this.send({ t: 'unseal', turn: st.turn });
+    app.render();
   }
 
   /* ---------------- Both ---------------- */
@@ -165,6 +197,29 @@ export class LanSession {
         }
         return;
       }
+      case 'unseal': {
+        if (this.role !== 'host') return;
+        const st = app.state!;
+        // Too late if the week has already been fought: the client will have the results.
+        if (!st.sealed[1] || m.turn !== st.turn) return;
+        st.sealed[1] = null;
+        this.opponentSealed = false;
+        await app.save(LAN_SAVE);
+        this.send({ t: 'unsealed' });
+        app.toast(`${st.sides[1].commander} has reopened their orders.`);
+        app.render();
+        return;
+      }
+      case 'unsealed':
+        if (this.role !== 'client') return;
+        this.unsealing = false;
+        app.go({ kind: 'hq', side: 1, tab: 'operations' });
+        return;
+      case 'opponent-unsealed':
+        this.opponentSealed = false;
+        app.toast('The other commander has reopened their orders.');
+        app.render();
+        return;
       case 'welcome':
       case 'results':
       case 'error': {
@@ -172,6 +227,8 @@ export class LanSession {
         app.state = m.state;
         app.plans = [defaultPlan(m.state, 0), m.plan];
         app.pendingCommands = [[], []];
+        this.sentCommands = 0;
+        this.unsealing = false;
         this.opponentSealed = false;
         if (m.t === 'error') {
           app.toast(m.reason, true);

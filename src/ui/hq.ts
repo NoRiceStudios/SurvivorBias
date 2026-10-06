@@ -1,5 +1,6 @@
 import {
   armorUsed,
+  copyArmorCost,
   canBuild,
   COSTS,
   REPAIR_COST,
@@ -34,6 +35,7 @@ import { aircraftCanvas } from './sprites';
 import { schoolScene, worksScene } from './buildings';
 import { leaderPortrait } from './general';
 import { believed, depthLabel, mapLegend, theaterMap } from './theaterui';
+import { doctrinePanel } from './doctrine';
 
 const TABS: [string, string][] = [
   ['briefing', 'Briefing'],
@@ -122,7 +124,7 @@ export function renderHq(app: App, sideId: SideId, tab: string): HTMLElement {
         ? h('button', { class: 'btn small choice fit-btn', title: 'Drop the feint, then escorts and squadrons from the raid, until the plan fits the stores we hold', onclick: () => app.act(() => app.fitToStores(sideId)) }, 'Fit to stores')
         : null,
     ),
-    h('button', { class: 'btn primary launch', onclick: () => void app.launch(sideId) }, app.state!.mode === 'lan' || (app.state!.mode === 'hotseat' && sideId === 0) ? 'Seal Orders ▸' : 'Launch Operation ▸'),
+    h('button', { class: 'btn primary launch', onclick: () => void app.seal(sideId) }, app.state!.mode !== 'single' ? 'Seal Orders ▸' : 'Launch Operation ▸'),
   );
   return h('div', { class: 'hq' }, topBar(app, side), h('div', { class: 'hq-body' }, nav, h('main', { class: 'content', 'data-keep-scroll': `hq-${tab}` }, body)), launch);
 }
@@ -263,7 +265,7 @@ function theaterPanel(app: App, side: SideState): HTMLElement {
       ),
       h('div', { class: 'theater-record' }, record),
     ),
-    theaterMap(st, { viewer: side.id, patrols: Object.values(app.plans[side.id].cover), scale: 2 }),
+    theaterMap(st, { viewer: side.id, patrols: Object.values(app.plans[side.id].cover), raid: app.plans[side.id].raid ?? undefined, feint: app.plans[side.id].feint?.sector, scale: 3 }),
     mapLegend(),
     h('div', { class: 'theater-goals' },
       h('div', null, h('h3', null, 'Primary objective'),
@@ -386,7 +388,14 @@ function operations(app: App, side: SideState): HTMLElement {
         enemySites.map((x) => h('button', { class: `btn choice ${plan.recon!.siteId === x.id ? 'on' : ''}`, onclick: () => app.act(() => { plan.recon!.siteId = x.id; }) }, x.name))) : null,
     ),
     // The map comes last, so mission and assignments both fit on the first screen.
-    panel('Theater Map', theaterMap(st, { viewer: side.id, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), feint: plan.feint?.sector, scale: 2 }), mapLegend()),
+    panel('Theater Map',
+      theaterMap(st, { viewer: side.id, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), feint: plan.feint?.sector, raid: plan.raid ?? undefined, scale: 3,
+        onSite: (site) => {
+          if (depthFor(t.held0, side.id, site.sector) > longest) return app.toast(`${site.name} is out of range of our bombers`, true);
+          pick(site.type, site.id);
+        } }),
+      mapLegend(),
+      h('p', { class: 'muted small' }, 'Click an enemy site on the map to strike it. Hover over a site for its name and believed condition.')),
     panel('Interceptor Tactics',
       h('p', { class: 'muted' }, 'How your fighters are briefed to attack enemy bombers. Gunners cover the tail best; a head-on pass is brief but meets fewer guns.'),
       (Object.keys(APPROACH_LABEL) as FighterApproach[]).map((k) =>
@@ -400,8 +409,6 @@ function operations(app: App, side: SideState): HTMLElement {
 function squadrons(app: App, side: SideState): HTMLElement {
   const cards = side.squadrons.map((sq) => {
     const info = ARCHETYPE_INFO[sq.leader.archetype];
-    const d = sq.doctrine;
-    const set = (k: keyof typeof d) => (v: number) => app.cmd(side.id, { k: 'doctrine', sq: sq.id, d: { [k]: v } });
     const repairs = sq.airframes.filter((a) => a.status === 'repair').length;
     return h('section', { class: 'paper panel sq-card' },
       h('div', { class: 'sq-head' },
@@ -422,13 +429,7 @@ function squadrons(app: App, side: SideState): HTMLElement {
         h('div', null, h('span', null, 'Morale'), meter(sq.morale, 1, 8, sq.morale < 0.3 ? 'bad' : '')),
         h('div', null, h('span', null, 'Fatigue'), meter(sq.fatigue, 1, 8, sq.fatigue > 0.6 ? 'bad' : 'warn')),
       ),
-      h('div', { class: 'doctrine' },
-        h('h3', null, 'Doctrine'),
-        h('div', { class: 'doc-row' }, h('span', null, 'Aggression'), slider(d.aggression, set('aggression'), 'Preserve', 'Press on')),
-        h('div', { class: 'doc-row' }, h('span', null, 'Formation'), slider(d.formation, set('formation'), 'Loose', 'Tight box')),
-        h('div', { class: 'doc-row' }, h('span', null, 'Altitude'), slider(d.altitude, set('altitude'), 'Low', 'High')),
-        h('div', { class: 'doc-row' }, h('span', null, 'Break off at'), slider(d.breakOff, set('breakOff'), '10% lost', 'Never'), h('span', { class: 'small' }, pct(d.breakOff))),
-      ),
+      doctrinePanel(app, side, sq),
       sq.notables.length ? h('ul', { class: 'notables' }, sq.notables.slice(0, 3).map((n) => h('li', null, n))) : null,
       sq.deputy ? h('div', { class: 'muted small' }, describeFlightCommander(sq.deputy, `Senior flight commander, first in line: ${sq.deputy.rank} ${sq.deputy.name}`)) : null,
       // After a change of command or a merge: the other flight commander could be appointed instead, this week only.
@@ -514,6 +515,15 @@ function hangar(app: App, side: SideState): HTMLElement {
         h('div', { class: 'blueprint-wrap' }, aircraftCanvas(sq.kind, { side: side.id, style: 'blueprint', zoneTint: tint }, sq.kind === 'heavy' ? 3 : sq.kind === 'medium' ? 4 : 6)),
         h('p', { class: 'muted' }, `Plates fitted: ${used} / ${budget}. Each plate adds weight: slower aircraft are caught more often. Fitting a plate costs ${COSTS.armorChange} supplies; taking one off is free.`),
         h('table', { class: 'armor-table' }, h('tbody', null, rows)),
+        (() => {
+          const same = sqs.filter((q) => q !== sq && q.kind === sq.kind);
+          if (!same.length) return null;
+          const c = copyArmorCost(side, sq.id);
+          return h('div', { class: 'armor-all' },
+            h('button', { class: 'btn small', disabled: c.squadrons === 0 || side.resources.supplies < c.cost, title: same.map((q) => q.name).join(', '), onclick: () => app.cmd(side.id, { k: 'armorAll', sq: sq.id }) },
+              `Apply to all ${AIRCRAFT[sq.kind].name[side.id]} squadrons${c.cost ? ` (${c.cost} supplies)` : ''}`),
+            h('span', { class: 'muted small' }, c.squadrons === 0 ? ` ${same.map((q) => q.name).join(', ')} already ${same.length > 1 ? 'carry' : 'carries'} this layout.` : ` Refits ${plural(c.squadrons, 'squadron')}: ${c.plates} plates to fit.`));
+        })(),
         callTotal ? h('p', { class: 'muted small' }, `Holes: what the ground crews found on aircraft that came back. Last calls: what ${plural(callTotal, 'crew')} who did not come back said over the radio as they went down.`) : null,
       ),
       panel('Damage Survey — Returned Aircraft',

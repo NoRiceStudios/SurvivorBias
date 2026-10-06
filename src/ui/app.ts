@@ -7,7 +7,7 @@ import { carryPlan, defaultPlan, fitPlanToStores } from '../core/plans';
 import type { GameState, SideId, TurnPlan } from '../core/types';
 import { sfxClick, sfxStamp, stopDrone } from './audio';
 import { clear, h } from './dom';
-import { clearDispatches, memoDispatch, showDispatch, type Dispatch } from './general';
+import { clearDispatches, hqSignalDispatch, memoDispatch, showDispatch, type Dispatch } from './general';
 import { renderEnd } from './end';
 import { renderHq } from './hq';
 import { renderDebrief, renderRadio } from './battle';
@@ -15,6 +15,7 @@ import { renderTitle } from './title';
 import { renderTheaterChange } from './theaterui';
 import { LAN_SAVE, LanSession } from './lan';
 import { renderLanSetup, renderLanWait } from './lanscreens';
+import { renderSealed } from './orders';
 import { storage } from './storage';
 import { renderTutorial } from './tutorial';
 
@@ -27,7 +28,8 @@ export type Screen =
   | { kind: 'end'; side: SideId; tab: string }
   | { kind: 'theater'; side: SideId; next: Screen }
   | { kind: 'lanSetup' }
-  | { kind: 'lanWait'; side: SideId };
+  | { kind: 'lanWait'; side: SideId }
+  | { kind: 'sealed'; side: SideId };
 
 export const AUTOSAVE = 'autosave';
 
@@ -119,6 +121,9 @@ export class App {
         break;
       case 'lanWait':
         view = renderLanWait(this, s.side);
+        break;
+      case 'sealed':
+        view = renderSealed(this, s.side);
         break;
     }
     this.root.append(view);
@@ -243,12 +248,41 @@ export class App {
     await storage.save(slot ?? (this.state.mode === 'lan' ? LAN_SAVE : AUTOSAVE), serialize(this.state));
   }
 
-  /** Player confirms orders for a side. */
   /** Shrink this side's plan to what the depots can supply. */
   fitToStores(side: SideId) {
     if (this.state) fitPlanToStores(this.state, side, this.plans[side]);
   }
 
+  /**
+   * The Seal Orders button. In a two-commander game the commander sees an overview
+   * of the sealed orders and may still amend them; a single-player week is fought at once.
+   */
+  async seal(side: SideId) {
+    const st = this.state!;
+    if (st.mode === 'hotseat' && side === 1) {
+      const v = validatePlan(st.sides[side], this.plans[side], st);
+      if (!v.ok) return this.toast(v.reason, true);
+      sfxStamp();
+      return this.go({ kind: 'sealed', side });
+    }
+    return this.launch(side);
+  }
+
+  /** Take sealed orders back to amend them (before the week is fought). */
+  unseal(side: SideId) {
+    const st = this.state!;
+    if (st.mode === 'lan' && this.lan) {
+      this.lan.unseal();
+      return;
+    }
+    if (st.mode === 'hotseat' && side === 0) {
+      st.sealed[0] = null;
+      void this.save();
+    }
+    this.go({ kind: 'hq', side, tab: 'operations' });
+  }
+
+  /** Player confirms orders for a side. */
   async launch(side: SideId) {
     const st = this.state!;
     const v = validatePlan(st.sides[side], this.plans[side], st);
@@ -270,11 +304,12 @@ export class App {
     if (st.mode === 'hotseat' && side === 0) {
       st.sealed[0] = JSON.parse(JSON.stringify(this.plans[0])) as TurnPlan;
       await this.save();
-      this.planning(1);
+      this.go({ kind: 'sealed', side: 0 });
       return;
     }
     const plans: [TurnPlan, TurnPlan] = st.mode === 'single' ? [this.plans[0], aiPlan(st, 1)] : [st.sealed[0] ?? this.plans[0], this.plans[1]];
     resolveTurn(st, plans);
+    this.pendingCommands = [[], []];
     // Carry standing orders (assignments, returns policy) into the next turn.
     this.plans = [carryPlan(st, 0, this.plans[0]), carryPlan(st, 1, this.plans[1])];
     await this.save();
@@ -283,6 +318,16 @@ export class App {
     } else {
       this.go({ kind: 'radio', side: 0 });
     }
+  }
+
+  /** The commander files the debrief: High Command answers in full screen, then the week moves on. */
+  fileReports(side: SideId) {
+    const st = this.state!;
+    const d = st.lastDebriefs[side];
+    if (!d) return this.afterDebrief(side);
+    // The signal carries this week's memos; the briefing need not read them out again.
+    this.announced.add(`${st.seed}:${side}:${st.turn}`);
+    this.dispatch({ ...hqSignalDispatch(st.sides[side], d, st.turn), onClose: () => this.afterDebrief(side) });
   }
 
   /** After a side has read its debrief. */
@@ -341,7 +386,7 @@ export class App {
   /** Privacy cover for hotseat: hides the screen until clicked. */
   covered = false;
   toggleCover() {
-    if (!this.state || !['hq', 'debrief', 'radio'].includes(this.screen.kind)) return;
+    if (!this.state || !['hq', 'debrief', 'radio', 'sealed', 'lanWait'].includes(this.screen.kind)) return;
     this.covered = !this.covered;
     let el = document.getElementById('cover');
     if (this.covered) {

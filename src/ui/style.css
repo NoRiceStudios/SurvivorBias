@@ -499,3 +499,74 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .appoint-row > span { flex: 1; }
 .cand-photo canvas { width: 44px; height: auto; image-rendering: pixelated; border: 2px solid var(--ink, #333); }
 .armor-table td.lastcall { color: var(--red, #8b2a1f); font-style: italic; }
+
+/* Theater map */
+.theater-map { display: block; height: auto; }
+.map-legend { flex-wrap: wrap; row-gap: 2px; }
+
+/* Squadron doctrine */
+.doc-sliders { display: flex; flex-direction: column; gap: 4px; }
+.doc-row2 { display: grid; grid-template-columns: 110px auto; align-items: center; column-gap: 8px; }
+.doc-row2 .doc-sum { grid-column: 2; margin-top: -2px; }
+.doc-pictures { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 4px; }
+.doc-figure { margin: 0; }
+.doc-figure figcaption { margin-top: 2px; }
+.doc-canvas { box-shadow: 0 0 0 2px var(--ink); }
+.doc-details summary { cursor: pointer; font-family: 'Silkscreen'; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; margin: 6px 0; }
+.doc-table { width: 100%; border-collapse: collapse; font-size: 18px; }
+.doc-table th { text-align: left; font-family: 'Silkscreen'; font-size: 10px; letter-spacing: 1px; color: var(--ink-2); font-weight: 400; }
+.doc-table td { padding: 2px 6px; border-bottom: 1px dotted var(--paper-3); vertical-align: top; }
+.doc-table td .small { font-size: 15px; }
+.doc-table td.num { white-space: nowrap; text-align: right; width: 1%; }
+.doc-table td.good { color: #3f6a2a; }
+.doc-table td.bad { color: var(--stamp); }
+.doc-table tr.hot td { background: rgba(224, 166, 58, 0.18); }
+
+/* Hangar: copy a layout across the type */
+.armor-all { margin-top: 8px; }
+
+/* Sealed orders */
+.sealed-screen { display: flex; flex-direction: column; height: 100%; }
+.sealed-body { flex: 1; }
+.sealed-title { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+.sealed-title h1 { margin: 0; font-size: 26px; }
+.orders-head h2 { margin: 2px 0 6px; }
+.orders-facts { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 18px; margin-bottom: 8px; }
+.orders-table td { vertical-align: top; }
+.orders-table tr.muted td { color: var(--ink-2); opacity: 0.75; }
+.orders-changes h3 { margin: 8px 0 4px; }
+.orders-changes ul { margin: 0; padding-left: 18px; }
+
+/* Debrief: summary strip and steps */
+.debrief-glance { padding: 10px 16px; }
+.glance-row { display: flex; flex-wrap: wrap; gap: 8px 26px; }
+.glance { display: flex; flex-direction: column; }
+.glance b { font-size: 28px; line-height: 1; }
+.glance span { font-family: 'Silkscreen'; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-2); }
+.glance.bad b { color: var(--stamp); }
+.glance.good b { color: #3f6a2a; }
+.glance-news { margin-top: 6px; border-top: 2px dashed var(--paper-3); }
+.glance-news p { margin: 4px 0 0; }
+.debrief-steps { display: inline-flex; gap: 12px; margin-right: 14px; }
+.debrief-steps .step { opacity: 0.55; }
+.debrief-steps .step.done { opacity: 0.8; text-decoration: line-through; }
+.debrief-steps .step.on { opacity: 1; color: var(--amber); }
+
+/* High Command in full screen */
+.dispatch-veil { position: fixed; inset: 0; z-index: 950; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 24px; cursor: pointer; background-color: rgba(15, 17, 13, 0.94); background-image: repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0 2px, transparent 2px 4px); animation: veil-in .25s steps(5) both; }
+.dispatch-veil.leaving { animation: veil-out .16s steps(3) both; pointer-events: none; }
+@keyframes veil-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes veil-out { to { opacity: 0; } }
+.dispatch-heading { font-family: 'Silkscreen'; font-size: 22px; letter-spacing: 4px; text-transform: uppercase; color: var(--paper); text-shadow: 3px 3px 0 #000; }
+.dispatch.full { position: relative; right: auto; bottom: auto; width: min(1000px, 94vw); min-height: min(460px, 70vh); padding: 26px 30px 20px 26px; gap: 28px; cursor: pointer; }
+.dispatch.full .dispatch-face, .dispatch.full .dispatch-photo.on { width: 216px; height: 240px; }
+.dispatch.full .dispatch-photo.on canvas { transform: scale(2); }
+.dispatch.full .dispatch-plate { font-size: 12px; padding: 3px 8px 2px; }
+.dispatch.full .dispatch-name { font-size: 18px; }
+.dispatch.full .dispatch-title { font-size: 21px; }
+.dispatch.full .dispatch-meta .stamp { font-size: 12px; padding: 2px 7px 1px; }
+.dispatch.full .dispatch-from { font-size: 20px; white-space: normal; }
+.dispatch.full .dispatch-text { font-size: 30px; line-height: 1.2; min-height: calc(30px * 1.2 * 5); }
+.dispatch.full .dispatch-text .caret { width: 12px; height: 22px; }
+.dispatch.full .dispatch-foot { margin-top: 14px; }
+.dispatch.full .dispatch-hint { font-size: 18px; }
