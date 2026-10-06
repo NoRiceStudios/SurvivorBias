@@ -74,8 +74,18 @@ const result = await p.evaluate(async () => {
   sb.afterDebrief(1);
   const screens = new Set();
   for (let w = 0; w < 40 && !sb.state.outcome; w++) {
-    await (sb.fitToStores(0), sb.launch(0)); screens.add(sb.screen.kind);
-    await (sb.fitToStores(1), sb.launch(1));
+    // A plan the game refuses (e.g. a strike force shot to pieces) is replaced by a quiet week.
+    for (const side of [0, 1]) {
+      const sealed = !!sb.state.sealed[0];
+      const week = sb.state.turn;
+      await (sb.fitToStores(side), sb.launch(side));
+      if (side === 0 ? !sb.state.sealed[0] && !sealed : sb.state.turn === week && !sb.state.outcome) {
+        sb.plans[side].raid = null;
+        sb.plans[side].feint = null;
+        await sb.launch(side);
+      }
+      if (side === 0) screens.add(sb.screen.kind);
+    }
     for (const side of [0, 1]) {
       sb.afterDebrief(side); screens.add(sb.screen.kind);
       if (sb.screen.kind === 'theater') { sb.continueAfterTheater(); screens.add('after:' + sb.screen.kind); }

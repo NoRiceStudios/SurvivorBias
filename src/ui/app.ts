@@ -7,6 +7,7 @@ import { carryPlan, defaultPlan, fitPlanToStores } from '../core/plans';
 import type { GameState, SideId, TurnPlan } from '../core/types';
 import { sfxClick, sfxStamp, stopDrone } from './audio';
 import { clear, h } from './dom';
+import { clearDispatches, memoDispatch, showDispatch, type Dispatch } from './general';
 import { renderEnd } from './end';
 import { renderHq } from './hq';
 import { renderDebrief, renderRadio } from './battle';
@@ -52,10 +53,37 @@ export class App {
   }
 
   go(screen: Screen) {
-    if (this.screen.kind === 'radio' && screen.kind !== 'radio') stopDrone();
+    const prev = this.screen;
+    if (prev.kind === 'radio' && screen.kind !== 'radio') stopDrone();
     if (this.covered) this.toggleCover();
+    // Dispatches belong to the commander who opened them: a handover clears every card,
+    // any other change of screen only the cards not marked persistent.
+    const prevSide = 'side' in prev ? prev.side : null;
+    const nextSide = 'side' in screen ? screen.side : null;
+    if (['handover', 'title', 'lanSetup', 'lanWait'].includes(screen.kind) || prevSide !== nextSide) clearDispatches();
+    else if (JSON.stringify(prev) !== JSON.stringify(screen)) clearDispatches(true);
     this.screen = screen;
     this.render();
+    if (screen.kind === 'hq' && screen.tab === 'briefing' && prev.kind !== 'hq') this.announceWeek(screen.side);
+  }
+
+  /** Weeks whose High Command memos were already read out ("seed:side:turn"). */
+  announced = new Set<string>();
+
+  /** Have the general read out this week's memos when a commander opens the briefing. */
+  announceWeek(side: SideId) {
+    const st = this.state;
+    const key = `${st?.seed}:${side}:${st?.turn}`;
+    // The tutorial's adjutant has the floor in a tutorial campaign.
+    if (!st || st.outcome || (st as { tutorial?: number }).tutorial !== undefined || this.announced.has(key)) return;
+    this.announced.add(key);
+    const d = memoDispatch(st.sides[side], st.turn);
+    if (d) this.dispatch(d);
+  }
+
+  /** Show a dispatch card (queued behind any already open). */
+  dispatch(d: Dispatch) {
+    showDispatch(this, d);
   }
 
   render() {
@@ -154,6 +182,7 @@ export class App {
     this.state = startCampaign({ mode, aiInsight: insight, seed: `${Date.now()}`, commanders });
     this.plans = [defaultPlan(this.state, 0), defaultPlan(this.state, 1)];
     this.selected = null;
+    this.announced.clear();
     if (mode === 'hotseat') {
       this.planning(0);
     } else {
@@ -174,6 +203,7 @@ export class App {
       return;
     }
     this.plans = [defaultPlan(this.state, 0), defaultPlan(this.state, 1)];
+    this.announced.clear();
     if (this.state.sealed[0]) this.plans[0] = this.state.sealed[0];
     if (this.state.sealed[1]) this.plans[1] = this.state.sealed[1];
     if (this.state.mode === 'lan' && !this.state.outcome) {
