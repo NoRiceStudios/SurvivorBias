@@ -191,6 +191,7 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
       // Never reuse a name already heard in this war, so a new CO is never mistaken for the man he replaces.
       side.usedNames = [...new Set([...(side.usedNames ?? []), old.name])];
       // Two flight commanders could take over. The senior takes command; the commander may appoint the other this week.
+      sq.cosLost = (sq.cosLost ?? 0) + 1;
       const [senior, other] = flightCommanders(rng, state, side, sq, old);
       sq.leader = senior;
       sq.candidate = other;
@@ -213,16 +214,21 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
  */
 function flightCommanders(rng: Rng, state: GameState, side: SideState, sq: Squadron, old: Leader): [Leader, Leader] {
   const taken = [...side.squadrons.map((q) => q.leader.name), ...(side.usedNames ?? [])];
-  const a = makeLeader(rng, side.id, undefined, taken);
-  const b = makeLeader(rng, side.id, undefined, [...taken, a.name]);
   const ranks = RANKS[side.id];
   const top = Math.max(0, ranks.indexOf(old.rank));
-  a.rank = ranks[top];
+  // The squadron's own senior flight commander is first in line; otherwise two men step up.
+  const deputy = sq.deputy;
+  delete sq.deputy;
+  const a = deputy ?? makeLeader(rng, side.id, undefined, taken);
+  // Two different characters, so the choice is a real one.
+  const others = (['braggart', 'pessimist', 'gloryHunter', 'byTheBook', 'timid'] as const).filter((x) => x !== a.archetype);
+  const b = makeLeader(rng, side.id, rng.pick([...others]), [...taken, a.name]);
+  if (!deputy) a.rank = ranks[top];
   b.rank = ranks[Math.max(0, top - 1)];
   for (const c of [a, b]) {
     c.since = state.turn + 1;
     c.ops = 0;
-    if (rng.chance(0.55)) {
+    if (c !== deputy && rng.chance(0.55)) {
       const w: Record<Trait, number> = {
         ace: sq.kind === 'fighter' ? 0.5 : 0,
         lucky: 1,
@@ -361,7 +367,9 @@ function intelligenceWarnings(state: GameState, raids: [RaidResult | null, RaidR
     }
     const accuracy = 0.55 + (side.research.includes('radar') ? 0.15 : 0) + (side.research.includes('radarChain') ? 0.1 : 0) + (side.research.includes('intelOfficer') ? 0.1 : 0);
     let guess = truth;
-    if (!rng.chance(accuracy)) {
+    // An enemy with no bomber force is easy to read.
+    const noBombers = enemy.isAI && truth?.target === 'sweep';
+    if (!noBombers && !rng.chance(accuracy)) {
       // A wrong steer: some other of our sites in their reach, or the front.
       const ours = reachableSites(state, enemy.id, 'medium').filter((x) => x.id !== truth?.siteId);
       guess = ours.length && rng.chance(0.65) ? (() => { const x = rng.pick(ours); return { target: x.type, siteId: x.id }; })() : truth?.target === 'support' ? null : { target: 'support' };
@@ -369,7 +377,8 @@ function intelligenceWarnings(state: GameState, raids: [RaidResult | null, RaidR
     const prefix = enemy.isAI ? 'Y-Service' : 'Analysts, going by the enemy\'s habits';
     let text: string;
     let sector: number | undefined;
-    if (!guess || guess.target === 'sweep') text = `${prefix}: enemy wireless traffic is quiet. No major bomber operation is expected.`;
+    if (noBombers) text = `${prefix}: the enemy has no bomber force in range at present. Expect fighters only.`;
+    else if (!guess || guess.target === 'sweep') text = `${prefix}: enemy wireless traffic is quiet. No major bomber operation is expected.`;
     else if (guess.target === 'support') {
       sector = frontSector(t, enemy.id);
       text = guess === truth && truth?.push
@@ -411,6 +420,8 @@ function prisonerPost(rng: Rng, state: GameState, side: SideState, sq: Squadron,
 }
 
 export const STRIKE_DAMAGE = 2.5;
+/** The most the front can move in one week, all causes together (a sector falls at 24). */
+export const MAX_WEEK_SWING = 18;
 /** The most one raid can move the front in a week. */
 export const SWING_CAP = 15;
 
@@ -601,7 +612,8 @@ function newOrder(rng: Rng, state: GameState, side: SideState, exclude: Order['k
     const site = rng.pick(targets);
     // Strike orders always leave at least two weeks to plan and fly them.
     const deadline = due(rng.int(2, 3));
-    const amount = 10 + 5 * a + rng.int(0, 6);
+    // A wing High Command trusts completely gets the hardest jobs.
+    const amount = Math.round((10 + 5 * a + rng.int(0, 6)) * (side.trust >= 90 ? 1.4 : 1));
     return { id, kind, target: site.type, siteId: site.id, amount, goal: amount, from: side.perceived.sites[site.id] ?? 100, deadline, text: `Inflict at least ${amount}% damage on the ${site.name} by week ${deadline}.` };
   }
   if (kind === 'advance') {
@@ -617,7 +629,7 @@ function newOrder(rng: Rng, state: GameState, side: SideState, exclude: Order['k
     const weeks = Math.min(2, lastWeek - next + 1);
     // ...but never more than a fair share of the enemy fighters it believes are out there.
     const ceiling = Math.max(3, Math.round(side.perceived.enemyFighters * 0.35 * weeks));
-    const amount = Math.max(3, Math.min(ceiling, Math.round(rate * weeks * rng.range(0.8, 1.0))));
+    const amount = Math.max(3, Math.min(ceiling, Math.round(rate * weeks * rng.range(0.8, 1.0) * (side.trust >= 90 ? 1.25 : 1))));
     const deadline = due(weeks);
     return { id, kind, amount, deadline, text: `Destroy no fewer than ${amount} enemy aircraft ${weeks === 1 ? 'this coming week' : `in the next ${weeks} weeks`} (by week ${deadline}).` };
   }
@@ -648,6 +660,7 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
   };
   let trustDelta = 0;
   const failedKinds: Order['kind'][] = [];
+  const ending = !!theaterDecision(state);
   hqLines.push(`Returns submitted: ${toHq.kills} enemy aircraft destroyed${toHq.kills !== reported.kills ? ` (crews claimed ${reported.kills})` : ''}${Object.values(toHq.damage).length ? `, target damage ${Object.values(toHq.damage)[0]}%` : ''}.`);
   for (const o of side.orders) {
     if (o.done || o.failed) continue;
@@ -684,6 +697,10 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
       o.done = true;
       trustDelta += 8;
       hqLines.push(`Order fulfilled: "${o.text}" — noted with satisfaction.`);
+    } else if (ending) {
+      // The campaign is over: unfinished orders lapse with it.
+      o.done = true;
+      hqLines.push(`Order lapses with the end of the campaign: "${o.text}"`);
     } else if (state.turn >= o.deadline && o.kind === 'strike' && unobserved && plan.raid?.siteId === o.siteId && !o.graced) {
       // The bombs went down but nobody saw where: HQ waits a week for photographs.
       o.graced = true;
@@ -858,6 +875,8 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   const mods = theaterMods(state);
   // A choice of commanding officer not taken in its week lapses: the senior man keeps command.
   for (const sd of state.sides) for (const q of sd.squadrons) if (q.candidate && (q.candidateWeek ?? 0) <= state.turn) {
+    // The man not chosen stays on as senior flight commander.
+    q.deputy = q.candidate;
     delete q.candidate;
     delete q.candidateWeek;
   }
@@ -984,6 +1003,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       }
     }
   }
+  const handBacks: (() => void)[] = [];
   // Letters arriving this week: Red Cross news of men who were posted missing.
   for (const id of [0, 1] as SideId[]) {
     const sd = state.sides[id];
@@ -1001,10 +1021,17 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
         remember(p.returns.leader, state.turn, 'came back through the lines after being posted missing');
         remember(back.leader, state.turn, `handed the squadron back to ${p.returns.leader.name}`);
         lossNews[id].push(`${back.leader.rank} ${back.leader.name} hands ${back.name} back to ${p.returns.leader.rank} ${p.returns.leader.name} and returns to flying as a flight commander.`);
-        back.leader = p.returns.leader;
-        back.notables = [`Week ${state.turn}: ${p.returns.leader.rank} ${p.returns.leader.name} back through the lines; command handed back to him.`, ...back.notables.filter((n) => !n.includes(`${p.returns!.leader.name} missing;`))].slice(0, 5);
-        // He may say his own sayings again.
-        if (p.returns.leader.said) sd.usedLines = (sd.usedLines ?? []).filter((x) => x !== p.returns!.leader.said);
+        // He takes over after this week's reports, which the man who led the raid signs.
+        const returned = p.returns.leader;
+        handBacks.push(() => {
+          // The stand-in stays on as senior flight commander.
+          back.deputy = back.leader;
+          back.leader = returned;
+          delete back.candidate;
+          back.notables = [`Week ${state.turn}: ${returned.rank} ${returned.name} back through the lines; command handed back to him.`, ...back.notables.filter((n) => !n.includes(`${returned.name} missing;`))].slice(0, 5);
+          // He may say his own sayings again.
+          if (returned.said) sd.usedLines = (sd.usedLines ?? []).filter((x) => x !== returned.said);
+        });
       }
       // The roll of the missing learns what became of them.
       const entry = p.serial ? sd.roll?.find((e) => e.serial === p.serial) : undefined;
@@ -1021,7 +1048,8 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   const strat1 = raids[1] && raids[1].target !== 'support' ? raids[1].damage : 0;
   syncFacilities(state);
   const parts = {
-    air: (lost1 - lost0) * 2 + rng.gauss(3),
+    // Air fighting alone wears the front down slowly: the Army takes ground behind bombs, not dogfights.
+    air: Math.max(-8, Math.min(8, (lost1 - lost0) * 2)) + rng.gauss(3),
     // No single raid can move the front by more than SWING_CAP in a week.
     support: Math.min(SWING_CAP, supportPush[0] * 1.15) - Math.min(SWING_CAP, supportPush[1] * 1.15),
     strikes: Math.min(SWING_CAP, strat0 * 0.15) - Math.min(SWING_CAP, strat1 * 0.15),
@@ -1032,7 +1060,8 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       (Math.min(120, s0.facilities.airfield) - Math.min(120, s1.facilities.airfield)) * 0.04,
     escalation: s1.isAI ? -0.8 * (act(state) - 1) : 0,
   };
-  const delta = parts.air + parts.support + parts.strikes + parts.works + parts.escalation;
+  // No single week moves the front by a whole sector: a sector has to be fought for over two weeks or more.
+  const delta = Math.max(-MAX_WEEK_SWING, Math.min(MAX_WEEK_SWING, parts.air + parts.support + parts.strikes + parts.works + parts.escalation));
   const front0 = state.front;
   state.front = Math.round(state.front + delta);
   t.week++;
@@ -1100,6 +1129,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     toHq[id] = highCommand(rng, state, side, enemy, reported, plans[id], d.hqResponse, reconResult, unobserved);
     debriefs[id] = d;
   }
+  for (const f of handBacks) f();
   secondaryObjectives(rng, state, news);
   // Station life, from each side's own airfield.
   for (const id of [0, 1] as SideId[]) {
@@ -1120,7 +1150,8 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     const before = o.support;
     o.support = o.support * 0.6 + (raids[other(id)]?.target === 'support' ? 1 : 0);
     // The side flying close support hears, in words, that the enemy has started to read it.
-    if (before < 1.4 && o.support >= 1.4) news[other(id)].push('Army liaison: the enemy has got used to our close support. More flak over the line, positions dug deeper. Each raid like it will tell a little less until we vary our approach.');
+    // Not in a theater's last week: the next theater starts afresh.
+    if (before < 1.4 && o.support >= 1.4 && !theaterDecision(state)) news[other(id)].push('Army liaison: the enemy has got used to our close support. More flak over the line, positions dug deeper. Each raid like it will tell a little less until we vary our approach.');
   }
 
   // Archive the truth.
@@ -1162,10 +1193,15 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
         : lostT ? `${def.name}: DEFEAT. ${decision.decisive ? 'Our front has broken.' : 'The enemy holds the advantage as the season ends.'}`
         : (() => {
           // Where the line stood when the season ended, in the liaison's words, and what it costs.
-          const ours = id === 0 ? state.front : 0 - state.front;
+          const sign = id === 0 ? 1 : -1;
+          const fronts = [...state.archive.filter((e) => e.theater === t.index).map((e) => e.front * sign), state.front * sign];
+          const ours = fronts[fronts.length - 1];
+          const best = Math.max(...fronts), worst = Math.min(...fronts);
           const why = t.held0 === t.start0
             ? ours > 15 ? 'The pressure was ours at the end, but the Army never took a sector, and the Air Council counts sectors.'
               : ours < -15 ? 'The enemy pressed hard at the end, but took no sector either.'
+              : best > 15 ? 'At its height the pressure was ours and a sector was within reach, but it slipped away before the season ended.'
+              : worst < -15 ? 'At one point our line nearly broke, but it held, and the enemy took nothing.'
               : 'Neither side came close to breaking the line.'
             : (t.held0 - t.start0) * (id === 0 ? 1 : -1) > 0 ? 'We took ground, but the advantage was no longer ours when the season ended.'
             : 'The enemy took ground, but could not keep the advantage to the end.';

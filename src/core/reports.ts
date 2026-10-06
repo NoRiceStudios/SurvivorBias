@@ -35,6 +35,8 @@ export function squadronReport(
   recs: PlaneRecord[],
   raid: RaidResult | null,
   trueDamage: number,
+  /** Remarks already made by other leaders this week (without the speaker's name), so no two say the same. */
+  weekSaid: string[] = [],
 ): SquadronReport {
   const sq = side.squadrons.find((s) => s.id === squadronId)!;
   const bias = ARCHETYPE_BIAS[sq.leader.archetype];
@@ -111,9 +113,10 @@ export function squadronReport(
   const sweep = raid?.target === 'sweep';
   const escort = sq.kind === 'fighter' && !defending && !sweep;
   const hard = lostN > 0;
+  const bomber = sq.kind === 'medium' || sq.kind === 'heavy';
   const remarks: Record<typeof sq.leader.archetype, [string[], string[]]> = {
     braggart: [
-      [`${L}: "They scattered like pigeons. Put us up again tomorrow."`, `${L}: "Best day's shooting this squadron has had."`, `${L}: "Tell the papers. They'll want a photograph."`, hard ? `${L}: "Lost a couple, but you should see what we did to them."` : `${L}: "Not a scratch on us. Not one."`, hard ? `${L}: "They got lucky. Next time they won't."` : `${L}: "Easy. Too easy, really."`],
+      [`${L}: "They scattered like pigeons. Put us up again tomorrow."`, report.claims >= 2 ? `${L}: "Best day's shooting this squadron has had."` : `${L}: "We gave as good as we got. Better, probably."`, `${L}: "Tell the papers. They'll want a photograph."`, hard ? `${L}: "Lost a couple, but you should see what we did to them."` : `${L}: "Not a scratch on us. Not one."`, hard ? `${L}: "They got lucky. Next time they won't."` : `${L}: "Easy. Too easy, really."`],
       [`${L}: "They never got near the works. Not while we were up."`, `${L}: "Sent them home with their tails on fire."`, `${L}: "Like shooting rabbits, sir."`, `${L}: "They won't try that again in a hurry."`],
     ],
     pessimist: [
@@ -121,7 +124,7 @@ export function squadronReport(
       [`${L}: "More of them every day. We can't stop them all."`, `${L}: "They got through. They'll be back tomorrow."`, `${L}: "We were scrambled late. We're always scrambled late."`, `${L}: "For every one we stop, two get through."`],
     ],
     gloryHunter: [
-      [`${L} requests the squadron be given the lead next time.`, `${L}: "Give us the deep targets, sir. We can take it."`, sq.doctrine.altitude < 0.5 ? `${L}: "We went in lower than anyone. Put that in the record."` : `${L}: "We were first over the target. Put that in the record."`, `${L} asks that his crews be considered for decorations.`],
+      [`${L} requests the squadron be given the lead next time.`, `${L}: "Give us the deep targets, sir. We can take it."`, !bomber ? `${L}: "We stayed with them all the way down. Put that in the record."` : sq.doctrine.altitude < 0.5 ? `${L}: "We went in lower than anyone. Put that in the record."` : `${L}: "We were first over the target. Put that in the record."`, `${L} asks that his crews be considered for decorations.`],
       [`${L}: "Let us go after them over their own fields, sir."`, `${L} asks to be taken off defence and given an offensive role.`, `${L}: "Waiting for them to come to us is no way to win a war."`],
     ],
     byTheBook: [
@@ -138,9 +141,9 @@ export function squadronReport(
   const heavy = lostN >= 2 && lostN / sent >= 0.3;
   const situational: Record<typeof sq.leader.archetype, string[]> = {
     braggart: [cloudy ? `${L}: "Cloud? Never noticed it."` : '', heavy ? `${L}: "Bad luck, that's all. Bad luck."` : '', !hard && sent >= 4 ? `${L}: "${sent} out, ${sent} back. Write that down."` : ''],
-    pessimist: [cloudy ? `${L}: "Bombed through cloud. Could have hit a cow."` : '', heavy ? `${L}: "${lostN} more. I've stopped learning the new names."` : '', report.enemyFightersReported >= 8 ? `${L}: "They had ${report.enemyFightersReported} up. Next time it'll be twenty."` : ''],
-    gloryHunter: [heavy ? `${L}: "We paid for it. It was worth it."` : '', cloudy ? `${L}: "We went down under the cloud to be sure. Somebody had to."` : '', report.claims >= 3 ? `${L}: "${report.claims} of them. Mark it on the board."` : ''],
-    byTheBook: [cloudy ? `${L}: "Bombing on dead reckoning. Results should be treated with caution."` : '', heavy ? `${L}: "Losses are listed in the appendix, sir. With the names."` : '', !hard ? `${L}: "No losses. Procedure held."` : ''],
+    pessimist: [cloudy ? (bomber ? `${L}: "Bombed through cloud. Could have hit a cow."` : `${L}: "Lost them in the cloud twice. They know it better than we do."`) : '', heavy ? `${L}: "${lostN} more. I've stopped learning the new names."` : '', report.enemyFightersReported >= 8 ? `${L}: "They had ${report.enemyFightersReported} up. Next time it'll be twenty."` : ''],
+    gloryHunter: [heavy ? `${L}: "We paid for it. It was worth it."` : '', cloudy ? (bomber ? `${L}: "We went down under the cloud to be sure. Somebody had to."` : `${L}: "We dived through the cloud after them. Somebody had to."`) : '', report.claims >= 3 ? `${L}: "${report.claims} of them. Mark it on the board."` : ''],
+    byTheBook: [cloudy ? (bomber ? `${L}: "Bombing on dead reckoning. Results should be treated with caution."` : `${L}: "Visibility poor. Claims made in cloud are marked unconfirmed."`) : '', heavy ? `${L}: "Losses are listed in the appendix, sir. With the names."` : '', !hard ? `${L}: "No losses. Procedure held."` : ''],
     timid: [heavy ? `${L}: "${lostN} crews, sir. I knew most of them."` : '', cloudy ? `${L}: "The cloud was a blessing. They couldn't find us either."` : '', !hard ? `${L}: "Everyone came home. Let's keep it that way."` : ''],
   };
   // A leader doesn't repeat himself: not one of his last three remarks, nor a dead man's saying.
@@ -151,12 +154,14 @@ export function squadronReport(
   const all = [...remarks[sq.leader.archetype][defending ? 1 : 0], ...situational[sq.leader.archetype].filter(Boolean)];
   const seed = [...sq.leader.name].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
   const own = all.filter((x, i) => ((seed >>> (i % 16)) & 1) === 1 || all.length <= 3 || situational[sq.leader.archetype].includes(x));
-  const fresh = (x: string) => x !== sq.lastRemark && !recent.includes(x) && !retired.some((r) => x.includes(`"${r}"`));
+  // Nor what another leader already said this week.
+  const fresh = (x: string) => x !== sq.lastRemark && !recent.includes(x) && !retired.some((r) => x.includes(`"${r}"`)) && !weekSaid.includes(x.replace(L, ''));
   const mine = (own.filter(fresh).length >= 1 ? own : all).filter(fresh);
   const pool = mine.length ? mine : all.filter((x) => x !== sq.lastRemark && !retired.some((r) => x.includes(`"${r}"`)));
   const ledHimself = recs.some((r) => r.lead) || sq.kind === 'recon';
-  const said = ledHimself ? rng.pick(pool.length ? pool : all) : sq.leader.resting ? `${L} is on the medical officer's rest. His deputy led the squadron and wrote this report.` : `${L} stayed behind to rebuild the squadron and debriefed the crews himself on their return.`;
+  const said = ledHimself ? rng.pick(pool.length ? pool : all) : sq.leader.resting ? `${L} is on the medical officer's rest. His deputy led the squadron and wrote this report.` : sent <= 2 ? `${L} sent only a section of ${sent} and stayed on the ground to rebuild the squadron. He debriefed the crews himself.` : `${L} stayed behind to rebuild the squadron and debriefed the crews himself on their return.`;
   sq.lastRemark = said;
+  weekSaid.push(said.replace(L, ''));
   if (ledHimself) sq.leader.recent = [...recent, said].slice(-3);
   const quote = ledHimself ? said.match(/"(.+)"/) : null;
   if (quote) sq.leader.said = quote[1];
@@ -212,7 +217,7 @@ export function buildDebrief(
   ]);
   const missing = mine
     .filter((p) => p.fate === 'lost')
-    .map((p) => ({ serial: p.serial, squadronId: p.squadronId, kind: p.kind, lastWords: p.lastWords, witnessed: p.witnessed, captain: p.captain ?? captainName(side.id, p.serial, seed) }));
+    .map((p) => ({ serial: p.serial, squadronId: p.squadronId, kind: p.kind, lastWords: p.lastWords, lastZone: p.lastZone, witnessed: p.witnessed, captain: p.captain ?? captainName(side.id, p.serial, seed) }));
 
   const mainRaid = myRaids.find((r) => r.target !== 'feint') ?? null;
   const reports: SquadronReport[] = [];
@@ -223,13 +228,14 @@ export function buildDebrief(
     bySq.get(p.squadronId)!.push(p);
   }
   const involved = (r: RaidResult, sqId: string) => r.planes.some((p) => p.squadronId === sqId);
+  const weekSaid: string[] = [];
   for (const [sqId, recs] of bySq) {
     const isDefense = recs[0].role === 'defense';
     // Defenders report on the enemy raid they met (the main one if they met both).
     const raid = isDefense
       ? enemyRaids.filter((r) => involved(r, sqId)).sort((x) => (x.target === 'feint' ? 1 : -1))[0] ?? null
       : myRaids.find((r) => involved(r, sqId)) ?? null;
-    reports.push(squadronReport(rng, side, sqId, recs, raid, !isDefense && raid && raid === mainRaid ? raid.damage : 0));
+    reports.push(squadronReport(rng, side, sqId, recs, raid, !isDefense && raid && raid === mainRaid ? raid.damage : 0, weekSaid));
   }
 
   const defenseSummary: string[] = [];
@@ -306,6 +312,11 @@ export function updatePerceived(rng: Rng, side: SideState, d: Debrief, myRaid: R
       p.survivorHits[h.zone]++;
       byKind[h.zone]++;
     }
+  }
+  // Words, not a carrier wave: a call that says what hit them.
+  for (const m of d.missing) if (m.lastWords && !m.lastWords.startsWith('[') && m.lastZone) {
+    const calls = ((p.lastCalls ??= {})[m.kind] ??= Object.fromEntries(ZONES.map((z) => [z, 0])) as Record<(typeof ZONES)[number], number>);
+    calls[m.lastZone]++;
   }
   p.claimedKillsTotal += d.reports.reduce((a, r) => a + r.claims, 0);
   // Beliefs about enemy repair: staff assume a modest recovery each turn.

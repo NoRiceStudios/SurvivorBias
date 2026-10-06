@@ -163,7 +163,7 @@ function brief() {
     ...(side.perceived.warning ? [`Intelligence warning: ${side.perceived.warning.text} (may be wrong${side.perceived.warning.sector !== undefined ? '; patrols over that sector would meet the raid' : ''})`] : []),
     `Theater record: ${THEATERS.map((th, i) => { const res = st.theaterResults.find((x) => x.index === i); return `${th.name}: ${res ? (res.winner === 0 ? 'WON' : res.winner === null ? 'DRAWN' : 'LOST') : i === t.index ? 'in progress' : 'to come'}`; }).join(' | ')}`,
     'Standing orders:',
-    ...(side.orders.length ? side.orders.map((o) => `  - ${o.text}${o.deadline <= st.turn ? ' [DUE THIS WEEK]' : ''}`) : ['  (none)']),
+    ...(side.orders.length ? side.orders.map((o) => `  - ${o.text}${o.graced ? ` [EXTENDED to week ${o.deadline}: HQ awaits photographs]` : o.deadline <= st.turn ? ' [DUE THIS WEEK]' : ''}`) : ['  (none)']),
     ...(adjutant().length ? ['Adjutant\'s notes:', ...adjutant().map((n) => `  ! ${n}`)] : []),
     ...(side.requests.length ? ['Requests from the squadrons (approve R# / decline R#):', ...side.requests.map((r, i) => `  R${r.n ?? i + 1} ${r.text}\n       If approved: ${r.effect}${r.cost ? ` Cost: ${r.cost} supplies.` : ''}`)] : []),
     'Correspondence this week:',
@@ -185,6 +185,12 @@ function adjutant(): string[] {
     if (q.candidate && q.candidateWeek === state!.turn) notes.push(`${sqCode(q)} ${q.name}: ${q.leader.rank} ${q.leader.name} has taken command. ${describeFlightCommander(q.candidate, `The other flight commander, ${q.candidate.rank} ${q.candidate.name}`)} Appoint him instead this week: appoint ${sqCode(q)}.`);
     if (q.leader.trait === 'shaken' && !q.leader.restedOnce && !q.leader.resting && q.airframes.length) notes.push(`The medical officer is worried about ${q.leader.rank} ${q.leader.name} (${sqCode(q)}): rest-co ${sqCode(q)} takes him off operations for two weeks.`);
     if (q.leader.resting) notes.push(`${q.leader.rank} ${q.leader.name} (${sqCode(q)}) is on rest for ${q.leader.resting} more week${q.leader.resting > 1 ? 's' : ''}; his deputy leads.`);
+  }
+  // A squadron that can only put up one or two aircraft flies without the protection of a formation.
+  for (const id of plan?.raid?.squadronIds ?? []) {
+    const q = side.squadrons.find((x) => x.id === id);
+    const n = q ? flyable(q).length : 0;
+    if (q && n > 0 && n <= 2) notes.push(`${sqCode(q)} ${q.name} can only send ${n === 1 ? 'a single aircraft' : 'two aircraft'}: no formation to protect ${n === 1 ? 'it' : 'them'}. Consider standing it down or merging it.`);
   }
   const gutted = me().squadrons.filter((q) => q.airframes.length <= 2 && me().squadrons.some((o) => o !== q && o.kind === q.kind));
   for (const q of gutted) notes.push(`${sqCode(q)} ${q.name} is down to ${q.airframes.length} aircraft: merge it into another of its type (merge ${sqCode(q)} S#).`);
@@ -250,7 +256,9 @@ function hangar(code: string) {
   for (const h of comp) counts[h.zone] = (counts[h.zone] ?? 0) + 1;
   say(`Hangar — ${sq.name} (${AIRCRAFT[sq.kind].name[0]}). Plates ${armorUsed(sq)}/${AIRCRAFT[sq.kind].armorBudget} (max ${MAX_ARMOR_PER_ZONE} per zone; fitting a plate costs ${COSTS.armorChange} supplies, removing is free; plates add weight, slower aircraft are caught more often).`);
   say(`Damage survey of returned ${AIRCRAFT[sq.kind].name[0]}s (last 10 weeks; each type is built differently): ${comp.length} holes plotted.`);
-  for (const z of ZONES) say(`   ${ZONE_LABEL[z].padEnd(12)} armor ${'■'.repeat(sq.armor[z])}${'□'.repeat(MAX_ARMOR_PER_ZONE - sq.armor[z])}   holes seen: ${counts[z] ?? 0}${comp.length ? ` (${Math.round(((counts[z] ?? 0) / comp.length) * 100)}%)` : ''}`);
+  const calls = me().perceived.lastCalls?.[sq.kind];
+  for (const z of ZONES) say(`   ${ZONE_LABEL[z].padEnd(12)} armor ${'■'.repeat(sq.armor[z])}${'□'.repeat(MAX_ARMOR_PER_ZONE - sq.armor[z])}   holes seen: ${counts[z] ?? 0}${comp.length ? ` (${Math.round(((counts[z] ?? 0) / comp.length) * 100)}%)` : ''}${calls?.[z] ? ` · last calls of the missing: ${calls[z]}` : ''}`);
+  if (calls) say('   (Last calls: what crews who did not come back said over the radio as they went down.)');
   say('Airframes:');
   for (const af of sq.airframes) say(`   ${af.serial}: ${af.status === 'repair' ? `in repair (${af.repairTurns}w)` : 'ready'}, condition ${af.condition}%, ${af.sorties} sorties, last sortie: ${zoneCounts(af.hits)}`);
 }
@@ -309,6 +317,8 @@ function intel() {
 
 /** In a chain of commands the plan is shown once, after the last change, not after every one. */
 let planDirty = false;
+/** A week flown in this chain is kept even if a later command fails. */
+let launchedOk = false;
 function planChanged() {
   if (commands.length > 1) planDirty = true;
   else planView();
@@ -563,7 +573,9 @@ function run(cmd: string) {
       // A launch after a failed order in the same chain would fly a plan the commander didn't mean.
       if (failed.length) throw new Error(`Not launched: ${failed.length} earlier command${failed.length > 1 ? 's' : ''} in this chain failed. Fix ${failed.length > 1 ? 'them' : 'it'} and launch again.`);
       planDirty = false;
-      return launch();
+      launch();
+      launchedOk = true;
+      return;
     case 'crews': {
       const before = new Map(side.squadrons.map((q) => [q.id, q.crews]));
       const pool = side.resources.replacements;
@@ -628,7 +640,10 @@ for (const c of commands) {
   }
 }
 if (planDirty && state && plan && !state.outcome) planView();
+// A chain is all or nothing: if any command failed, none of the chain's changes are kept.
+const rolledBack = failed.length > 0 && commands.length > 1 && existsSync(file) && !launchedOk;
 // Failures inside a long chain are easy to miss: repeat them at the end.
 if (failed.length > 1 || (failed.length && commands.length > 1)) say('', `!! ${failed.length} command${failed.length > 1 ? 's' : ''} failed:`, ...failed.map((f) => `   ${f}`));
-if (state && plan) writeFileSync(file, JSON.stringify({ state: serialize(state), plan } satisfies SaveFile));
+if (rolledBack) say('', 'Nothing in this chain was carried out: fix the failed command and send the chain again.');
+else if (state && plan) writeFileSync(file, JSON.stringify({ state: serialize(state), plan } satisfies SaveFile));
 console.log(out.join('\n'));

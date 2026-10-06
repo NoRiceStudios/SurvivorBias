@@ -83,7 +83,8 @@ const SCENES: Scene[] = [
   },
   // A letter for someone posted missing in the last few weeks.
   (c) => {
-    const recent = (c.side.roll ?? []).filter((e) => c.state.turn - e.week <= 3 && e.fate !== 'returned');
+    // Not for a man already known to be alive.
+    const recent = (c.side.roll ?? []).filter((e) => c.state.turn - e.week <= 3 && e.fate !== 'returned' && e.fate !== 'prisoner');
     if (!recent.length) return null;
     const e = c.rng.pick(recent);
     const L = LOCAL[c.side.id];
@@ -132,7 +133,7 @@ const SCENES: Scene[] = [
       ],
       sharpEyed: [
         `${name} sent back two of his own squadron's claims as "not proven". The squadron grumbled, then bought him a drink.`,
-        `${name} keeps a notebook of every claim his crews make, and what the photographs showed afterwards. He will not let anyone read it.`,
+        `${name} keeps a notebook of every claim his crews make, and what was confirmed afterwards. He will not let anyone read it.`,
       ],
       shaken: [
         `${name} was seen walking the perimeter track alone at three in the morning. The squadron adjutant has asked the medical officer to "have a look at him, casually".`,
@@ -144,6 +145,18 @@ const SCENES: Scene[] = [
     const line = scenes[t] ? tpick(c, 10 + ids.indexOf(t), scenes[t]) : `${TRAIT_INFO[t].label}: ${name}.`;
     if (!line) return null;
     c.side.usedLines = [...(c.side.usedLines ?? []), `trait:${sq.leader.name}`];
+    return line;
+  },
+  // A squadron that keeps losing its commanding officers.
+  (c) => {
+    const sq = c.side.squadrons.find((q) => (q.cosLost ?? 0) >= 3 && !c.side.usedLines?.includes(`chair:${q.id}:${q.cosLost}`));
+    if (!sq) return null;
+    const line = tpick(c, 20, [
+      `Nobody in ${sq.name} wants the commanding officer's office now. ${sq.cosLost} COs in this war; the signwriter has stopped painting the name on the door.`,
+      `In ${sq.name} they have started calling the CO's chair "the hot seat", and not as a joke. ${sq.leader.rank} ${sq.leader.name.split(' ').slice(-1)[0]} sits in it anyway.`,
+      `The adjutant of ${sq.name} keeps the CO's letters of condolence in a folder of their own now. It is a thick folder.`,
+    ]);
+    if (line) c.side.usedLines = [...(c.side.usedLines ?? []), `chair:${sq.id}:${sq.cosLost}`];
     return line;
   },
   // The ground crews.
@@ -163,7 +176,10 @@ export function stationLife(rng: Rng, state: GameState, side: SideState, rested:
   const c: Ctx = { rng, state, side, rested };
   // Hard weeks have their own scenes: a wake, a letter, kit to pack.
   const lostThisWeek = (side.roll ?? []).some((e) => e.week === state.turn);
-  const n = quiet ? 2 : rested.length > 0 || (side.arrived?.length ?? 0) > 0 || lostThisWeek ? (rng.chance(0.65) ? 1 : 0) : rng.chance(0.3) ? 1 : 0;
+  // A bloody week is never a silent one: a CO lost or three crews missing bring one or two scenes.
+  const lostNow = (side.roll ?? []).filter((e) => e.week === state.turn);
+  const coLost = lostNow.some((e) => (side.usedNames ?? []).some((n) => e.name.endsWith(` ${n}`)));
+  const n = quiet ? 2 : coLost || lostNow.length >= 3 ? 1 + (rng.chance(0.5) ? 1 : 0) : rested.length > 0 || (side.arrived?.length ?? 0) > 0 || lostThisWeek ? (rng.chance(0.65) ? 1 : 0) : rng.chance(0.3) ? 1 : 0;
   const out: string[] = [];
   // A wake or a bad week comes first when there is one; the other kinds are shuffled.
   const rest = [...SCENES.keys()].slice(2);

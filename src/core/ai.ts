@@ -64,6 +64,8 @@ export function aiIntent(state: GameState, id: SideId): NonNullable<SideState['i
   const bombers = side.squadrons.filter((s) => (s.kind === 'medium' || s.kind === 'heavy') && ready(s) >= 3);
   const minRange = Math.min(...bombers.map((q) => bomberRange(q.kind)), 3);
   const targets = reachableSites(state, id, bombers.some((q) => q.kind === 'medium') ? 'medium' : 'heavy').filter((x) => depthFor(t.held0, id, x.sector) <= minRange);
+  // No bomber squadron fit to fly: nothing to plan but fighter operations.
+  if (bombers.length === 0) return { target: 'sweep' };
   const pressured = side.perceived.front < -12 || theaterMods(state).support > 1;
   // A strategist (more so the higher the difficulty) answers an enemy pushing with worn-out squadrons
   // with a counter-offensive of its own over the front.

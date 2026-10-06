@@ -48,7 +48,8 @@ export function generateRequests(rng: Rng, state: GameState, side: SideState, d:
     if (sq.fatigue >= 0.7) {
       add(sq, 'rest', 1.2, { text: `${L} requests a week's stand-down. ${vary(sq, 'rest', ['"The boys are dead on their feet, sir."', '"They\'re falling asleep in the crew room between briefings."', '"Give them a week and they\'ll fly for you again. Not before."', '"Two of my pilots were sick before take-off this morning, sir."'])}`, effect: 'The squadron stands down this week: fatigue falls, morale recovers.', cost: 0 });
     }
-    if (bomber && lost > 0 && sq.doctrine.formation < 0.8) {
+    // Stragglers are picked off by fighters: no fighters, no case for a tighter box.
+    if (bomber && lost > 0 && sq.doctrine.formation < 0.8 && recs.some((r) => r.enemiesSeen > 0)) {
       add(sq, 'tighterBox', 1, { text: `${L} asks to fly a tighter box. ${vary(sq, 'tighterBox', [`"We lost ${lost} who straggled. Close up and the gunners cover each other."`, `"The ones they pick off are the ones who drift. ${lost} this week."`, '"Wingtip to wingtip, sir. It\'s the only thing that works."'])}`, effect: 'Formation +0.25: more defensive fire and fewer stragglers picked off.', cost: 0 });
     }
     if (bomber && recs.length) {
@@ -61,7 +62,9 @@ export function generateRequests(rng: Rng, state: GameState, side: SideState, d:
       add(sq, 'breakOffSooner', 1, { text: `${L} asks for authority to turn back sooner when losses mount. ${vary(sq, 'breakOffSooner', ['"No target is worth the whole squadron, sir."', '"When it goes wrong, let me bring the rest home."', '"I\'d rather fly it again next week with the crews I\'ve got."'])}`, effect: 'Break off at 15% fewer losses: fewer crews lost, more raids abandoned short of the target.', cost: 0 });
     }
     if (lost === 0 && sent > 0 && sq.doctrine.aggression < 0.85) {
-      add(sq, 'pressHome', 0.5, { text: `${L}: ${vary(sq, 'pressHome', ['"We\'re holding back, sir. Let us press our attacks home."', '"We\'re bombing from too far out. Let us go in properly."', '"The boys are ready to go in harder. Let them."'])}`, effect: 'Aggression +0.2: more hits on the enemy, and more exposure for our crews.', cost: 0 });
+      add(sq, 'pressHome', 0.5, { text: `${L}: ${vary(sq, 'pressHome', bomber
+          ? ['"We\'re holding back, sir. Let us press our attacks home."', '"We\'re bombing from too far out. Let us go in properly."', '"The boys are ready to go in harder. Let them."']
+          : ['"We\'re holding back, sir. Let us press our attacks home."', '"We\'re breaking off too soon. Let us get in close and finish them."', '"The boys are ready to go in harder. Let them."'])}`, effect: 'Aggression +0.2: more hits on the enemy, and more exposure for our crews.', cost: 0 });
     }
     if (sq.kind === 'fighter' && side.approach.tail > 0.45) {
       const hitByGunners = recs.filter((r) => r.role === 'defense' && r.hits.length > 0).length + lost;

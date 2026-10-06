@@ -498,3 +498,4 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .appoint-row { flex-wrap: nowrap; align-items: flex-start; }
 .appoint-row > span { flex: 1; }
 .cand-photo canvas { width: 44px; height: auto; image-rendering: pixelated; border: 2px solid var(--ink, #333); }
+.armor-table td.lastcall { color: var(--red, #8b2a1f); font-style: italic; }

@@ -148,7 +148,7 @@ function stampFor(kind: string): HTMLElement {
 function briefing(app: App, side: SideState): HTMLElement {
   const st = app.state!;
   const orders = side.orders.map((o) =>
-    h('li', { class: 'order-item' }, h('span', { class: 'order-text' }, o.text), h('span', { class: 'order-due' }, o.deadline <= st.turn ? 'DUE THIS WEEK' : `due week ${o.deadline}`)),
+    h('li', { class: 'order-item' }, h('span', { class: 'order-text' }, o.text), h('span', { class: 'order-due' }, o.graced ? `extended to week ${o.deadline}: awaiting photographs` : o.deadline <= st.turn ? 'DUE THIS WEEK' : `due week ${o.deadline}`)),
   );
   const memos = side.memos.slice(0, 12).map((m) =>
     h('article', { class: `memo memo-${m.kind}` },
@@ -430,6 +430,7 @@ function squadrons(app: App, side: SideState): HTMLElement {
         h('div', { class: 'doc-row' }, h('span', null, 'Break off at'), slider(d.breakOff, set('breakOff'), '10% lost', 'Never'), h('span', { class: 'small' }, pct(d.breakOff))),
       ),
       sq.notables.length ? h('ul', { class: 'notables' }, sq.notables.slice(0, 3).map((n) => h('li', null, n))) : null,
+      sq.deputy ? h('div', { class: 'muted small' }, describeFlightCommander(sq.deputy, `Senior flight commander, first in line: ${sq.deputy.rank} ${sq.deputy.name}`)) : null,
       // After a change of command or a merge: the other flight commander could be appointed instead, this week only.
       sq.candidate && sq.candidateWeek === app.state!.turn
         ? h('div', { class: 'merge-row appoint-row' },
@@ -483,6 +484,9 @@ function hangar(app: App, side: SideState): HTMLElement {
   const compCount: Record<string, number> = {};
   for (const hh of comp) compCount[hh.zone] = (compCount[hh.zone] ?? 0) + 1;
   const total = comp.length || 1;
+  // The other half of the evidence: what the crews who didn't come back said was hit.
+  const calls = side.perceived.lastCalls?.[sq.kind];
+  const callTotal = calls ? ZONES.reduce((a, z) => a + calls[z], 0) : 0;
   const rows = ZONES.map((z) =>
     h('tr', null,
       h('td', null, ZONE_LABEL[z]),
@@ -492,6 +496,7 @@ function hangar(app: App, side: SideState): HTMLElement {
         h('button', { class: 'btn tiny', onclick: () => app.cmd(side.id, { k: 'armor', sq: sq.id, zone: z, value: sq.armor[z] + 1 }) }, '+'),
       ),
       h('td', { class: 'muted' }, comp.length ? `${plural(compCount[z] ?? 0, 'hole')} (${Math.round(((compCount[z] ?? 0) / total) * 100)}%)` : '—'),
+      callTotal ? h('td', { class: calls![z] ? 'lastcall' : 'muted' }, calls![z] ? `${plural(calls![z], 'last call')}` : '') : null,
     ),
   );
   const fleet = sq.airframes.map((af) =>
@@ -509,6 +514,7 @@ function hangar(app: App, side: SideState): HTMLElement {
         h('div', { class: 'blueprint-wrap' }, aircraftCanvas(sq.kind, { side: side.id, style: 'blueprint', zoneTint: tint }, sq.kind === 'heavy' ? 3 : sq.kind === 'medium' ? 4 : 6)),
         h('p', { class: 'muted' }, `Plates fitted: ${used} / ${budget}. Each plate adds weight: slower aircraft are caught more often. Fitting a plate costs ${COSTS.armorChange} supplies; taking one off is free.`),
         h('table', { class: 'armor-table' }, h('tbody', null, rows)),
+        callTotal ? h('p', { class: 'muted small' }, `Holes: what the ground crews found on aircraft that came back. Last calls: what ${plural(callTotal, 'crew')} who did not come back said over the radio as they went down.`) : null,
       ),
       panel('Damage Survey — Returned Aircraft',
         h('p', { class: 'muted' }, `Every hole recorded by the ground crews on ${AIRCRAFT[sq.kind].name[side.id]}s that came back (last 10 weeks). ${comp.length} holes plotted. Each type is built differently.`),

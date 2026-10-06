@@ -320,6 +320,7 @@ function witnessLoss(ctx: RaidContext, lost: Flier, flight: Flier[]) {
   if (rng.chance(radios ? 0.85 : 0.3)) {
     lost.rec.lastWords = lastWords(rng, lost, [...ctx.radio.filter((l) => l.final).map((l) => l.text), ...(ctx.finals ?? [])]);
     ctx.finals?.push(lost.rec.lastWords);
+    lost.rec.lastZone = lost.rec.hits.find((h) => h.lethal)?.zone;
     say(ctx, lost.side.id, lost.callsign, lost.rec.lastWords, lost.side.id, true);
   }
   // How many got out has to agree with what killed her: a dead pilot in a single-seater, or an
@@ -453,7 +454,9 @@ export function resolveRaid(
   ctx.t = 35;
   if (interceptors.length > 0) {
     const approach = rng.weighted(defender.approach) as FighterApproach;
-    say(ctx, attacker.id, speaker(raid).callsign, rt(rng, BANDITS, { clock: rng.pick(CLOCK[approach]), height: rng.pick(['high', 'level', 'low']), many: rng.pick(interceptors.length > 12 ? MANY.lots : MANY.few) }));
+    const caller = speaker(raid);
+    // Only a bomber has gunners to wake.
+    say(ctx, attacker.id, caller.callsign, rt(rng, caller.af.kind === 'fighter' ? BANDITS.filter((l) => !l.includes('Gunners')) : BANDITS, { clock: rng.pick(CLOCK[approach]), height: rng.pick(['high', 'level', 'low']), many: rng.pick(interceptors.length > 12 ? MANY.lots : MANY.few) }));
     say(ctx, defender.id, interceptors[0].callsign, rt(rng, CONTACT, {
       what: bombers.length > 0 ? `${bombers.length >= 10 ? rng.pick(['Large', 'Big', 'Heavy']) : rng.pick(['Small', 'Light'])} bomber formation` : 'Enemy fighters',
       escort: bombers.length === 0 ? rng.pick(['a fighter sweep', 'fighters hunting', 'no bombers with them']) : escorts.length > 0 ? rng.pick(['with escort', 'fighters above them', 'escorted']) : rng.pick(['no escort seen', 'no little friends', 'unescorted']),

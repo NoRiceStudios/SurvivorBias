@@ -21,6 +21,7 @@ import {
   applyCommand,
   syncFacilities,
   STRIKE_DAMAGE,
+  MAX_WEEK_SWING,
   redactFor as redactView,
   RESEARCH,
   startResearch,
@@ -1015,5 +1016,30 @@ describe('designer decisions after round 2', () => {
     }
     expect(push).toBeGreaterThan(8);
     expect(focus).toBeGreaterThan(5);
+  });
+  it('the man passed over stays as deputy and is first in line; no week moves a whole sector', () => {
+    const s = startCampaign({ seed: 'deputy' });
+    const side = s.sides[0];
+    const [a, b] = side.squadrons.filter((q) => q.kind === 'medium');
+    a.airframes = a.airframes.slice(0, 2);
+    const plan = playerPlan(s);
+    expect(applyCommand(s, 0, { k: 'merge', from: a.id, into: b.id }, plan).ok).toBe(true);
+    const old = b.leader;
+    expect(applyCommand(s, 0, { k: 'appoint', sq: b.id }).ok).toBe(true);
+    expect(b.deputy).toBe(old);
+    expect(MAX_WEEK_SWING).toBeLessThan(SECTOR_PRESSURE);
+    for (let w = 0; w < 6 && !s.outcome; w++) {
+      const before = s.front;
+      const held = s.theater.held0;
+      endTurnSingle(s, playerPlan(s));
+      if (s.theater.held0 === held && s.theater.index === 0) expect(Math.abs(s.front - before)).toBeLessThanOrEqual(MAX_WEEK_SWING);
+    }
+  });
+
+  it('the Y-Service says so when the enemy has no bomber force', () => {
+    const s = startCampaign({ seed: 'nobombers' });
+    for (const q of s.sides[1].squadrons) if (q.kind === 'medium' || q.kind === 'heavy') q.airframes = [];
+    endTurnSingle(s, playerPlan(s));
+    expect(s.sides[0].perceived.warning?.text).toContain('no bomber force');
   });
 });

@@ -63,7 +63,7 @@ export const THEATERS: TheaterDef[] = [
     flak: 1,
     weather: { clear: 0.5, cloud: 0.35, storm: 0.15 },
     stages: [
-      { week: 1, title: 'Opening moves', text: 'Both air arms are feeling each other out. Losses are expected to be light.' },
+      { week: 1, title: 'Opening moves', text: 'Both air arms are feeling each other out. Neither side has shown its hand yet.' },
       { week: 4, title: 'Autumn gales', text: 'The weather is turning. Expect cloud over the targets and storms in the Narrows.', weather: { cloud: 0.15, storm: 0.1 } },
       { week: 8, title: 'Radar chains complete', text: 'Both sides have finished their coastal radar chains. Raids will be met earlier and in strength.', detection: 0.1 },
     ],
@@ -166,7 +166,7 @@ export function setupTheater(state: GameState, index: number, rng: Rng, headStar
     const enemy = (1 - side) as SideId;
     const sector = sectorAtDepth(held0, enemy, def.secondary.depth);
     const site = sites.find((s) => s.sector === sector && s.type === def.secondary.type) ?? sites.find((s) => s.owner === enemy)!;
-    objectives.push({ side, siteId: site.id, text: `${def.secondary.text}: ${site.name}.`, reward: def.secondary.reward, status: 'open' });
+    objectives.push({ side, siteId: site.id, text: `${def.secondary.text}: ${site.name}. Wreck it from the air before the Army takes its sector: taken intact, it earns the wing nothing.`, reward: def.secondary.reward, status: 'open' });
   }
   void rng;
   const t: TheaterState = { index, id: def.id, week: 0, held0, start0: held0, sites, baseline, stage: 0, objectives };

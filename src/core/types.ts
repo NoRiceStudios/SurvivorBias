@@ -120,6 +120,10 @@ export interface Squadron {
   /** After a change of command or a merge: the other flight commander the commander may appoint instead, this week only. */
   candidate?: Leader;
   candidateWeek?: number;
+  /** The senior flight commander: the man passed over, stood down or handed back command. First in line next time. */
+  deputy?: Leader;
+  /** Commanding officers this squadron has lost in the war. */
+  cosLost?: number;
 }
 
 export interface Resources {
@@ -198,6 +202,8 @@ export interface Perceived {
   survivorHits: ZoneMap<number>;
   /** The same, per aircraft type. */
   survivorHitsByKind: Partial<Record<AircraftKind, ZoneMap<number>>>;
+  /** What the last calls of crews who didn't come back described, per type: the only word from the aircraft we never see. */
+  lastCalls?: Partial<Record<AircraftKind, ZoneMap<number>>>;
   claimedKillsTotal: number;
   /** With an Intelligence Section: the band the true front lies in, from our side (low, high). */
   frontBand?: [number, number];
@@ -297,6 +303,8 @@ export interface PlaneRecord {
   sawApproach: Record<FighterApproach, number>;
   enemiesSeen: number;
   lastWords?: string;
+  /** The zone the last call described (the hit that brought her down). */
+  lastZone?: ZoneId;
   /** Parachutes seen (or not) when the aircraft went down. */
   chutes?: number;
   /** What a squadron mate saw of the loss, e.g. "falling out of formation, 3 chutes". */
@@ -363,7 +371,7 @@ export interface Debrief {
   /** Survivors only. Full hit lists for display. */
   returned: PlaneRecord[];
   /** Lost planes: only serials and squadron, never the hits. */
-  missing: { serial: string; squadronId: string; kind: AircraftKind; lastWords?: string; witnessed?: string; captain?: string }[];
+  missing: { serial: string; squadronId: string; kind: AircraftKind; lastWords?: string; lastZone?: ZoneId; witnessed?: string; captain?: string }[];
   reports: SquadronReport[];
   radio: RadioLine[];
   recon: { siteId: string; condition: number } | null;

@@ -119,7 +119,9 @@ rolled as deadly (14% or more) are made 30% deadlier still, and each plate cuts
 a hit's lethality to 45% (34% with light alloy) but blunts general wear only
 a little. In measurement (`scripts/armor.ts`), plating the truly deadly zones
 loses about 12 bombers per 100 sorties; plating the holes loses about 18, and
-no plate about 20.
+no plate about 20. The hangar shows, next to the holes on returned aircraft,
+how many last calls of crews who didn't come back named each zone: the only
+word from the aircraft nobody sees.
 
 **Loadouts:** engine variant, guns, turret configuration, fuel tanks
 (self-sealing option), bomb load.
@@ -229,7 +231,9 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
   captures the next sector, and its sites change hands at 30% condition.
   Captured airfields and works become yours. **At most one sector falls per
   week**, and leftover pressure is capped at ±6, so the next sector has to be
-  fought for and a theater can't collapse in two or three turns.
+  fought for and a theater can't collapse in two or three turns. No single
+  week moves the front by more than 18, all causes together, and air fighting
+  alone (losses on both sides) moves it by at most 8 plus chance.
 - **Both sides learn.** Each side remembers the feints and close-support raids
   it has seen recently. Repeated feints draw fewer reserve fighters, and the
   Army masses anti-aircraft guns against repeated close support (more flak, less
@@ -403,6 +407,9 @@ That reward for careful observation is a core skill of the game.
   The senior one takes command, but the commander may appoint the other in the
   week that follows. After a merge, the absorbed squadron's CO can be appointed
   the same way.
+- **Deputies:** the man passed over, stood down or handing back command
+  stays on as senior flight commander and is first in line next time. The two
+  candidates always differ in character.
 - **Medical rest:** the medical officer can take a "Shaken" CO off operations
   for two weeks, once per man. His deputy leads meanwhile. It costs a little
   squadron morale and 2 confidence. He comes back "Steady" 60% of the time;

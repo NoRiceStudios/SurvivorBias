@@ -234,6 +234,7 @@ export function mergeSquadrons(state: GameState, side: SideState, fromId: string
   // Either man could command the merged squadron.
   into.candidate = from.leader;
   into.candidateWeek = state.turn;
+  side.usedNames = [...new Set([...(side.usedNames ?? []), from.leader.name])];
   return ok;
 }
 
@@ -246,7 +247,9 @@ export function appointLeader(state: GameState, side: SideState, sqId: string): 
   sq.leader.since = sq.leader.since ?? state.turn;
   delete sq.candidate;
   delete sq.candidateWeek;
-  sq.notables = [`Week ${state.turn}: ${sq.leader.rank} ${sq.leader.name} appointed to command; ${was.rank} ${was.name} a flight commander.`, ...sq.notables].slice(0, 5);
+  // The man passed over stays on as senior flight commander, first in line next time.
+  sq.deputy = was;
+  sq.notables = [`Week ${state.turn}: ${sq.leader.rank} ${sq.leader.name} appointed to command; ${was.rank} ${was.name} a flight commander.`, ...sq.notables.filter((n) => !n.includes(`${sq.leader.name} now a flight commander`))].slice(0, 5);
   side.memos.unshift({ turn: state.turn, from: 'Group HQ', kind: 'notice', subject: `${sq.name}: ${sq.leader.rank} ${sq.leader.name} appointed`, body: `On your recommendation ${sq.leader.rank} ${sq.leader.name} takes command of ${sq.name}. ${was.rank} ${was.name} remains with the squadron as a flight commander.` });
   return ok;
 }
