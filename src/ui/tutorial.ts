@@ -7,6 +7,7 @@
 import type { App, Screen } from './app';
 import { sfxClick } from './audio';
 import { h } from './dom';
+import { portraitCanvas } from './general';
 
 interface Step {
   /** The screen this step belongs to. */
@@ -172,9 +173,12 @@ export function renderTutorial(app: App) {
   target?.scrollIntoView({ block: 'nearest' });
   const last = st.tutorial === STEPS.length - 1;
   const card = h('div', { id: 'tutorial', class: 'tutorial-card paper' },
-    h('div', { class: 'tut-from' }, `Adjutant · ${st.tutorial! + 1}/${STEPS.length}`),
-    h('h3', null, step.title),
-    h('p', null, step.text),
+    h('div', { class: 'tut-body' },
+      portraitCanvas('adjutant', 0, 2),
+      h('div', null,
+        h('div', { class: 'tut-from' }, `Adjutant · ${st.tutorial! + 1}/${STEPS.length}`),
+        h('h3', null, step.title),
+        h('p', null, step.text))),
     h('div', { class: 'tut-actions' },
       h('button', { class: 'btn small choice', onclick: () => { sfxClick(); finish(app); } }, 'Skip tutorial'),
       step.done ? h('span', { class: 'muted small' }, 'Waiting for you, sir…') : h('button', { class: 'btn small primary', onclick: () => {

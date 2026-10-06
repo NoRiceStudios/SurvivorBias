@@ -28,6 +28,7 @@ import { sfxClick } from './audio';
 import { h, meter, pct, plural, slider } from './dom';
 import { icon } from './icons';
 import { aircraftCanvas } from './sprites';
+import { schoolScene, worksScene } from './buildings';
 import { believed, depthLabel, mapLegend, theaterMap } from './theaterui';
 
 const TABS: [string, string][] = [
@@ -208,7 +209,7 @@ export function adjutantNotes(app: App, side: SideState): string[] {
   if (spareCrews >= 8) notes.push(`${spareCrews} trained or waiting aircrew have no aircraft. The aircraft works can build more (Factory).`);
   const c = planCost(side, plan);
   if (c.stores > side.resources.stores) notes.push(`This week's plan needs ${c.stores} stores and we have ${side.resources.stores}. Stand a squadron down or fly a smaller operation.`);
-  else if (side.resources.stores >= STORES_CAP - 20) notes.push(`The depots are full (${side.resources.stores} stores). Deliveries beyond ${STORES_CAP} are lost: we can afford a bigger effort.`);
+  else if (side.resources.stores >= STORES_CAP - 5) notes.push(`The depots are full (${side.resources.stores} stores). Deliveries beyond ${STORES_CAP} are lost: we can afford a bigger effort.`);
   if (!side.researching && side.resources.supplies >= 70) notes.push('The engineers are idle. Fund a development project (Research).');
   if (side.factory.queue.length === 0 && side.resources.supplies >= 60) notes.push('Nothing is on order at the aircraft works (Factory).');
   if (side.trust < 30) notes.push(`High Command's confidence is ${side.trust}/100. Deliveries shrink as it falls; at 0 you will be relieved.`);
@@ -480,7 +481,7 @@ function factory(app: App, side: SideState): HTMLElement {
   const f = side.factory;
   const kinds: AircraftKind[] = ['fighter', 'medium', 'heavy', 'recon'];
   const rate = (2 + f.level * 2.5) * (0.4 + 0.6 * side.facilities.industry / 100) * (f.qc === 'rushed' ? 1.4 : f.qc === 'strict' ? 0.75 : 1);
-  return h('div', { class: 'grid2' },
+  return h('div', { class: 'col' }, h('section', { class: 'paper panel scene-panel' }, worksScene(side)), h('div', { class: 'grid2' },
     h('div', { class: 'col' },
       panel('Aircraft Works',
         h('div', { class: 'stats' },
@@ -517,7 +518,7 @@ function factory(app: App, side: SideState): HTMLElement {
         h('p', { class: 'muted small' }, `Progress carried: ${f.progress.toFixed(1)} pts. New aircraft join the squadron of their type with the fewest machines.`),
       ),
     ),
-  );
+  ));
 }
 
 /* ---------------- Training ---------------- */
@@ -529,7 +530,7 @@ function training(app: App, side: SideState): HTMLElement {
     ['evasion', 'Evasion', 'Better at staying alive. Graduates start more skilled.'],
     ['reporting', 'Reporting', 'Observation and debrief discipline. Reports are more accurate; combat skill suffers.'],
   ];
-  return h('div', { class: 'grid2' },
+  return h('div', { class: 'col' }, h('section', { class: 'paper panel scene-panel' }, schoolScene(side)), h('div', { class: 'grid2' },
     panel('Operational Training Unit',
       h('div', { class: 'stats' },
         h('div', null, h('span', null, 'School level'), h('b', null, `${t.level} / 5`)),
@@ -547,7 +548,7 @@ function training(app: App, side: SideState): HTMLElement {
         h('button', { class: `focus ${t.focus === id ? 'on' : ''}`, onclick: () => app.cmd(side.id, { k: 'focus', v: id }) }, h('b', null, label), h('span', null, desc)),
       )),
     ),
-  );
+  ));
 }
 
 /* ---------------- Research ---------------- */
