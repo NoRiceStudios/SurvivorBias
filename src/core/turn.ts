@@ -1009,7 +1009,10 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   for (const id of [0, 1] as SideId[]) {
     const o = state.sides[id].observed;
     o.feints = o.feints * 0.6 + (feints[other(id)] ? 1 : 0);
+    const before = o.support;
     o.support = o.support * 0.6 + (raids[other(id)]?.target === 'support' ? 1 : 0);
+    // The side flying close support hears, in words, that the enemy has started to read it.
+    if (before < 1.4 && o.support >= 1.4) news[other(id)].push('Army liaison: the enemy has got used to our close support. More flak over the line, positions dug deeper. Each raid like it will tell a little less until we vary our approach.');
   }
 
   // Archive the truth.
