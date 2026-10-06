@@ -6,6 +6,7 @@
  */
 import {
   cancelQueued,
+  emergencyRepair,
   queueAircraft,
   setApproach,
   setArmor,
@@ -22,6 +23,7 @@ import { approveRequest, declineRequest } from './requests';
 import type {
   AircraftKind,
   Doctrine,
+  FacilityType,
   FighterApproach,
   GameState,
   QcPolicy,
@@ -42,7 +44,8 @@ export type Command =
   | { k: 'cancel'; i: number }
   | { k: 'research'; id: string }
   | { k: 'approve'; id: string }
-  | { k: 'decline'; id: string };
+  | { k: 'decline'; id: string }
+  | { k: 'repair'; what: FacilityType };
 
 export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?: TurnPlan): ActionResult {
   const side = state.sides[sideId];
@@ -60,6 +63,7 @@ export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?
     case 'decline':
       declineRequest(side, c.id);
       return { ok: true };
+    case 'repair': return emergencyRepair(state, side, c.what);
   }
 }
 

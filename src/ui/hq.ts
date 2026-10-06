@@ -2,6 +2,7 @@ import {
   armorUsed,
   canBuild,
   COSTS,
+  REPAIR_COST,
   planCost,
   researchTurns,
 } from '../core/actions';
@@ -16,7 +17,7 @@ import {
   TARGETS,
   ZONE_LABEL,
 } from '../core/data';
-import { facilityEffects } from '../core/effects';
+import { CRIPPLED, facilityEffects } from '../core/effects';
 import { flyable } from '../core/sim';
 import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS, WEATHER_LABEL } from '../core/theaters';
 import { crewShortfall, STORES_CAP } from '../core/turn';
@@ -348,6 +349,7 @@ function operations(app: App, side: SideState): HTMLElement {
         h('h3', null, 'Or strike a site (believed condition)'),
         h('table', { class: 'site-table' }, h('tbody', null, siteRows))),
     )),
+    side.perceived.warning ? h('div', { class: 'paper panel warning-line' }, h('span', { class: 'stamp intel' }, 'Y-SERVICE'), ' ', side.perceived.warning.text, h('span', { class: 'muted small' }, ' Fighters patrolling that sector would meet such a raid; the warning may be wrong.')) : null,
     panel('Squadron Assignments',
       h('p', { class: 'muted small' }, 'A feint sends a squadron over another enemy sector first, to draw their reserve away from the real raid. Fighters on defence either patrol one sector (they will almost certainly meet a raid there, and rarely anywhere else) or wait in central reserve (they meet most raids, given warning).'),
       h('table', { class: 'sq-table' },
@@ -601,20 +603,26 @@ function strategicPanel(app: App, side: SideState): HTMLElement {
   const eo = facilityEffects(ours);
   const et = facilityEffects(theirs);
   const pc = (x: number) => `${Math.round(x * 100)}%`;
-  const row = (label: string, a: number, b: number, effA: string, effB: string) =>
-    h('tr', null, h('td', null, label), h('td', null, `${a}%`, h('div', { class: 'small muted' }, effA)), h('td', null, `~${b}%`, h('div', { class: 'small muted' }, effB)));
+  const repairBtn = (type: 'airfield' | 'fuel' | 'industry') => ours[type] < 100
+    ? h('button', { class: 'btn tiny', disabled: !!side.repaired?.includes(type) || side.resources.supplies < REPAIR_COST, title: 'Work gangs patch up every site of this type we hold: +20% each. Once a week per type.', onclick: () => app.cmd(side.id, { k: 'repair', what: type }) }, side.repaired?.includes(type) ? 'Repaired this week' : `Emergency repairs (${REPAIR_COST} supplies)`)
+    : null;
+  const badge = (on: boolean) => (on ? h('span', { class: 'stamp reprimand crippled' }, 'CRIPPLED') : null);
+  const row = (label: string, type: 'airfield' | 'fuel' | 'industry', a: number, b: number, effA: string, effB: string) =>
+    h('tr', null, h('td', null, label),
+      h('td', null, `${a}% `, badge(eo.crippled[type]), h('div', { class: 'small muted' }, effA), repairBtn(type)),
+      h('td', null, `~${b}% `, badge(et.crippled[type]), h('div', { class: 'small muted' }, effB)));
   return panel('Effect of the bombing',
     h('table', { class: 'ledger effects' },
       h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'Ours (known)'), h('th', null, 'Theirs (our estimate)'))),
       h('tbody', null,
-        row('Airfields', ours.airfield, theirs.airfield,
-          eo.grounded > 0 ? `${pc(eo.grounded)} of each operation stays on the ground` : 'all aircraft can take off',
-          et.grounded > 0 ? `~${pc(et.grounded)} of their operations grounded` : 'no effect yet'),
-        row('Fuel depots', ours.fuel, theirs.fuel, `stores deliveries at ${pc(eo.stores)}`, `their stores deliveries ~${pc(et.stores)}`),
-        row('Aircraft works', ours.industry, theirs.industry, `production at ${pc(eo.production)}`, `their production ~${pc(et.production)}`),
+        row('Airfields', 'airfield', ours.airfield, theirs.airfield,
+          (eo.grounded > 0 ? `${pc(eo.grounded)} of each operation stays on the ground` : 'all aircraft can take off') + (eo.crippled.airfield ? '; only about half our fighters can scramble' : ''),
+          (et.grounded > 0 ? `~${pc(et.grounded)} of their operations grounded` : 'no effect yet') + (et.crippled.airfield ? '; their fighter cover roughly halved' : '')),
+        row('Fuel depots', 'fuel', ours.fuel, theirs.fuel, `stores deliveries at ${pc(eo.stores)}`, `their stores deliveries ~${pc(et.stores)}`),
+        row('Aircraft works', 'industry', ours.industry, theirs.industry, `production at ${pc(eo.production)}`, `their production ~${pc(et.production)}`),
       ),
     ),
-    h('p', { class: 'muted small' }, 'Damage to works also tells at the front, week after week. The enemy figures are only as good as our crews\' bombing reports and photographs.'),
+    h('p', { class: 'muted small' }, `Below ${CRIPPLED}% a type of works is crippled and the effect jumps: crippled airfields halve fighter cover, crippled depots and works cut deliveries and production by a further 30%. Damage also tells at the front, week after week. The enemy figures are only as good as our crews\' bombing reports and photographs.`),
   );
 }
 

@@ -181,6 +181,8 @@ export interface Perceived {
   /** The same, per aircraft type. */
   survivorHitsByKind: Partial<Record<AircraftKind, ZoneMap<number>>>;
   claimedKillsTotal: number;
+  /** Y-Service guess at the enemy's next operation (may be wrong). */
+  warning?: { text: string; sector?: number };
 }
 
 export interface SideState {
@@ -214,6 +216,10 @@ export interface SideState {
   observed: { feints: number; support: number };
   /** Squadron leaders' requests waiting on the commander's desk this week. */
   requests: LeaderRequest[];
+  /** Facility types given emergency repairs this week (one each per week). */
+  repaired?: FacilityType[];
+  /** The AI's chosen next operation, fixed a week ahead so enemy intelligence can get wind of it. */
+  intent?: { target: TargetId; siteId?: string };
   /** Letters still in the post: Red Cross cards about prisoners, delivered on their week. */
   post?: { due: number; from: string; subject: string; body: string }[];
   /** Leaders' names already used in this war (lost leaders included). */

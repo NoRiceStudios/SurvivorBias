@@ -69,6 +69,10 @@ import {
   fitPlanToStores,
   BRANCHES,
   TRAIT_INFO,
+  facilityEffects,
+  CRIPPLED,
+  REPAIR_COST,
+  emergencyRepair,
 } from '../src/core';
 
 interface SaveFile {
@@ -144,6 +148,7 @@ function brief() {
     `Army liaison puts the pressure on the front at ${side.perceived.front >= 0 ? '+' : ''}${side.perceived.front} (a sector usually falls at about ±${SECTOR_PRESSURE}, at most one a week; liaison figures run a little optimistic).`,
     `Primary objective: gain ${DECISIVE_GAIN} sectors from the enemy (so far ${gain >= 0 ? '+' : ''}${gain}). If neither side breaks through by week ${def.weeks}, the theater goes to whoever holds the advantage, but only if they have taken at least one sector. Otherwise it is a stalemate.`,
     `Secondary objective: ${obj.text} [${obj.status.toUpperCase()}]`,
+    ...(side.perceived.warning ? [`Intelligence warning: ${side.perceived.warning.text} (may be wrong; patrols over that sector would meet the raid)`] : []),
     `Theater record: ${THEATERS.map((th, i) => { const res = st.theaterResults.find((x) => x.index === i); return `${th.name}: ${res ? (res.winner === 0 ? 'WON' : res.winner === null ? 'DRAWN' : 'LOST') : i === t.index ? 'in progress' : 'to come'}`; }).join(' | ')}`,
     'Standing orders:',
     ...(side.orders.length ? side.orders.map((o) => `  - ${o.text}${o.deadline <= st.turn ? ' [DUE THIS WEEK]' : ''}`) : ['  (none)']),
@@ -262,6 +267,17 @@ function intel() {
   say(`How enemy fighters attack (as reported by returning crews): ${Object.entries(p.enemyApproach).map(([k, v]) => `${APPROACH_LABEL[k as 'tail']} ${pct(v)}`).join(', ')}`);
   say(`Our interceptor tactics: ${Object.entries(me().approach).map(([k, v]) => `${APPROACH_LABEL[k as 'tail']} ${pct(v)}`).join(', ')}`);
   say(`Claims per week: ${state!.archive.map((e) => e.claimed[0]).join(', ') || 'none yet'}`);
+  const st = state!;
+  const est = (type: 'industry' | 'airfield' | 'fuel') => Math.round(st.theater.sites.filter((x) => x.owner === 1 && x.type === type).reduce((a, x) => a + (p.sites[x.id] ?? 100), 0) / Math.max(1, st.theater.baseline[1][type]));
+  const ours = me().facilities;
+  const theirs = { industry: est('industry'), airfield: est('airfield'), fuel: est('fuel') };
+  const eo = facilityEffects(ours);
+  const et = facilityEffects(theirs);
+  say(`Effect of the bombing (below ${CRIPPLED}% works are CRIPPLED: airfields halve fighter cover, depots/works lose a further 30%):`,
+    `  Our airfields ${ours.airfield}%${eo.crippled.airfield ? ' CRIPPLED' : ''}: ${Math.round(eo.grounded * 100)}% of each operation grounded · their airfields ~${theirs.airfield}%${et.crippled.airfield ? ' CRIPPLED' : ''}: ~${Math.round(et.grounded * 100)}% grounded`,
+    `  Our fuel depots ${ours.fuel}%${eo.crippled.fuel ? ' CRIPPLED' : ''}: stores deliveries ${Math.round(eo.stores * 100)}% · theirs ~${theirs.fuel}%${et.crippled.fuel ? ' CRIPPLED' : ''}: ~${Math.round(et.stores * 100)}%`,
+    `  Our works ${ours.industry}%${eo.crippled.industry ? ' CRIPPLED' : ''}: production ${Math.round(eo.production * 100)}% · theirs ~${theirs.industry}%${et.crippled.industry ? ' CRIPPLED' : ''}: ~${Math.round(et.production * 100)}%`,
+    `  Emergency repairs: \`repair airfield|fuel|industry\` (${REPAIR_COST} supplies, +20% to each of our sites of that type, once a week each).`);
 }
 
 function planView() {
@@ -409,6 +425,7 @@ function run(cmd: string) {
       '        build fighter|medium|heavy|recon · cancel <queue#> · research <id> · upgrade factory|training|flak',
       '        qc rushed|standard|strict · focus balanced|gunnery|evasion|reporting',
       'Requests: approve R# · decline R# (squadron leaders\' requests, listed in the brief)',
+      'repair airfield|fuel|industry — emergency repairs to our own works (40 supplies, once a week per type)',
       'fit — trim this week\'s plan to the stores we hold (drops the feint, then escorts, then bomber squadrons)',
       'Turn: launch (fly this week\'s operation and read the debrief)',
       'UI: screenshot <screen> <out.png> [S#] — screens: title briefing operations squadrons hangar factory training research intel radio debrief-aircraft debrief-reports debrief-missing debrief-home end-summary end-archive end-ledger',
@@ -493,6 +510,7 @@ function run(cmd: string) {
     case 'qc': check(setQc(side, a[0] as QcPolicy)); return factory();
     case 'focus': check(setTrainingFocus(side, a[0] as TrainingFocus)); return training();
     case 'launch': return launch();
+    case 'repair': check(emergencyRepair(state, side, a[0] as 'airfield')); say(`Repairs done. Our ${a[0]} now at ${side.facilities[a[0] as 'airfield']}%.`); return;
     case 'fit': {
       fitPlanToStores(state, 0, plan);
       say(`Plan trimmed to the stores we hold: costs ${planCost(side, plan).stores}/${side.resources.stores}.`);

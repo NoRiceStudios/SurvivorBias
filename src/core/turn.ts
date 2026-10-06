@@ -1,5 +1,6 @@
 import { tech } from './tech';
 import { remember } from './leaders';
+import { aiIntent } from './ai';
 import { planCost, researchTurns } from './actions';
 import { AIRCRAFT, ARCHETYPE_INFO, REQUEST_SHORT, RESEARCH, SQUADRON_NAMES, TARGETS, TRAIT_INFO } from './data';
 import { buildDebrief, updatePerceived } from './reports';
@@ -223,6 +224,47 @@ export function obituary(l: Leader, squadron: string, week: number): string {
   return parts.join(' ');
 }
 
+/**
+ * The Y-Service listens to enemy wireless traffic and guesses next week's
+ * operation. An AI enemy fixes its target a week ahead, so the guess can be
+ * right; a human enemy has not chosen yet, so the analysts go by habit.
+ */
+function intelligenceWarnings(state: GameState, raids: [RaidResult | null, RaidResult | null]) {
+  const rng = new Rng({ s: (state.rng.s ^ 0x2545f491) >>> 0 });
+  const t = state.theater;
+  const names = theaterDef(state).sectors;
+  for (const side of state.sides) {
+    const enemy = state.sides[(1 - side.id) as SideId];
+    let truth: { target: TargetId; siteId?: string } | null;
+    if (enemy.isAI) truth = enemy.intent = aiIntent(state, enemy.id);
+    else {
+      const last = raids[enemy.id];
+      truth = last && last.target !== 'feint' ? { target: last.target, siteId: last.siteId } : null;
+    }
+    const accuracy = 0.55 + (side.research.includes('radar') ? 0.15 : 0) + (side.research.includes('radarChain') ? 0.1 : 0) + (side.research.includes('intelOfficer') ? 0.1 : 0);
+    let guess = truth;
+    if (!rng.chance(accuracy)) {
+      // A wrong steer: some other of our sites in their reach, or the front.
+      const ours = reachableSites(state, enemy.id, 'medium').filter((x) => x.id !== truth?.siteId);
+      guess = ours.length && rng.chance(0.65) ? (() => { const x = rng.pick(ours); return { target: x.type, siteId: x.id }; })() : truth?.target === 'support' ? null : { target: 'support' };
+    }
+    const prefix = enemy.isAI ? 'Y-Service' : 'Analysts, going by the enemy\'s habits';
+    let text: string;
+    let sector: number | undefined;
+    if (!guess || guess.target === 'sweep') text = `${prefix}: enemy wireless traffic is quiet. No major bomber operation is expected.`;
+    else if (guess.target === 'support') {
+      sector = frontSector(t, enemy.id);
+      text = `${prefix}: enemy bombers appear to be massing against our forward positions at ${names[sector]}.`;
+    } else {
+      const site = t.sites.find((x) => x.id === guess!.siteId);
+      sector = site?.sector;
+      text = `${prefix}: signals traffic points to a raid on our ${site?.name ?? 'works'}${sector !== undefined ? ` (${names[sector]})` : ''}.`;
+    }
+    side.perceived.warning = { text, sector };
+    memo(side, state.turn + 1, 'intel', 'Warning of enemy intentions', `${text} Reliability: ${accuracy >= 0.75 ? 'fair' : 'doubtful'}. Fighters patrolling that sector would meet such a raid.`, 'Air Intelligence');
+  }
+}
+
 /** Crews seen to bale out may be reported as prisoners by the Red Cross a few weeks later. */
 function prisonerPost(rng: Rng, state: GameState, side: SideState, sq: Squadron, r: PlaneRecord, leader?: Leader) {
   const chutes = r.chutes ?? 0;
@@ -264,6 +306,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   r.supplies += sup;
   r.stores = Math.min(STORES_CAP, r.stores + stores);
   r.replacements += rep;
+  side.repaired = [];
   side.memos.unshift({
     turn: state.turn + 1,
     from: 'Supply Command',
@@ -813,7 +856,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       news[id].push(
         won ? `${def.name}: VICTORY. ${decision.decisive ? 'The enemy front has broken.' : 'We hold the advantage as the campaign season ends.'}`
         : lostT ? `${def.name}: DEFEAT. ${decision.decisive ? 'Our front has broken.' : 'The enemy holds the advantage as the season ends.'}`
-        : `${def.name}: the campaign ends in deadlock.`,
+        : `${def.name}: the campaign ends in stalemate.`,
       );
       side.trust = Math.max(side.isAI ? 20 : 0, Math.min(100, side.trust + (won ? 15 : lostT ? -12 : 0)));
       if (won) side.resources.supplies += 100;
@@ -842,6 +885,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   if (!state.outcome) state.outcome = commandFailure(state);
   if (!decision) rollWeather(state, rng);
   state.rng = rng.state;
+  if (!state.outcome) intelligenceWarnings(state, raids);
   state.sealed = [null, null];
   if (!state.outcome) state.turn++;
   return { raids, feints };

@@ -384,7 +384,7 @@ export function resolveRaid(
 
   // Airfield damage grounds some of the defending fighters (decided once per day).
   const defenders = (opts.onlyDefenders ?? gatherFliers(defender, defPlan.defense, () => 'defense', day)).filter((f) => {
-    if (f.available === undefined) f.available = rng.chance(0.7 + 0.3 * Math.min(1, defender.facilities.airfield / 100));
+    if (f.available === undefined) f.available = rng.chance((0.7 + 0.3 * Math.min(1, defender.facilities.airfield / 100)) * facilityEffects(defender.facilities).cover);
     return f.af.kind === 'fighter' && f.alive && f.available && (opts.onlyDefenders ? true : !f.committed);
   });
   const screen = (opts.screen ?? []).filter((f) => f.alive && !f.out);

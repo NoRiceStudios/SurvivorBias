@@ -1,10 +1,11 @@
 import { tech } from './tech';
 import { AIRCRAFT, MAX_ARMOR_PER_ZONE, RESEARCH } from './data';
 import { flyable } from './sim';
-import { bomberRange, depthFor, frontSector } from './theaters';
+import { bomberRange, depthFor, frontSector, syncFacilities } from './theaters';
 import type {
   AircraftKind,
   Doctrine,
+  FacilityType,
   FighterApproach,
   GameState,
   QcPolicy,
@@ -136,6 +137,20 @@ export function startResearch(side: SideState, id: string): ActionResult {
   side.resources.supplies -= item.cost;
   side.researching = id;
   side.researchProgress = 0;
+  return ok;
+}
+
+/** Emergency repairs: work gangs patch up every site of one type we hold, once per type per week. */
+export const REPAIR_COST = 40;
+export function emergencyRepair(state: GameState, side: SideState, type: FacilityType): ActionResult {
+  if (side.repaired?.includes(type)) return fail('Those works have already had emergency repairs this week');
+  const sites = state.theater.sites.filter((x) => x.owner === side.id && x.type === type && x.condition < 100);
+  if (sites.length === 0) return fail('Nothing to repair');
+  if (side.resources.supplies < REPAIR_COST) return fail('Not enough supplies');
+  side.resources.supplies -= REPAIR_COST;
+  for (const x of sites) x.condition = Math.min(100, x.condition + 20);
+  side.repaired = [...(side.repaired ?? []), type];
+  syncFacilities(state);
   return ok;
 }
 

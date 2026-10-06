@@ -16,6 +16,8 @@ import {
   tech,
   obituary,
   remember,
+  emergencyRepair,
+  applyCommand,
   RESEARCH,
   startResearch,
   theaterDecision,
@@ -703,7 +705,11 @@ describe('designer decisions after round 2', () => {
 
   it('cratered airfields keep part of an operation on the ground', () => {
     expect(facilityEffects({ industry: 100, airfield: 100, fuel: 100 }).grounded).toBe(0);
-    expect(facilityEffects({ industry: 100, airfield: 40, fuel: 100 }).grounded).toBeCloseTo(0.3);
+    expect(facilityEffects({ industry: 100, airfield: 60, fuel: 100 }).grounded).toBeCloseTo(0.2);
+    // Below 50% the airfields are crippled: the effect jumps and fighter cover halves.
+    const crippled = facilityEffects({ industry: 100, airfield: 40, fuel: 100 });
+    expect(crippled.grounded).toBeCloseTo(0.45);
+    expect(crippled.cover).toBeLessThan(0.6);
     const s = startCampaign({ seed: 'craters' });
     const bombers = s.sides[0].squadrons.filter((q) => q.kind === 'medium');
     const before = gatherFliers(s.sides[0], bombers.map((q) => q.id), () => 'raid', newDay()).length;
@@ -805,5 +811,36 @@ describe('designer decisions after round 2', () => {
     expect(text).toContain('He asked three times to press his attacks home');
     expect(text).toContain('you agreed once');
     expect(text).toContain('"Ace"');
+  });
+
+  it('emergency repairs patch our works once a week per type, and replay as a command', () => {
+    const s = startCampaign({ seed: 'repair' });
+    const side = s.sides[0];
+    for (const x of s.theater.sites) if (x.owner === 0 && x.type === 'airfield') x.condition = 40;
+    const before = side.resources.supplies;
+    expect(applyCommand(s, 0, { k: 'repair', what: 'airfield' }).ok).toBe(true);
+    expect(side.facilities.airfield).toBe(60);
+    expect(side.resources.supplies).toBe(before - 40);
+    expect(emergencyRepair(s, side, 'airfield').ok).toBe(false);
+    endTurnSingle(s, playerPlan(s));
+    expect(side.repaired).toEqual([]);
+  });
+
+  it('the Y-Service warns of the AI\'s next target, and the AI keeps to it', () => {
+    let warned = 0;
+    let right = 0;
+    for (let g = 0; g < 12; g++) {
+      const s = startCampaign({ seed: `ysvc${g}` });
+      for (let w = 0; w < 6 && !s.outcome; w++) {
+        endTurnSingle(s, playerPlan(s));
+        const intent = s.sides[1].intent;
+        if (!s.sides[0].perceived.warning || !intent) continue;
+        warned++;
+        const ai = aiPlan(s, 1);
+        if (ai.raid && ai.raid.target !== 'sweep' && ai.raid.target === intent.target && ai.raid.siteId === intent.siteId) right++;
+      }
+    }
+    expect(warned).toBeGreaterThan(20);
+    expect(right / warned).toBeGreaterThan(0.6);
   });
 });
