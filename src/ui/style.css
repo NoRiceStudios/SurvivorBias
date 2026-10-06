@@ -476,3 +476,12 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .roll ul { columns: 2; font-size: 13px; margin: 4px 0; padding-left: 18px; }
 .roll .fate.prisoner, .roll .fate.returned { color: var(--green-ok); }
 .roll .fate.killed { color: #c0392b; }
+
+/* ---------- Squadron leaders' portraits (general.ts leaderPortrait) ---------- */
+.sq-card .leader-photo { margin-left: auto; align-self: flex-start; flex: none; padding: 3px; background: #f2ead4; box-shadow: 0 0 0 2px #16171a, 3px 3px 0 1px rgba(0,0,0,0.3); transform: rotate(1.5deg); }
+.leader-face { display: block; }
+.dispatch-photo { display: none; }
+.dispatch-photo.on { display: grid; place-items: center; width: 108px; height: 120px; background: #f2ead4; box-shadow: 0 0 0 2px #16171a, 0 0 0 4px var(--paper-3); position: relative; overflow: hidden; }
+.dispatch-photo.mourning canvas { filter: grayscale(1) sepia(0.45) contrast(1.05); }
+.dispatch-photo.mourning::after { content: ''; position: absolute; right: -16px; top: 10px; width: 64px; height: 8px; background: #16171a; transform: rotate(45deg); }
+.gallery .leader-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 14px; color: var(--paper-2); width: 128px; text-align: center; }

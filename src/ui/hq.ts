@@ -29,6 +29,7 @@ import { h, meter, pct, plural, slider } from './dom';
 import { icon } from './icons';
 import { aircraftCanvas } from './sprites';
 import { schoolScene, worksScene } from './buildings';
+import { leaderPortrait } from './general';
 import { believed, depthLabel, mapLegend, theaterMap } from './theaterui';
 
 const TABS: [string, string][] = [
@@ -392,6 +393,7 @@ function squadrons(app: App, side: SideState): HTMLElement {
             sq.leader.trait ? h('span', { class: `trait rep ${sq.leader.trait}`, title: TRAIT_INFO[sq.leader.trait].blurb }, TRAIT_INFO[sq.leader.trait].label) : null),
           h('div', { class: 'muted small' }, `${info.blurb} ${sq.leader.trait ? TRAIT_INFO[sq.leader.trait].blurb : `${sq.leader.ops ?? 0} operation${sq.leader.ops === 1 ? '' : 's'} in command; the wing makes up its mind about a leader after five.`}`),
         ),
+        h('div', { class: 'leader-photo' }, leaderPortrait(sq.leader, side.id, 2)),
       ),
       h('div', { class: 'stats' },
         h('div', null, h('span', null, 'Aircraft'), h('b', null, `${sq.airframes.length}`), repairs ? h('span', { class: 'muted small' }, ` (${repairs} in repair)`) : null),
