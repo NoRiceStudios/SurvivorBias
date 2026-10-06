@@ -223,10 +223,15 @@ function generalVerdict(st: GameState, side: SideId, res: TheaterResult): HTMLEl
   const verdict = res.winner === null
     ? `${res.name} ends in stalemate after ${res.weeks} weeks. Nobody will write songs about it.`
     : won ? `${res.name} is ours, after ${res.weeks} weeks. The Army sends its thanks, and so do I.` : `We have lost ${mid} after ${res.weeks} weeks. I will not pretend otherwise.`;
-  const cost = `${lost} of our aircraft lost. ${roll.length} crews posted missing: ${count('killed')} known dead, ${count('prisoner')} prisoners, ${count('returned')} back with us, ${count('missing')} still unaccounted for.`;
+  const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+  const cost = `${n(lost, 'aircraft', 'of our aircraft')} lost. ${n(roll.length, 'crew', 'crews')} posted missing: ${count('killed')} known dead, ${n(count('prisoner'), 'prisoner', 'prisoners')}, ${count('returned')} back with us, ${count('missing')} still unaccounted for.`;
+  // The Army's last word on where the line stood, against what it took to break it.
+  const lastFront = [...st.archive].reverse().find((e) => e.theater === res.index)?.front ?? 0;
+  const ours = side === 0 ? lastFront : 0 - lastFront;
+  const line = res.winner === null ? ` At the end the Army put the line at ${ours >= 0 ? '+' : ''}${ours}; a sector needs about ${SECTOR_PRESSURE} to break.` : '';
   return h('div', { class: 'verdict' },
     portraitCanvas('general', side, 2),
     h('div', null,
       h('div', { class: 'tut-from' }, `${hc.name} · ${hc.title}`),
-      h('p', { class: 'typed' }, `"${verdict} ${cost}"`)));
+      h('p', { class: 'typed' }, `"${verdict} ${cost}${line}"`)));
 }

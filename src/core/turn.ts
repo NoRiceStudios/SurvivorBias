@@ -167,8 +167,10 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
     // The leader's operations in command, and the reputation he earns after five of them.
     // The operation he was lost on counts too.
     if (leaderLost) sq.leader.ops = (sq.leader.ops ?? 0) + 1;
-    if ((mine.some((r) => r.lead) || sq.kind === 'recon') && !leaderLost) {
+    // He planned and briefed this one even if he stayed behind with a squadron too small to lead.
+    if (!leaderLost) {
       sq.leader.ops = (sq.leader.ops ?? 0) + 1;
+      sq.leader.kills = (sq.leader.kills ?? 0) + kills;
       if (sq.leader.ops >= 5 && !sq.leader.trait) {
         sq.leader.trait = earnTrait(rng, sq);
         const info = TRAIT_INFO[sq.leader.trait];
@@ -181,7 +183,8 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
     if (frac >= 0.5 && mine.some((r) => r.fate !== 'lost')) {
       sq.notables.unshift(`Week ${state.turn}: the survivors are badly shaken after losing ${lost} of ${mine.length}.`);
     }
-    if (leaderLost || (lost === mine.length && sq.airframes.length === 0)) {
+    // Only a CO who flew can go missing; a squadron wiped out while he stayed behind is re-formed under him.
+    if (leaderLost) {
       const old = sq.leader;
       // Never reuse a name already heard in this war, so a new CO is never mistaken for the man he replaces.
       side.usedNames = [...new Set([...(side.usedNames ?? []), old.name])];
@@ -208,7 +211,8 @@ function earnTrait(rng: Rng, sq: Squadron): Trait {
   const fighter = sq.kind === 'fighter';
   const baledOut = (sq.leader.log ?? []).some((l) => l.text.startsWith('came back'));
   const w: Record<Trait, number> = {
-    ace: fighter ? 2 + sq.skill * 2 : 0.5,
+    // An ace needs kills to his squadron's name.
+    ace: (sq.leader.kills ?? 0) >= 3 ? (fighter ? 2 + sq.skill * 2 : 0.5) : 0,
     lucky: 0.8 + (baledOut ? 2 : 0),
     steady: 1 + (sq.morale > 0.6 ? 1 : 0) + (sq.leader.archetype === 'timid' ? 0.5 : 0),
     sharpEyed: sq.leader.archetype === 'byTheBook' ? 3 : 0.7,
@@ -337,7 +341,10 @@ function intelligenceWarnings(state: GameState, raids: [RaidResult | null, RaidR
     const record = rec.length ? ` (Their record: right ${rec.filter(Boolean).length} of the last ${rec.length}.)` : '';
     text += record;
     side.perceived.warning = { text, sector, guess };
-    memo(side, state.turn + 1, 'intel', 'Warning of enemy intentions', `${text} Reliability: ${accuracy >= 0.75 ? 'fair' : 'doubtful'}.${sector !== undefined ? ' Fighters patrolling that sector would meet such a raid.' : ''}`, 'Air Intelligence');
+    // Their reliability as judged by their record once there is one, else by their equipment.
+    const ratio = rec.length >= 4 ? rec.filter(Boolean).length / rec.length : accuracy;
+    const reliability = ratio >= 0.75 ? 'good' : ratio >= 0.55 ? 'fair' : ratio >= 0.35 ? 'doubtful' : 'unreliable';
+    memo(side, state.turn + 1, 'intel', 'Warning of enemy intentions', `${text} Reliability: ${reliability}.${sector !== undefined ? ' Fighters patrolling that sector would meet such a raid.' : ''}`, 'Air Intelligence');
   }
 }
 
@@ -631,7 +638,7 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
       hqLines.push(`Order NOT fulfilled: "${o.text}"`);
     }
   }
-  trustDelta += Math.min(6, toHq.kills * 0.4) + 1;
+  trustDelta += Math.min(4, toHq.kills * 0.3);
   // Our own losses are counted by the Air Ministry, not by us: a bloody week costs confidence.
   // Measured against the wing's size: four lost from a gutted wing hurts more than from a full one.
   const strength = Math.max(8, side.squadrons.reduce((a, q) => a + q.airframes.length, 0) + reported.lost);
@@ -779,6 +786,10 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   const battle = rng.fork(`battle-${state.turn}`);
   const [s0, s1] = state.sides;
   const t = state.theater;
+  // Squadrons ordered up with aircraft ready, to tell the commander if any of them never got off the ground.
+  const ordered = ([0, 1] as SideId[]).map((id) => [...(plans[id].raid?.squadronIds ?? []), ...(plans[id].feint?.squadronIds ?? [])]
+    .map((sid) => state.sides[id].squadrons.find((q) => q.id === sid))
+    .filter((q): q is NonNullable<typeof q> => !!q && flyable(q).length > 0));
   const mods = theaterMods(state);
 
   // Pay for stores.
@@ -840,6 +851,10 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   // 4. Landing.
   finishDay(battle, day);
   const allRecs = [...day.fliers.values()].map((f) => f.rec);
+  const stayedDown: [string[], string[]] = [[], []];
+  for (const id of [0, 1] as SideId[]) {
+    for (const q of ordered[id]) if (!allRecs.some((r) => r.squadronId === q.id)) stayedDown[id].push(q.name);
+  }
 
   // Damage (true). Strikes hit sites; close support pushes the front directly.
   const damageTaken: [Partial<Facilities>, Partial<Facilities>] = [{}, {}];
@@ -872,6 +887,9 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     p.warningRecord = [...(p.warningRecord ?? []), right].slice(-8);
   }
   const lossNews: [string[], string[]] = [[], []];
+  for (const id of [0, 1] as SideId[]) {
+    if (stayedDown[id].length) lossNews[id].push(`${stayedDown[id].join(' and ')} ${stayedDown[id].length > 1 ? 'were' : 'was'} ordered up but never took off.`);
+  }
   for (const id of [0, 1] as SideId[]) {
     const n = state.sides[id].squadrons.reduce((a, q) => a + (day.grounded.get(q.id) ?? 0), 0);
     if (n > 0) lossNews[id].push(`Cratered runways kept ${n === 1 ? 'one of our aircraft' : `${n} of our aircraft`} on the ground (airfields at ${state.sides[id].facilities.airfield}%).`);
@@ -931,6 +949,8 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     const f0 = id === 0 ? front0 : 0 - front0;
     const near = SECTOR_PRESSURE - 8;
     const names = theaterDef(state).sectors;
+    // No "one more week" when there is no week left in the theater.
+    if (t.week >= theaterDef(state).weeks) continue;
     if (f <= -near && f0 > -near) news[id].push(`Army liaison: the line at ${names[frontSector(t, other(id))] ?? 'the front'} is cracking. Another week like this one and it will give way.`);
     else if (f >= near && f0 < near) news[id].push(`Army liaison: the enemy line at ${names[frontSector(t, id)] ?? 'the front'} is wavering. One more good week could break it.`);
   }
@@ -1031,7 +1051,8 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
         : lostT ? `${def.name}: DEFEAT. ${decision.decisive ? 'Our front has broken.' : 'The enemy holds the advantage as the season ends.'}`
         : `${def.name}: the campaign ends in stalemate.`,
       );
-      side.trust = Math.max(side.isAI ? 20 : 0, Math.min(100, side.trust + (won ? 15 : lostT ? -12 : 0)));
+      // A stalemate is a disappointment too: the Air Council wanted ground.
+      side.trust = Math.max(side.isAI ? 20 : 0, Math.min(100, side.trust + (won ? 15 : lostT ? -12 : -6)));
       if (won) side.resources.supplies += 100;
     }
     if (t.index + 1 < THEATERS.length) {

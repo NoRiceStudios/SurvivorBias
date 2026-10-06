@@ -90,6 +90,7 @@ if (!file) {
 }
 const commands = rest.join(' ').split(';').map((c) => c.trim()).filter(Boolean);
 const failed: string[] = [];
+let endShown = false;
 let state: GameState | null = null;
 let plan: TurnPlan | null = null;
 if (existsSync(file)) {
@@ -167,7 +168,7 @@ function adjutant(): string[] {
   const side = me();
   const notes: string[] = [];
   const tired = side.squadrons.filter((q) => q.fatigue >= 0.7);
-  if (tired.length) notes.push(`${tired.map((q) => `${sqCode(q)} ${q.name} (${Math.round(q.fatigue * 10)}/10)`).join(', ')} ${tired.length > 1 ? 'are' : 'is'} exhausted. Tired crews shoot and fly worse, and their morale slides. A week standing down restores them.`);
+  if (tired.length) notes.push(`${tired.map((q) => `${sqCode(q)} ${q.name} (${Math.round(q.fatigue * 10)}/10)`).join(', ')} ${tired.length > 1 ? 'are' : 'is'} exhausted. Tired crews shoot and fly worse, and their morale slides. Each week standing down takes off about a third of it; it takes two or three to restore them fully.`);
   for (const sq of side.squadrons) {
     if (sq.morale <= 0.25) notes.push(`Morale in ${sqCode(sq)} ${sq.name} is very low. If the whole wing's morale stays this low for three weeks, the crews will refuse to fly.`);
     const idle = sq.airframes.filter((a) => a.status === 'ready').length - Math.max(0, sq.crews);
@@ -354,7 +355,7 @@ function launch() {
   say('', `######## DEBRIEF — WEEK ${week} ########`);
   if (d.theaterNews.length) say('From the front:', ...d.theaterNews.map((x) => `  * ${x}`));
   const sent = d.reports.reduce((a, r) => a + r.sent, 0);
-  say(`${d.reports.reduce((a, r) => a + r.returned, 0)} of ${sent} aircraft returned.`);
+  say(sent ? `${d.reports.reduce((a, r) => a + r.returned, 0)} of ${sent} aircraft returned.` : 'No operations flown this week.');
   say('Returned aircraft (ground crew damage plot):');
   for (const r of d.returned) {
     const sq = me().squadrons.find((q) => q.id === r.squadronId);
@@ -450,7 +451,9 @@ function run(cmd: string) {
   }
   if (!state || !plan) throw new Error('No campaign. Start one with: new green|seasoned|wald');
   if (state.outcome && !['end', 'screenshot'].includes(verb)) {
-    endView();
+    // Once is enough per call.
+    if (!endShown) endView();
+    endShown = true;
     return;
   }
   const side = me();
@@ -516,7 +519,10 @@ function run(cmd: string) {
     case 'upgrade': check(a[0] === 'factory' ? upgradeFactory(side) : a[0] === 'training' ? upgradeTraining(side) : upgradeFlak(side)); say(`Upgraded ${a[0]}.`); return;
     case 'qc': check(setQc(side, a[0] as QcPolicy)); return factory();
     case 'focus': check(setTrainingFocus(side, a[0] as TrainingFocus)); return training();
-    case 'launch': return launch();
+    case 'launch':
+      // A launch after a failed order in the same chain would fly a plan the commander didn't mean.
+      if (failed.length) throw new Error(`Not launched: ${failed.length} earlier command${failed.length > 1 ? 's' : ''} in this chain failed. Fix ${failed.length > 1 ? 'them' : 'it'} and launch again.`);
+      return launch();
     case 'convoy': check(buyConvoy(state, side)); say(`Convoy bought: stores now ${side.resources.stores}.`); return;
     case 'repair': check(emergencyRepair(state, side, a[0] as 'airfield')); say(`Repairs done. Our ${a[0]} now at ${side.facilities[a[0] as 'airfield']}%.`); return;
     case 'fit': {

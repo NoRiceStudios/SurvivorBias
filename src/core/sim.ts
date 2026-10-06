@@ -131,7 +131,9 @@ export function applyHit(rng: Rng, f: Flier, approach: Approach): boolean {
   return false;
 }
 
-function lastWords(rng: Rng, f: Flier): string {
+function lastWords(rng: Rng, f: Flier, heard: string[] = []): string {
+  // Two crews never die on the same words in one operation.
+  const pick = (pool: string[]) => rng.pick(pool.filter((x) => !heard.includes(x)).length ? pool.filter((x) => !heard.includes(x)) : pool);
   const lethal = f.rec.hits.find((h) => h.lethal);
   const zone = lethal?.zone;
   const lines: Record<ZoneId, string[]> = {
@@ -155,9 +157,9 @@ function lastWords(rng: Rng, f: Flier): string {
     fuselage: ['Control cables cut, she won\'t answer—', 'Stick\'s gone slack, nothing\'s connected—'],
   };
   if (!zone) return '[no further transmissions]';
-  if (f.af.kind === 'fighter' || f.af.kind === 'recon') return rng.pick(single[zone]);
-  if (zone === 'engines' && f.af.kind === 'heavy') return rng.pick(['Two engines gone on the port side, can\'t hold her—', 'Number three is burning, can\'t feather it, going down—']);
-  return rng.pick(lines[zone]);
+  if (f.af.kind === 'fighter' || f.af.kind === 'recon') return pick(single[zone]);
+  if (zone === 'engines' && f.af.kind === 'heavy') return pick(['Two engines gone on the port side, can\'t hold her—', 'Number three is burning, can\'t feather it, going down—']);
+  return pick(lines[zone]);
 }
 
 interface RaidContext {
@@ -311,7 +313,7 @@ function witnessLoss(ctx: RaidContext, lost: Flier, flight: Flier[]) {
   const { rng } = ctx;
   const radios = lost.side.research.includes('radios');
   if (rng.chance(radios ? 0.85 : 0.3)) {
-    lost.rec.lastWords = lastWords(rng, lost);
+    lost.rec.lastWords = lastWords(rng, lost, ctx.radio.filter((l) => l.final).map((l) => l.text));
     say(ctx, lost.side.id, lost.callsign, lost.rec.lastWords, lost.side.id, true);
   }
   // How many got out has to agree with what killed her: a dead pilot in a single-seater, or an
@@ -342,7 +344,11 @@ function checkBreakOff(ctx: RaidContext, fliers: Flier[], startCounts: Map<Squad
       }
       aborted.push(sq.id);
       const lead = mine.find((f) => f.alive);
-      if (lead) say(ctx, sq.side, lead.callsign, rt(ctx.rng, BREAK_OFF, { leader: `${sq.leader.rank} ${sq.leader.name.split(' ')[1]}`, c: lead.callsign.split(' ')[0] }));
+      // The CO gives the order if he is still flying; otherwise whoever is left in front.
+      const coAlive = mine.some((f) => f.rec.lead && f.alive);
+      if (lead) say(ctx, sq.side, lead.callsign, coAlive
+        ? rt(ctx.rng, BREAK_OFF, { leader: `${sq.leader.rank} ${sq.leader.name.split(' ').slice(-1)[0]}`, c: lead.callsign.split(' ')[0] })
+        : `${lead.callsign} here. ${mine.some((f) => f.rec.lead) ? 'The CO\'s gone. ' : ''}All ${lead.callsign.split(' ')[0]} aircraft, break off and follow me home.`);
     }
   }
 }

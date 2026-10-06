@@ -79,6 +79,8 @@ export interface Leader {
   /** Week he took command, operations led since, and the reputation earned after a few. */
   since?: number;
   ops?: number;
+  /** Enemy aircraft his squadron actually destroyed under his command. */
+  kills?: number;
   trait?: Trait;
   /** What the squadron remembers: his requests and how they were answered, close calls, losses. */
   log?: { week: number; text: string; kind?: RequestKind; approved?: boolean }[];

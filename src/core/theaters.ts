@@ -190,12 +190,23 @@ export function homeSites(t: TheaterState, side: SideId, type: FacilityType): Si
 }
 
 /**
+ * The works that count towards a side's condition: home sites within two
+ * sectors of the front (where the air war is fought, and within medium-bomber
+ * reach), or all of its home sites if none are that close.
+ */
+export function countedSites(t: TheaterState, side: SideId, type: FacilityType): Site[] {
+  const home = homeSites(t, side, type);
+  const near = home.filter((s) => depthFor(t.held0, (1 - side) as SideId, s.sector) <= 2);
+  return near.length ? near : home;
+}
+
+/**
  * The condition of a type of works: the average of the home sites still held.
  * Losing ground doesn't wreck the works left behind it; only bombing does. With
  * none left, the wing makes do with improvised facilities.
  */
 export function facilityCondition(t: TheaterState, side: SideId, type: FacilityType, condition: (s: Site) => number): number {
-  const own = homeSites(t, side, type);
+  const own = countedSites(t, side, type);
   if (own.length === 0) return 40;
   return Math.round(own.reduce((a, s) => a + condition(s), 0) / own.length);
 }
@@ -266,7 +277,6 @@ export function applyPressure(state: GameState, flew: [boolean, boolean] = [true
     for (const s of t.sites.filter((x) => x.sector === sector)) {
       s.owner = winner;
       s.takenWrecked = s.condition <= 25;
-      s.condition = Math.min(s.condition, 30);
     }
     const name = def.sectors[sector];
     const taken = t.sites.filter((x) => x.sector === sector);

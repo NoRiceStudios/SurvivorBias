@@ -20,7 +20,7 @@ import {
 } from '../core/data';
 import { CRIPPLED, facilityEffects } from '../core/effects';
 import { flyable } from '../core/sim';
-import { bomberRange, currentStage, facilityCondition, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS, WEATHER_LABEL } from '../core/theaters';
+import { bomberRange, countedSites, currentStage, facilityCondition, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS, WEATHER_LABEL } from '../core/theaters';
 import { crewShortfall, STORES_CAP } from '../core/turn';
 import type { AircraftKind, FighterApproach, Hit, SideId, SideState, Squadron, TargetId, TrainingFocus } from '../core/types';
 import { ZONES } from '../core/types';
@@ -194,7 +194,7 @@ export function adjutantNotes(app: App, side: SideState): string[] {
   const plan = app.plans[side.id];
   const notes: string[] = [];
   const tired = side.squadrons.filter((q) => q.fatigue >= 0.7);
-  if (tired.length) notes.push(`${tired.map((q) => `${q.name} (${Math.round(q.fatigue * 10)}/10)`).join(', ')} ${tired.length > 1 ? 'are' : 'is'} exhausted. Tired crews shoot and fly worse, and their morale slides. A week standing down restores them.`);
+  if (tired.length) notes.push(`${tired.map((q) => `${q.name} (${Math.round(q.fatigue * 10)}/10)`).join(', ')} ${tired.length > 1 ? 'are' : 'is'} exhausted. Tired crews shoot and fly worse, and their morale slides. Each week standing down takes off about a third of it; it takes two or three to restore them fully.`);
   const low = side.squadrons.filter((q) => q.morale <= 0.25 && q.airframes.length > 0);
   if (low.length) notes.push(`Morale in ${low.map((q) => q.name).join(', ')} is very low. If the whole wing's morale stays this low for three weeks, the crews will refuse to fly.`);
   const thin = (plan.raid?.squadronIds ?? []).map((id) => side.squadrons.find((q) => q.id === id)).filter((q): q is Squadron => !!q && flyable(q).length > 0 && flyable(q).length <= 2);
@@ -629,6 +629,7 @@ function strategicPanel(app: App, side: SideState): HTMLElement {
         row('Aircraft works', 'industry', ours.industry, theirs.industry, `production at ${pc(eo.production)}`, `their production ~${pc(et.production)}`),
       ),
     ),
+    h('p', { class: 'muted small' }, `Their works that count (within two sectors of the front): ${(['airfield', 'fuel', 'industry'] as const).map((k) => countedSites(t, enemy, k).map((x) => x.name).join(', ')).filter(Boolean).join('; ') || 'none'}. A side with no works of a type left counts as 40%.`),
     h('p', { class: 'muted small' }, `Below ${CRIPPLED}% a type of works is crippled and the effect jumps: crippled airfields halve fighter cover, crippled depots and works cut deliveries and production by a further 30%. Damage also tells at the front, week after week. The enemy figures are only as good as our crews\' bombing reports and photographs.`),
   );
 }

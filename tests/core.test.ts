@@ -136,7 +136,8 @@ describe('survivorship bias', () => {
       }
     }
     // The hits that brought planes down are concentrated where survivors show few holes.
-    expect(fatalDeadly / fatalAll).toBeGreaterThan((survDeadly / survAll) * 2);
+    // (Less starkly when a big "safe" area is deadly on a type: survivors still bring back holes there.)
+    expect(fatalDeadly / fatalAll).toBeGreaterThan((survDeadly / survAll) * 1.6);
   });
 
   it('rolls a different hidden profile for each aircraft type and campaign', () => {

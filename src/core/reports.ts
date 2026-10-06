@@ -74,6 +74,8 @@ export function squadronReport(
   // Even a boastful squadron doesn't claim many more than it saw.
   const seenMax = Math.max(...survivors.map((r) => r.enemiesSeen), 0);
   if (seenMax > 0) report.claims = Math.min(report.claims, Math.ceil(seenMax * 1.3) + 1);
+  // ...nor more than a few for every crew that came back to claim them.
+  report.claims = Math.min(report.claims, survivors.length * 2 + 1);
 
   const seen = survivors.reduce((a, r) => a + r.enemiesSeen, 0) / survivors.length;
   // Noisy, but crews who were attacked never report seeing no fighters at all.
@@ -122,7 +124,7 @@ export function squadronReport(
       [`${L}: "Let us go after them over their own fields, sir."`, `${L} asks to be taken off defence and given an offensive role.`, `${L}: "Waiting for them to come to us is no way to win a war."`],
     ],
     byTheBook: [
-      [`${L} declines to confirm claims not witnessed by two crews.`, `${L}: "Report attached. Several items marked unconfirmed."`, `${L}: "Times, heights and headings are in the attached log, sir."`, `${L} notes two crews disagree on the bombing results and has recorded both.`],
+      [`${L} declines to confirm claims not witnessed by two crews.`, `${L}: "Report attached. Several items marked unconfirmed."`, `${L}: "Times, heights and headings are in the attached log, sir."`, sq.kind === 'fighter' ? `${L}: "Claims cross-checked between pilots. Two struck off."` : `${L} notes two crews disagree on the bombing results and has recorded both.`],
       [`${L}: "Interception report attached. Claims marked unconfirmed where not seen to crash."`, `${L} declines to confirm claims not witnessed by two pilots.`, `${L}: "Scramble to contact took eleven minutes. That can be improved."`],
     ],
     timid: [
@@ -132,11 +134,18 @@ export function squadronReport(
   };
   // A leader doesn't say the same thing two debriefs running.
   // Not what he said last time, nor a dead man's saying.
+  // Each man has his own handful of sayings from his type's repertoire, so two leaders of the same
+  // character don't sound the same.
   const retired = side.usedLines ?? [];
-  const pool = remarks[sq.leader.archetype][defending ? 1 : 0].filter((x) => x !== sq.lastRemark && !retired.some((r) => x.includes(`"${r}"`)));
-  const said = rng.pick(pool.length ? pool : remarks[sq.leader.archetype][defending ? 1 : 0]);
+  const all = remarks[sq.leader.archetype][defending ? 1 : 0];
+  const seed = [...sq.leader.name].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const own = all.filter((_, i) => ((seed >>> (i % 16)) & 1) === 1 || all.length <= 3);
+  const mine = (own.length >= 2 ? own : all).filter((x) => x !== sq.lastRemark && !retired.some((r) => x.includes(`"${r}"`)));
+  const pool = mine.length ? mine : all.filter((x) => !retired.some((r) => x.includes(`"${r}"`)));
+  const ledHimself = recs.some((r) => r.lead) || sq.kind === 'recon';
+  const said = ledHimself ? rng.pick(pool.length ? pool : all) : `${L} stayed behind to rebuild the squadron and debriefed the crews himself on their return.`;
   sq.lastRemark = said;
-  const quote = said.match(/"(.+)"/);
+  const quote = ledHimself ? said.match(/"(.+)"/) : null;
   if (quote) sq.leader.said = quote[1];
   report.remarks.push(said);
   if (raid && raid.weather !== 'clear' && !defending) report.remarks.push(raid.weather === 'storm' ? 'Weather: storms and heavy cloud throughout.' : 'Weather: solid cloud over the target area.');
@@ -288,7 +297,8 @@ export function updatePerceived(rng: Rng, side: SideState, d: Debrief, myRaid: R
   if (myRaid?.siteId) {
     const dmgReports = d.reports.filter((r) => r.targetDamageReported !== null);
     if (dmgReports.length) {
-      const dmg = dmgReports.reduce((a, r) => a + (r.targetDamageReported ?? 0), 0);
+      // Each squadron estimates the whole raid's damage: the staff take the average, as HQ does.
+      const dmg = Math.round(dmgReports.reduce((a, r) => a + (r.targetDamageReported ?? 0), 0) / dmgReports.length);
       p.sites[myRaid.siteId] = Math.max(0, (p.sites[myRaid.siteId] ?? 100) - dmg);
       p.photographed = p.photographed.filter((x) => x !== myRaid.siteId);
     }

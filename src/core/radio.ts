@@ -16,8 +16,8 @@ export function rt(rng: Rng, pool: Pool, vars: Record<string, string | number> =
 export const FORM_UP: Record<Archetype, Pool> = {
   braggart: [
     '{c} Leader, {n} aircraft formed up. Let\'s give them something to remember.',
-    '{c} Leader, all {n} up and pretty. Setting course, chaps; drinks are on whoever bags the first one.',
-    '{c} Leader to all {c} aircraft: {n} aboard, nobody gets lost and nobody gets clever. Except me.',
+    '{c} Leader, the whole formation, {n} aircraft, up and pretty. Setting course, chaps; drinks are on whoever bags the first one.',
+    '{c} Leader to all {c} aircraft: {n} in the formation, nobody gets lost and nobody gets clever. Except me.',
   ],
   pessimist: [
     '{c} Leader, {n} aircraft formed up. Setting course. Keep it tight; it\'s a long way.',
