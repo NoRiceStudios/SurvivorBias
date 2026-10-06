@@ -36,6 +36,8 @@ export function armorUsed(sq: Squadron): number {
 export function setArmor(side: SideState, sqId: string, zone: ZoneId, value: number): ActionResult {
   const sq = side.squadrons.find((s) => s.id === sqId);
   if (!sq) return fail('No such squadron');
+  if (!ZONES.includes(zone)) return fail(`No such zone: ${zone}. Zones are ${ZONES.join(', ')}`);
+  if (!Number.isFinite(value)) return fail('Give the number of plates');
   const v = Math.max(0, Math.min(MAX_ARMOR_PER_ZONE, Math.round(value)));
   const delta = v - sq.armor[zone];
   if (delta === 0) return ok;
@@ -151,6 +153,17 @@ export function emergencyRepair(state: GameState, side: SideState, type: Facilit
   for (const x of sites) x.condition = Math.min(100, x.condition + 20);
   side.repaired = [...(side.repaired ?? []), type];
   syncFacilities(state);
+  return ok;
+}
+
+/** A stores convoy: supplies bought into fuel and munitions, once a week, at a poor rate. */
+export const CONVOY = { supplies: 60, stores: 35 };
+export function buyConvoy(state: GameState, side: SideState): ActionResult {
+  if (side.convoyWeek === state.turn) return fail('One convoy a week is all the railways can manage');
+  if (side.resources.supplies < CONVOY.supplies) return fail('Not enough supplies');
+  side.resources.supplies -= CONVOY.supplies;
+  side.resources.stores += CONVOY.stores;
+  side.convoyWeek = state.turn;
   return ok;
 }
 

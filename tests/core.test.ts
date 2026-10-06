@@ -895,4 +895,16 @@ describe('designer decisions after round 2', () => {
     expect(scenes).toBeGreaterThan(10);
     expect(quiet).toBeGreaterThan(5);
   });
+
+  it('a bad armor command is refused and costs nothing; convoys turn supplies into stores once a week', () => {
+    const s = startCampaign({ seed: 'badcmd' });
+    const side = s.sides[0];
+    const supplies = side.resources.supplies;
+    expect(applyCommand(s, 0, { k: 'armor', sq: side.squadrons[0].id, zone: 'fuelTank' as ZoneId, value: 1 }).ok).toBe(false);
+    expect(side.resources.supplies).toBe(supplies);
+    const stores = side.resources.stores;
+    expect(applyCommand(s, 0, { k: 'convoy' }).ok).toBe(true);
+    expect(side.resources.stores).toBeGreaterThan(stores);
+    expect(applyCommand(s, 0, { k: 'convoy' }).ok).toBe(false);
+  });
 });

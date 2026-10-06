@@ -5,6 +5,7 @@
  * host never has to trust a client's copy of the game.
  */
 import {
+  buyConvoy,
   cancelQueued,
   emergencyRepair,
   queueAircraft,
@@ -45,7 +46,8 @@ export type Command =
   | { k: 'research'; id: string }
   | { k: 'approve'; id: string }
   | { k: 'decline'; id: string }
-  | { k: 'repair'; what: FacilityType };
+  | { k: 'repair'; what: FacilityType }
+  | { k: 'convoy' };
 
 export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?: TurnPlan): ActionResult {
   const side = state.sides[sideId];
@@ -64,6 +66,7 @@ export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?
       declineRequest(side, c.id);
       return { ok: true };
     case 'repair': return emergencyRepair(state, side, c.what);
+    case 'convoy': return buyConvoy(state, side);
   }
 }
 

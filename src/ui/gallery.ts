@@ -3,6 +3,7 @@ import { Rng } from '../core/rng';
 import { pickZone } from '../core/sim';
 import type { AircraftKind, Hit, SideId } from '../core/types';
 import { aircraftCanvas } from './sprites';
+import { TRAIT_INFO } from '../core/data';
 import { leaderPortrait, portraitCanvas } from './general';
 import { schoolScene, worksScene } from './buildings';
 import { startCampaign } from '../core/game';
@@ -104,7 +105,7 @@ if (!only || only === 'leaders') {
       const cell = document.createElement('div');
       cell.className = 'leader-cell';
       const caption = document.createElement('div');
-      caption.textContent = `${leader.rank} ${lasts[i]}${leader.trait ? ` · ${leader.trait}` : ''}`;
+      caption.textContent = `${leader.rank} ${lasts[i]}${leader.trait ? ` · ${TRAIT_INFO[leader.trait].label}` : ''}`;
       cell.append(leaderPortrait(leader, side, 4), caption);
       r.append(cell);
     }

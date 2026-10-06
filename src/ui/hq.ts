@@ -3,6 +3,7 @@ import {
   canBuild,
   COSTS,
   REPAIR_COST,
+  CONVOY,
   planCost,
   researchTurns,
 } from '../core/actions';
@@ -114,6 +115,7 @@ export function renderHq(app: App, sideId: SideId, tab: string): HTMLElement {
       plan.feint ? ` · Feint: ${countPlanes(side, plan.feint.squadronIds)}` : '',
       ' · ',
       h('span', { class: c.stores > side.resources.stores ? 'bad' : '' }, `Stores ${c.stores}/${side.resources.stores}`),
+      h('button', { class: 'btn small choice fit-btn', disabled: side.convoyWeek === app.state!.turn || side.resources.supplies < CONVOY.supplies, title: `Buy a stores convoy: ${CONVOY.supplies} supplies for ${CONVOY.stores} stores, once a week`, onclick: () => app.cmd(sideId, { k: 'convoy' }) }, side.convoyWeek === app.state!.turn ? 'Convoy bought' : `Convoy (+${CONVOY.stores})`),
       c.stores > side.resources.stores
         ? h('button', { class: 'btn small choice fit-btn', title: 'Drop the feint, then escorts and squadrons from the raid, until the plan fits the stores we hold', onclick: () => app.act(() => app.fitToStores(sideId)) }, 'Fit to stores')
         : null,
@@ -341,7 +343,6 @@ function operations(app: App, side: SideState): HTMLElement {
   const setAppr = (k: FighterApproach, v: number) => app.cmd(side.id, { k: 'approach', w: { ...appr, [k]: Math.max(0.01, v) } });
   return h('div', { class: 'col' },
     panel('Mission',
-      theaterMap(st, { viewer: side.id, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), feint: plan.feint?.sector, scale: 2 }),
       h('div', { class: 'mission-grid' },
       h('div', { class: 'targets mission-cards' },
         (['support', 'sweep'] as const).map((m) => h('button', { class: `target-card ${plan.raid?.target === m ? 'on' : ''}`, onclick: () => pick(m) },
@@ -367,6 +368,8 @@ function operations(app: App, side: SideState): HTMLElement {
       plan.recon ? h('div', { class: 'recon-row' }, 'Photograph: ',
         enemySites.map((x) => h('button', { class: `btn choice ${plan.recon!.siteId === x.id ? 'on' : ''}`, onclick: () => app.act(() => { plan.recon!.siteId = x.id; }) }, x.name))) : null,
     ),
+    // The map comes last, so mission and assignments both fit on the first screen.
+    panel('Theater Map', theaterMap(st, { viewer: side.id, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), feint: plan.feint?.sector, scale: 2 }), mapLegend()),
     panel('Interceptor Tactics',
       h('p', { class: 'muted' }, 'How your fighters are briefed to attack enemy bombers. Gunners cover the tail best; a head-on pass is brief but meets fewer guns.'),
       (Object.keys(APPROACH_LABEL) as FighterApproach[]).map((k) =>

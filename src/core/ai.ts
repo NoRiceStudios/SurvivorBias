@@ -1,4 +1,4 @@
-import { emergencyRepair, emptyPlan, queueAircraft, REPAIR_COST, setApproach, startResearch, upgradeFactory, upgradeFlak, upgradeTraining, validatePlan } from './actions';
+import { buyConvoy, CONVOY, emergencyRepair, emptyPlan, queueAircraft, REPAIR_COST, setApproach, startResearch, upgradeFactory, upgradeFlak, upgradeTraining, validatePlan } from './actions';
 import { AIRCRAFT, APPROACH_ZONES, MAX_ARMOR_PER_ZONE, RESEARCH, ZONE_AREA } from './data';
 import { Rng } from './rng';
 import { flyable } from './sim';
@@ -104,6 +104,8 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
       }
     }
   }
+  // Short of stores with supplies to spare: buy a convoy.
+  if (side.resources.stores < 60 && side.resources.supplies > CONVOY.supplies + 120) buyConvoy(state, side);
   // Emergency repairs to badly damaged works, when supplies allow.
   for (const type of ['airfield', 'fuel', 'industry'] as const) {
     if (side.facilities[type] < 70 && side.resources.supplies > REPAIR_COST + 100) emergencyRepair(state, side, type);

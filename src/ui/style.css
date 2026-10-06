@@ -490,3 +490,6 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .radio-body { grid-template-columns: minmax(0, auto) minmax(0, 1fr); }
 /* The general's card is narrower, so the map and targets stay in view beside it. */
 .dispatch { width: min(560px, calc(100vw - 40px)); }
+/* The general's verdict on the redeployment card. */
+.verdict { display: flex; gap: 12px; align-items: flex-start; text-align: left; max-width: 760px; margin: 8px auto 10px; }
+.verdict canvas { flex: none; image-rendering: pixelated; border: 2px solid #3a3226; }

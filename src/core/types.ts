@@ -220,6 +220,8 @@ export interface SideState {
   observed: { feints: number; support: number };
   /** Squadron leaders' requests waiting on the commander's desk this week. */
   requests: LeaderRequest[];
+  /** Week a stores convoy was last bought. */
+  convoyWeek?: number;
   /** Facility types given emergency repairs this week (one each per week). */
   repaired?: FacilityType[];
   /** The AI's chosen next operation, fixed a week ahead so enemy intelligence can get wind of it. */

@@ -96,7 +96,7 @@ export function squadronReport(
       report.targetDamageReported = null;
       report.remarks.push(raid.weather === 'clear' ? 'Results unobserved owing to smoke.' : 'Results unobserved: target obscured by cloud.');
     } else {
-      report.targetDamageReported = Math.max(0, Math.round(trueDamage * biasScale(bias.damage) * (1 + rng.gauss(noise + 0.15))));
+      report.targetDamageReported = Math.min(100, Math.max(0, Math.round(trueDamage * biasScale(bias.damage) * (1 + rng.gauss(noise + 0.15)))));
     }
   }
 

@@ -51,7 +51,7 @@ export function rollLethality(rng: Rng): LethalityTable {
     }
     // Sometimes even the big, "safe" areas hide something vital in this mark:
     // fuel tanks out in the wings, or control runs along the fuselage.
-    if (rng.chance(0.3)) {
+    if (rng.chance(0.4)) {
       const z = rng.pick<ZoneId>(['outerWing', 'fuselage']);
       t[z] = rng.range(0.1, 0.2);
     }

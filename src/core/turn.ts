@@ -415,7 +415,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
     else {
       const used = new Set(side.squadrons.map((q) => q.name));
       const free = SQUADRON_NAMES[side.id].findIndex((n) => !used.has(n));
-      const sq = makeSquadron(state, rng, side.id, kind, 0, free >= 0 ? free : side.squadrons.length, undefined, side.squadrons.map((q) => q.leader.name));
+      const sq = makeSquadron(state, rng, side.id, kind, 0, free >= 0 ? free : side.squadrons.length, undefined, [...side.squadrons.map((q) => q.leader.name), ...(side.usedNames ?? [])]);
       if (free < 0) sq.name = `${sq.name} (${side.squadrons.length + 1})`;
       sq.crews = 0;
       sq.airframes.push(af);
@@ -948,7 +948,8 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     d.pressure = pressureLedger(parts, id === 0 ? 1 : -1, !!(raids[0]?.target === 'support' || raids[1]?.target === 'support'));
     updatePerceived(rng, side, d, raids[id]);
     // Army liaison: honest about towns, optimistic about pressure.
-    side.perceived.front = Math.round(state.front * (id === 0 ? 1 : -1) + 4 + rng.gauss(3)) || 0;
+    // Army liaison: optimistic, but steady from week to week, so its figure and its words agree.
+    side.perceived.front = Math.round(state.front * (id === 0 ? 1 : -1) + 4 + rng.gauss(1)) || 0;
     const reported: Reported = {
       kills: d.reports.reduce((a, r) => a + r.claims, 0),
       damage: {},
@@ -956,7 +957,9 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       lost: d.missing.length + d.returned.filter((r) => r.fate === 'crashed').length,
     };
     const sid = raids[id]?.siteId;
-    if (sid) reported.damage[sid] = d.reports.filter((r) => r.targetDamageReported !== null).reduce((a, r) => a + (r.targetDamageReported ?? 0), 0);
+    // The squadrons' estimates of the same target are averaged, not added.
+    const estimates = d.reports.filter((r) => r.targetDamageReported !== null).map((r) => r.targetDamageReported ?? 0);
+    if (sid && estimates.length) reported.damage[sid] = Math.min(100, Math.round(estimates.reduce((a, b) => a + b, 0) / estimates.length));
     toHq[id] = highCommand(rng, state, side, enemy, reported, plans[id], d.hqResponse);
     debriefs[id] = d;
   }

@@ -1,6 +1,7 @@
 /** Theater map: a strip of sectors with sites, ownership and the front line. */
+import { HIGH_COMMAND, portraitCanvas } from './general';
 import { SECTOR_PRESSURE, SECTORS, THEATERS, depthFor } from '../core/theaters';
-import type { FacilityType, GameState, SideId, Site } from '../core/types';
+import type { FacilityType, GameState, SideId, Site, TheaterResult } from '../core/types';
 import type { App } from './app';
 import { sfxStamp } from './audio';
 import { h } from './dom';
@@ -169,6 +170,7 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
     h('div', { class: 'handover-card paper theater-change' },
       h('div', { class: 'muted' }, `${res.name} · ${res.weeks} weeks`),
       h('div', { class: `stamp big ${won ? 'notice' : res.winner === null ? 'order' : 'reprimand'}` }, verdict),
+      generalVerdict(st, side, res),
       h('p', { class: 'typed big' }, res.winner === null
         ? ourPressure > 15 ? 'The pressure was ours, but the Army took no ground. High Command records a stalemate.'
           : ourPressure < -15 ? 'The enemy held the advantage but took no ground. The armies dig in where they stand.'
@@ -208,4 +210,23 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
       h('button', { class: 'btn primary', onclick: () => { sfxStamp(); const go = app.continueAfterTheater; app.continueAfterTheater = null; go?.(); } }, 'Continue ▸'),
     ),
   );
+}
+
+/** The commander's own general gives the verdict and the cost, in person, on the redeployment card. */
+function generalVerdict(st: GameState, side: SideId, res: TheaterResult): HTMLElement {
+  const won = res.winner === side;
+  const lost = st.archive.filter((e) => e.theater === res.index).reduce((a, e) => a + e.trueLosses[side], 0);
+  const roll = (st.sides[side].roll ?? []).filter((e) => e.theater === res.index);
+  const count = (f: string) => roll.filter((e) => e.fate === f).length;
+  const hc = HIGH_COMMAND[side];
+  const mid = res.name.replace(/^The /, 'the ');
+  const verdict = res.winner === null
+    ? `${res.name} ends in stalemate after ${res.weeks} weeks. Nobody will write songs about it.`
+    : won ? `${res.name} is ours, after ${res.weeks} weeks. The Army sends its thanks, and so do I.` : `We have lost ${mid} after ${res.weeks} weeks. I will not pretend otherwise.`;
+  const cost = `${lost} of our aircraft lost. ${roll.length} crews posted missing: ${count('killed')} known dead, ${count('prisoner')} prisoners, ${count('returned')} back with us, ${count('missing')} still unaccounted for.`;
+  return h('div', { class: 'verdict' },
+    portraitCanvas('general', side, 2),
+    h('div', null,
+      h('div', { class: 'tut-from' }, `${hc.name} · ${hc.title}`),
+      h('p', { class: 'typed' }, `"${verdict} ${cost}"`)));
 }

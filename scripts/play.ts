@@ -74,6 +74,8 @@ import {
   REPAIR_COST,
   emergencyRepair,
   facilityCondition,
+  buyConvoy,
+  CONVOY,
 } from '../src/core';
 
 interface SaveFile {
@@ -429,8 +431,9 @@ function run(cmd: string) {
       '        build fighter|medium|heavy|recon · cancel <queue#> · research <id> · upgrade factory|training|flak',
       '        qc rushed|standard|strict · focus balanced|gunnery|evasion|reporting',
       'Requests: approve R# · decline R# (squadron leaders\' requests, listed in the brief)',
+      `convoy — buy a stores convoy (${CONVOY.supplies} supplies for ${CONVOY.stores} stores, once a week)`,
       'repair airfield|fuel|industry — emergency repairs to our own works (40 supplies, once a week per type)',
-      'fit — trim this week\'s plan to the stores we hold (drops the feint, then escorts, then bomber squadrons)',
+      'fit — trim this week\'s plan to the stores we hold (drops the feint, then recon, then bomber squadrons each with a matching escort, then patrols)',
       'Turn: launch (fly this week\'s operation and read the debrief)',
       'UI: screenshot <screen> <out.png> [S#] — screens: title briefing operations squadrons hangar factory training research intel radio debrief-aircraft debrief-reports debrief-missing debrief-home end-summary end-archive end-ledger',
       'Start: new green|seasoned|wald [seed]. Chain commands with ";".',
@@ -514,6 +517,7 @@ function run(cmd: string) {
     case 'qc': check(setQc(side, a[0] as QcPolicy)); return factory();
     case 'focus': check(setTrainingFocus(side, a[0] as TrainingFocus)); return training();
     case 'launch': return launch();
+    case 'convoy': check(buyConvoy(state, side)); say(`Convoy bought: stores now ${side.resources.stores}.`); return;
     case 'repair': check(emergencyRepair(state, side, a[0] as 'airfield')); say(`Repairs done. Our ${a[0]} now at ${side.facilities[a[0] as 'airfield']}%.`); return;
     case 'fit': {
       fitPlanToStores(state, 0, plan);
