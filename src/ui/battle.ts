@@ -282,7 +282,7 @@ function missingView(app: App, d: Debrief): HTMLElement {
       h('thead', null, h('tr', null, h('th', null, 'Serial'), h('th', null, 'Type'), h('th', null, 'Unit'), h('th', null, 'Captain and crew'), h('th', null, 'Last heard'))),
       h('tbody', null, d.missing.map((m) => h('tr', null,
         h('td', null, m.serial), h('td', null, AIRCRAFT[m.kind].name[d.side]), h('td', null, sqName(m.squadronId)),
-        h('td', null, `${m.captain ?? 'Unknown'}${AIRCRAFT[m.kind].crew > 1 ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}`),
+        h('td', null, `${m.captain ?? 'Unknown'}${AIRCRAFT[m.kind].crew > 1 && !m.captain?.includes('(') ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}`),
         h('td', { class: 'typed' }, m.lastWords ? `"${m.lastWords}"` : 'Nothing heard.', m.witnessed ? h('div', { class: 'small muted' }, m.witnessed) : null),
       ))),
     ),

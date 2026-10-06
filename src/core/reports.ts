@@ -71,10 +71,13 @@ export function squadronReport(
   // Panic causes double counting.
   rawClaims *= 1 + lossFrac * 0.5;
   report.claims = Math.max(0, Math.round(rawClaims * claimBias * (1 + rng.gauss(noise))));
+  // Even a boastful squadron doesn't claim many more than it saw.
+  const seenMax = Math.max(...survivors.map((r) => r.enemiesSeen), 0);
+  if (seenMax > 0) report.claims = Math.min(report.claims, Math.ceil(seenMax * 1.3) + 1);
 
   const seen = survivors.reduce((a, r) => a + r.enemiesSeen, 0) / survivors.length;
   // Noisy, but crews who were attacked never report seeing no fighters at all.
-  report.enemyFightersReported = seen > 0 ? Math.max(1, Math.round(seen * biasScale(bias.enemies) * Math.max(0.3, 1 + rng.gauss(noise * 1.2)))) : 0;
+  report.enemyFightersReported = seen > 0 ? Math.max(1, Math.round(seen * biasScale(bias.enemies) * Math.min(2, Math.max(0.3, 1 + rng.gauss(noise * 1.2))))) : 0;
 
   for (const r of survivors) {
     for (const k of Object.keys(r.sawApproach) as FighterApproach[]) report.approachReported[k] += r.sawApproach[k];
@@ -128,7 +131,9 @@ export function squadronReport(
     ],
   };
   // A leader doesn't say the same thing two debriefs running.
-  const pool = remarks[sq.leader.archetype][defending ? 1 : 0].filter((x) => x !== sq.lastRemark);
+  // Not what he said last time, nor a dead man's saying.
+  const retired = side.usedLines ?? [];
+  const pool = remarks[sq.leader.archetype][defending ? 1 : 0].filter((x) => x !== sq.lastRemark && !retired.some((r) => x.includes(`"${r}"`)));
   const said = rng.pick(pool.length ? pool : remarks[sq.leader.archetype][defending ? 1 : 0]);
   sq.lastRemark = said;
   const quote = said.match(/"(.+)"/);

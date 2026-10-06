@@ -100,7 +100,7 @@ export function hitLethality(zone: ZoneId, f: Flier, armor = f.sq.armor[zone]): 
   if (f.af.kind === 'heavy') p *= 0.8;
   p *= 1 + f.af.defect * 0.6;
   // The squadron leader is an old hand: he nurses a damaged aircraft home more often.
-  if (f.rec.lead) p *= f.sq.leader.trait === 'lucky' ? 0.5 : 0.7;
+  if (f.rec.lead) p *= f.sq.leader.trait === 'lucky' ? 0.35 : 0.5;
   p *= 0.75;
   return Math.min(0.95, p);
 }
@@ -135,7 +135,7 @@ function lastWords(rng: Rng, f: Flier): string {
   const lethal = f.rec.hits.find((h) => h.lethal);
   const zone = lethal?.zone;
   const lines: Record<ZoneId, string[]> = {
-    engines: ['Number two is burning, can\'t feather it, going down—', 'Both engines gone, we\'re losing height—', 'Engine fire! Engine fire! Extinguisher\'s useless—', 'Port engine\'s torn off the mount— she\'s going over—', 'No power, no power, we\'re going into the drink—'],
+    engines: ['Number two is burning, can\'t feather it, going down—', 'Both engines gone, we\'re losing height—', 'Engine fire! Engine fire! Extinguisher\'s useless—', 'Port engine\'s torn off the mount— she\'s going over—', 'No power, no power, she\'s going down—'],
     cockpit: ['[carrier wave, no voice]', 'Skipper\'s hit— I can\'t hold her— who can fly—', '[a short cry, then static]', 'Pilot\'s dead. I\'m trying to— I don\'t know how—', '[heavy breathing, then nothing]'],
     fuel: ['We\'re burning, the tanks are going, get out, get out—', 'Fuel\'s pouring out of the wing, she\'s on fire—', 'Fire in the bomb bay! Jump, jump, jump—', 'Tanks are holed, we\'re streaming petrol— one spark and—'],
     wingRoot: ['The wing\'s folding— it\'s coming off at the root—', 'Main spar\'s gone, she\'s rolling over—', 'Wing\'s gone! Wing\'s gone! Get out if you can—'],
@@ -196,7 +196,8 @@ function makeFlier(sq: Squadron, af: Airframe, side: SideState, role: PlaneRecor
       sawApproach: emptyApproach(),
       enemiesSeen: 0,
       // The squadron leader flies the first aircraft and answers to callsign 1.
-      lead: index === 0 && role !== 'recon' ? true : undefined,
+      // The CO leads from callsign 1, but stays to rebuild a squadron that can put up only one or two aircraft.
+      lead: index === 0 && role !== 'recon' && flyable(sq).length >= 3 ? true : undefined,
     },
     af,
     sq,
@@ -443,7 +444,7 @@ export function resolveRaid(
     say(ctx, attacker.id, speaker(raid).callsign, rt(rng, BANDITS, { clock: rng.pick(CLOCK[approach]), height: rng.pick(['high', 'level', 'low']), many: rng.pick(interceptors.length > 12 ? MANY.lots : MANY.few) }));
     say(ctx, defender.id, interceptors[0].callsign, rt(rng, CONTACT, {
       what: bombers.length > 0 ? `${bombers.length >= 10 ? rng.pick(['Large', 'Big', 'Heavy']) : rng.pick(['Small', 'Light'])} bomber formation` : 'Enemy fighters',
-      escort: escorts.length > 0 ? rng.pick(['with escort', 'fighters above them', 'escorted']) : rng.pick(['no escort seen', 'no little friends', 'unescorted']),
+      escort: bombers.length === 0 ? rng.pick(['a fighter sweep', 'fighters hunting', 'no bombers with them']) : escorts.length > 0 ? rng.pick(['with escort', 'fighters above them', 'escorted']) : rng.pick(['no escort seen', 'no little friends', 'unescorted']),
     }), defender.id);
   } else {
     say(ctx, attacker.id, speaker(raid).callsign, rt(rng, NO_FIGHTERS[state.weather]));

@@ -822,8 +822,11 @@ describe('designer decisions after round 2', () => {
     const text = obituary({ ...l, said: undefined }, 'No. 9', 10, 'Tail\'s shot away—', { name: 'Neville Garside', rank: 'Flt Lt', archetype: 'byTheBook' });
     expect(text).toContain('presumed killed');
     expect(text).toContain('His last call was: "Tail\'s shot away—"');
-    expect(text).toContain('He asked three times to press his attacks home');
-    expect(text).toContain('you agreed once');
+    // The decision closest to his death is the one remembered.
+    expect(text).toContain('In week 8 he asked to press his attacks home, and you agreed. He did not come back.');
+    const later = obituary({ ...l, said: undefined }, 'No. 9', 20);
+    expect(later).toContain('He asked three times to press his attacks home');
+    expect(later).toContain('you agreed once');
     expect(text).toContain('"Ace"');
     expect(text).toContain('Flt Lt Neville Garside, who took over');
   });

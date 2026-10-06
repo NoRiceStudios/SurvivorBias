@@ -165,6 +165,8 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
     sq.fatigue = Math.min(1, sq.fatigue + 0.22 + (sq.leader.trait === 'shaken' ? 0.06 : 0));
     if (frac >= 0.4 && lost >= 2) remember(sq.leader, state.turn, `lost ${lost} of ${mine.length} aircraft in one operation`);
     // The leader's operations in command, and the reputation he earns after five of them.
+    // The operation he was lost on counts too.
+    if (leaderLost) sq.leader.ops = (sq.leader.ops ?? 0) + 1;
     if ((mine.some((r) => r.lead) || sq.kind === 'recon') && !leaderLost) {
       sq.leader.ops = (sq.leader.ops ?? 0) + 1;
       if (sq.leader.ops >= 5 && !sq.leader.trait) {
@@ -219,11 +221,11 @@ const times = (n: number) => (n === 1 ? 'once' : n === 2 ? 'twice' : n === 3 ? '
 
 /** A short obituary for a leader who had been in command a while, built from what the squadron remembers. */
 const SUCCESSOR_SAYS: Record<Leader['archetype'], string[]> = {
-  braggart: ['He\'d want us to give them hell. So we will.', 'Big boots to fill. I\'ve got big feet.'],
-  pessimist: ['He was the best of us. That\'s usually how it goes.', 'We\'ll miss him. We\'ll be missing more of us before this is over.'],
-  gloryHunter: ['We\'ll finish what he started.', 'He went in first. So will I.'],
-  byTheBook: ['The squadron will carry on as he trained it.', 'His orders stand until I have reason to change them.'],
-  timid: ['We\'ll bring the boys home. That\'s what he wanted.', 'I\'ll try to keep them alive. He always did.'],
+  braggart: ['He\'d want us to give them hell. So we will.', 'Big boots to fill. I\'ve got big feet.', 'The squadron\'s still the best in the wing. I\'ll see it stays that way.', 'He bought the first round every time. I\'ll keep that going, at least.', 'They\'ll pay for him. With interest.'],
+  pessimist: ['He was the best of us. That\'s usually how it goes.', 'We\'ll miss him. We\'ll be missing more of us before this is over.', 'I didn\'t want the job. Not like this.', 'He used to say the odds would catch up with us. They caught up with him first.', 'Someone has to sign the letters now. I suppose it\'s me.'],
+  gloryHunter: ['We\'ll finish what he started.', 'He went in first. So will I.', 'He showed us how it\'s done. Now we do it.', 'Put us on the next big one, sir. For him.', 'He never once turned back. Neither will I.'],
+  byTheBook: ['The squadron will carry on as he trained it.', 'His orders stand until I have reason to change them.', 'I have his notes. We will follow them.', 'He kept a clean log. I intend to keep it.', 'Procedure is what got most of us home. He wrote most of it.'],
+  timid: ['We\'ll bring the boys home. That\'s what he wanted.', 'I\'ll try to keep them alive. He always did.', 'I\'m not the man he was. I\'ll be careful with them.', 'He knew every crew by name. I\'m learning them.', 'No heroics. He\'d have hated heroics.'],
 };
 
 /**
@@ -231,7 +233,7 @@ const SUCCESSOR_SAYS: Record<Leader['archetype'], string[]> = {
  * human details rather than a list. His last call, something he used to say,
  * the request that mattered most, and a word from the man who took over.
  */
-export function obituary(l: Leader, squadron: string, missingSince: number, lastWords?: string, successor?: Leader): string {
+export function obituary(l: Leader, squadron: string, missingSince: number, lastWords?: string, successor?: Leader, used?: string[]): string {
   const parts: string[] = [`${l.rank} ${l.name}, missing since week ${missingSince}, is now presumed killed. He led ${squadron} on ${plural(l.ops ?? 0, 'operation')}.`];
   if (lastWords && !lastWords.startsWith('[')) parts.push(`His last call was: "${lastWords}"`);
   else if (lastWords) parts.push('His last call was a carrier wave and nothing more.');
@@ -245,12 +247,27 @@ export function obituary(l: Leader, squadron: string, missingSince: number, last
     if (e.approved) k.approved++;
     byKind.set(e.kind, k);
   }
+  // The decision closest to his death, if it was recent; otherwise the request he pressed hardest.
+  const lastAsk = [...(l.log ?? [])].reverse().find((e) => e.kind);
   const top = [...byKind.entries()].sort((a, b) => b[1].asked - a[1].asked)[0];
-  if (top) {
+  if (lastAsk && lastAsk.kind && missingSince - lastAsk.week <= 2) {
+    parts.push(lastAsk.approved
+      ? `In week ${lastAsk.week} he asked ${REQUEST_SHORT[lastAsk.kind]}, and you agreed. He did not come back.`
+      : `In week ${lastAsk.week} he asked ${REQUEST_SHORT[lastAsk.kind]}, and you said no.`);
+  } else if (top) {
     const [kind, k] = top;
     parts.push(`He asked ${times(k.asked)} ${REQUEST_SHORT[kind]}; ${k.approved === 0 ? 'you never agreed' : k.approved === k.asked ? (k.asked === 1 ? 'you agreed' : 'you agreed every time') : `you agreed ${times(k.approved)}`}.`);
   }
-  if (successor) parts.push(`${successor.rank} ${successor.name}, who took over: "${SUCCESSOR_SAYS[successor.archetype][(l.ops ?? 0) % 2]}"`);
+  const back = (l.log ?? []).find((e) => e.text.startsWith('came back through the lines'));
+  if (back) parts.push(`He had come back through the lines once already, in week ${back.week}.`);
+  if (successor) {
+    // Each successor his own words: the line is chosen by his name, skipping any already spoken in this war.
+    const lines = SUCCESSOR_SAYS[successor.archetype];
+    const start = [...successor.name].reduce((a, c) => a + c.charCodeAt(0), 0) % lines.length;
+    const line = [...lines.slice(start), ...lines.slice(0, start)].find((x) => !used?.includes(x)) ?? lines[start];
+    used?.push(line);
+    parts.push(`${successor.rank} ${successor.name}, who took over: "${line}"`);
+  }
   parts.push('A letter to his family has gone out over your signature.');
   return parts.join(' ');
 }
@@ -272,7 +289,9 @@ function leaderFate(rng: Rng, state: GameState, side: SideState, sq: Squadron, r
   } else if (out && roll < evade + 0.2) {
     side.post = [...(side.post ?? []), { due: due + 1, from: 'International Red Cross', subject: `${name} is alive`, body: `We are informed that ${name}, commanding ${sq.name}, missing since week ${state.turn}, is alive and a prisoner of war. Next-of-kin have been told.`, serial: r.serial, fate: 'prisoner' }];
   } else if ((old.ops ?? 0) >= 3) {
-    side.post = [...(side.post ?? []), { due, from: 'Group HQ', subject: `In memoriam: ${name}`, body: obituary(old, sq.name, state.turn, r.lastWords, sq.leader), serial: r.serial, fate: 'killed' }];
+    side.post = [...(side.post ?? []), { due, from: 'Group HQ', subject: `In memoriam: ${name}`, body: obituary(old, sq.name, state.turn, r.lastWords, sq.leader, (side.usedLines ??= [])), serial: r.serial, fate: 'killed' }];
+    // His saying goes with him: no successor repeats it.
+    if (old.said) side.usedLines.push(old.said);
   } else {
     side.post = [...(side.post ?? []), { due, from: 'Group HQ', subject: `${name} presumed killed`, body: `${name}, missing with ${r.serial} since week ${state.turn}, is now presumed killed. He had commanded ${sq.name} for only ${plural(old.ops ?? 0, 'operation')}. Next-of-kin have been told.`, serial: r.serial, fate: 'killed' }];
   }
@@ -516,7 +535,8 @@ function newOrder(rng: Rng, state: GameState, side: SideState, exclude: Order['k
   const recentlyStruck = new Set(side.orders.filter((o) => o.kind === 'strike' && o.done && o.deadline >= state.turn - 2).map((o) => o.siteId));
   const targets = reachableSites(state, side.id, 'medium').filter((x) => !recentlyStruck.has(x.id));
   const w: Partial<Record<Order['kind'], number>> = {
-    strike: targets.length && lastWeek > next ? 0.45 : 0,
+    // No strike orders to a wing whose bomber arm has been gutted.
+    strike: targets.length && lastWeek > next && side.squadrons.filter((q) => q.kind === 'medium' || q.kind === 'heavy').reduce((a, q) => a + flyable(q).length, 0) >= 3 ? 0.45 : 0,
     kills: 0.3,
     sorties: 0.1,
     advance: t.week >= 2 && lastWeek - next >= 2 ? 0.2 : 0,
@@ -610,7 +630,9 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
   }
   trustDelta += Math.min(6, toHq.kills * 0.4) + 1;
   // Our own losses are counted by the Air Ministry, not by us: a bloody week costs confidence.
-  const bloody = Math.max(0, reported.lost - 2);
+  // Measured against the wing's size: four lost from a gutted wing hurts more than from a full one.
+  const strength = Math.max(8, side.squadrons.reduce((a, q) => a + q.airframes.length, 0) + reported.lost);
+  const bloody = Math.max(0, reported.lost - Math.round(strength * 0.08));
   if (bloody > 0) {
     trustDelta -= bloody * 1.5;
     hqLines.push(`The Air Ministry notes the loss of ${reported.lost} aircraft this week. Losses on this scale will have to be justified by results.`);
@@ -858,6 +880,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       if (back && p.returns) {
         remember(p.returns.leader, state.turn, 'came back through the lines after being posted missing');
         remember(back.leader, state.turn, `handed the squadron back to ${p.returns.leader.name}`);
+        lossNews[id].push(`${back.leader.rank} ${back.leader.name} hands ${back.name} back to ${p.returns.leader.rank} ${p.returns.leader.name} and returns to flying as a flight commander.`);
         back.leader = p.returns.leader;
       }
       // The roll of the missing learns what became of them.

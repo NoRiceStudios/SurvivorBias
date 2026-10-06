@@ -30,6 +30,28 @@ function newcomer(c: Ctx): string {
 type Scene = (c: Ctx) => string | null;
 
 const SCENES: Scene[] = [
+  // A wake for a commanding officer posted missing.
+  (c) => {
+    const ranks = c.side.id === 0 ? ['Flt Lt', 'Sqn Ldr', 'Wg Cdr'] : ['Hauptmann', 'Major', 'Oberst'];
+    const co = (c.side.roll ?? []).find((e) => c.state.turn - e.week <= 2 && ranks.some((r) => e.name.startsWith(r)) && e.fate !== 'returned' && e.fate !== 'prisoner');
+    if (!co) return null;
+    const L = LOCAL[c.side.id];
+    return c.rng.pick([
+      `${co.squadron} held a wake for ${co.name} in ${L.mess}. Somebody played the piano badly, and nobody stopped him.`,
+      `Nobody has moved ${co.name}'s cap from the peg in the ${co.squadron} crew room.`,
+    ]);
+  },
+  // After a bad week.
+  (c) => {
+    const lost = (c.side.roll ?? []).filter((e) => e.week === c.state.turn);
+    if (lost.length < 3) return null;
+    const L = LOCAL[c.side.id];
+    const sq = lost[0].squadron;
+    return c.rng.pick([
+      `After this week's losses ${sq} went to ${L.town}, all of them, and drank to the empty chairs. The landlord wouldn't take their money.`,
+      `${L.mess[0].toUpperCase()}${L.mess.slice(1)} was very quiet tonight. ${lost.length} sets of kit to pack, and nobody wanted to start.`,
+    ]);
+  },
   // A quiet evening for a squadron that stood down.
   (c) => {
     const sq = c.rested.length ? c.rng.pick(c.rested) : null;
@@ -110,7 +132,9 @@ export function stationLife(rng: Rng, state: GameState, side: SideState, rested:
   for (const i of order) {
     if (out.length >= n) break;
     const s = SCENES[i](c);
-    if (s && !out.includes(s)) out.push(s);
+    // A scene is told once in a war.
+    if (s && !out.includes(s) && !side.usedLines?.includes(s)) out.push(s);
   }
+  side.usedLines = [...(side.usedLines ?? []), ...out].slice(-300);
   return out;
 }

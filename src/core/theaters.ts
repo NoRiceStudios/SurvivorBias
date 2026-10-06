@@ -269,7 +269,9 @@ export function applyPressure(state: GameState, flew: [boolean, boolean] = [true
       s.condition = Math.min(s.condition, 30);
     }
     const name = def.sectors[sector];
-    news[winner].push(`The Army reports ${name} taken. Its facilities are in our hands, badly damaged.`);
+    const taken = t.sites.filter((x) => x.sector === sector);
+    const wrecked = taken.filter((x) => x.takenWrecked).length;
+    news[winner].push(`The Army reports ${name} taken. ${wrecked === taken.length ? 'Its facilities are in our hands, wrecked.' : wrecked ? 'Some of its facilities were already wrecked; the rest have been taken in working order.' : 'Its facilities have been taken in working order, though they are no use to us.'}`);
     news[(1 - winner) as SideId].push(`${name} has fallen. We have lost every facility in the sector.`);
   }
   return news;

@@ -230,6 +230,8 @@ export interface SideState {
   roll?: { week: number; theater: number; name: string; serial: string; squadron: string; crew: number; fate: 'missing' | 'prisoner' | 'returned' | 'killed' }[];
   /** Graduates who joined squadrons last week, for station-life scenes. */
   arrived?: { squadronId: string; n: number }[];
+  /** Lines already spoken in this war that shouldn't be heard again (a dead man's saying, a successor's words, a scene). */
+  usedLines?: string[];
   /** Leaders' names already used in this war (lost leaders included). */
   usedNames?: string[];
 }

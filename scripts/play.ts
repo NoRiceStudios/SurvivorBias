@@ -209,7 +209,7 @@ function squadrons() {
     say(
       `${sqCode(sq)} ${sq.name} — ${AIRCRAFT[sq.kind].name[0]} (${AIRCRAFT[sq.kind].role}), range ${sq.kind === 'fighter' ? escortRange(me()) : bomberRange(sq.kind)} sectors`,
       `    aircraft ${sq.airframes.length} (${flyable(sq).length} ready, ${repairs} in repair) · crews ${sq.crews} · skill ${ten(sq.skill)} · morale ${ten(sq.morale)} · fatigue ${ten(sq.fatigue)}`,
-      `    leader: ${sq.leader.rank} ${sq.leader.name} — "${info.label}": ${info.blurb} · ${sq.leader.ops ?? 0} operations in command${sq.leader.trait ? ` · known as "${TRAIT_INFO[sq.leader.trait].label}": ${TRAIT_INFO[sq.leader.trait].blurb}` : ''}`,
+      `    leader: ${sq.leader.rank} ${sq.leader.name} — "${info.label}": ${info.blurb} · ${sq.leader.ops ?? 0} operation${sq.leader.ops === 1 ? '' : 's'} in command${sq.leader.trait ? ` · known as "${TRAIT_INFO[sq.leader.trait].label}": ${TRAIT_INFO[sq.leader.trait].blurb}` : ''}`,
       ...(sq.leader.log ?? []).slice(-3).map((e) => `    record: week ${e.week}, ${e.text}`),
       `    doctrine: aggression ${d.aggression.toFixed(2)} · formation ${d.formation.toFixed(2)} · altitude ${d.altitude.toFixed(2)} · break off at ${pct(d.breakOff)} lost`,
       `    armor (${armorUsed(sq)}/${AIRCRAFT[sq.kind].armorBudget} plates): ${ZONES.filter((z) => sq.armor[z]).map((z) => `${z} ${sq.armor[z]}`).join(', ') || 'none'}`,
@@ -348,7 +348,7 @@ function launch() {
   plan = carryPlan(st, 0, plan!);
   const d = st.lastDebriefs[0]!;
   say(`######## OPERATIONS ROOM — WEEK ${week} ########`, 'R/T log (lines marked HOME are from our own defences):');
-  for (const l of d.radio) say(`  ${l.t >= 200 ? 'HOME ' : `T+${String(l.t).padStart(3, '0')}`}  ${l.callsign.padEnd(10)} ${l.text}`);
+  for (const l of d.radio) say(`  ${l.t >= 200 ? 'DEFENCE' : `T+${String(l.t).padStart(3, '0')}`}  ${l.callsign.padEnd(10)} ${l.text}`);
   say('', `######## DEBRIEF — WEEK ${week} ########`);
   if (d.theaterNews.length) say('From the front:', ...d.theaterNews.map((x) => `  * ${x}`));
   const sent = d.reports.reduce((a, r) => a + r.sent, 0);
@@ -372,7 +372,7 @@ function launch() {
   }
   if (d.missing.length) {
     say('Missing:');
-    for (const m of d.missing) say(`  ${m.serial} ${AIRCRAFT[m.kind].name[0]} — ${m.captain}${AIRCRAFT[m.kind].crew > 1 ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}. Last heard: ${m.lastWords ? `"${m.lastWords}"` : 'nothing'}${m.witnessed ? ` · ${m.witnessed}` : ''}`);
+    for (const m of d.missing) say(`  ${m.serial} ${AIRCRAFT[m.kind].name[0]} — ${m.captain}${AIRCRAFT[m.kind].crew > 1 && !m.captain?.includes('(') ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}. Last heard: ${m.lastWords ? `"${m.lastWords}"` : 'nothing'}${m.witnessed ? ` · ${m.witnessed}` : ''}`);
   }
   say('Home front:', ...d.defenseSummary.map((x) => `  ${x}`));
   const photographed = d.recon && st.theater.sites.find((x) => x.id === d.recon!.siteId);
