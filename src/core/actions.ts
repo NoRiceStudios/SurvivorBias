@@ -230,7 +230,41 @@ export function mergeSquadrons(state: GameState, side: SideState, fromId: string
   }
   const n = from.airframes.length;
   into.notables = [`Week ${state.turn}: took in the last of ${from.name}; ${from.leader.rank} ${from.leader.name} now a flight commander.`, ...into.notables].slice(0, 5);
-  side.memos.unshift({ turn: state.turn, from: 'Group HQ', kind: 'notice', subject: `${from.name} merged into ${into.name}`, body: `The last ${n === 0 ? 'men' : n === 1 ? 'crew and aircraft' : `${n} crews and aircraft`} of ${from.name} have carried their squadron badge across the field to ${into.name}. ${from.leader.rank} ${from.leader.name} becomes a flight commander there. The name ${from.name} has been painted on the board in the mess, under the date.` });
+  side.memos.unshift({ turn: state.turn, from: 'Group HQ', kind: 'notice', subject: `${from.name} merged into ${into.name}`, body: `The last ${n === 0 ? 'men' : n === 1 ? 'crew and aircraft' : `${n} crews and aircraft`} of ${from.name} have carried their squadron badge across the field to ${into.name}. ${from.leader.rank} ${from.leader.name} becomes a flight commander there. You may make him commanding officer of ${into.name} instead of ${into.leader.rank} ${into.leader.name} this week (Squadrons). The name ${from.name} has been painted on the board in the mess, under the date.` });
+  // Either man could command the merged squadron.
+  into.candidate = from.leader;
+  into.candidateWeek = state.turn;
+  return ok;
+}
+
+/** Appoint the other flight commander after a change of command or a merge (the week it happens only). */
+export function appointLeader(state: GameState, side: SideState, sqId: string): ActionResult {
+  const sq = side.squadrons.find((q) => q.id === sqId);
+  if (!sq?.candidate || sq.candidateWeek !== state.turn) return fail('There is no choice of commanding officer to make for that squadron this week');
+  const was = sq.leader;
+  sq.leader = sq.candidate;
+  sq.leader.since = sq.leader.since ?? state.turn;
+  delete sq.candidate;
+  delete sq.candidateWeek;
+  sq.notables = [`Week ${state.turn}: ${sq.leader.rank} ${sq.leader.name} appointed to command; ${was.rank} ${was.name} a flight commander.`, ...sq.notables].slice(0, 5);
+  side.memos.unshift({ turn: state.turn, from: 'Group HQ', kind: 'notice', subject: `${sq.name}: ${sq.leader.rank} ${sq.leader.name} appointed`, body: `On your recommendation ${sq.leader.rank} ${sq.leader.name} takes command of ${sq.name}. ${was.rank} ${was.name} remains with the squadron as a flight commander.` });
+  return ok;
+}
+
+/** The medical officer grounds a shaken commanding officer for two weeks; his deputy leads meanwhile. */
+export function restLeader(state: GameState, side: SideState, sqId: string): ActionResult {
+  const sq = side.squadrons.find((q) => q.id === sqId);
+  if (!sq) return fail('No such squadron');
+  const l = sq.leader;
+  if (l.trait !== 'shaken') return fail(`${l.rank} ${l.name} is not a sick man, says the medical officer`);
+  if (l.resting) return fail(`${l.rank} ${l.name} is already on rest`);
+  if (l.restedOnce) return fail(`The medical officer has rested ${l.rank} ${l.name} once already and won't sign it again`);
+  l.resting = 2;
+  l.restedOnce = true;
+  // A CO taken off operations unsettles his squadron, and High Command notices.
+  sq.morale = Math.max(0, sq.morale - 0.05);
+  side.trust = Math.max(0, side.trust - 2);
+  sq.notables = [`Week ${state.turn}: ${l.rank} ${l.name} sent on two weeks' rest by the medical officer.`, ...sq.notables].slice(0, 5);
   return ok;
 }
 

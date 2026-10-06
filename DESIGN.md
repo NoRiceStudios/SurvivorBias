@@ -114,7 +114,12 @@ returning planes are covered in fuselage and wing hits *because* hits there are
 survivable.
 
 **Armor placement.** Each airframe has a weight budget. Armor painted onto a zone
-lowers the lethality of hits there but costs speed, range and payload.
+lowers the lethality of hits there but costs speed, range and payload. Zones
+rolled as deadly (14% or more) are made 30% deadlier still, and each plate cuts
+a hit's lethality to 45% (34% with light alloy) but blunts general wear only
+a little. In measurement (`scripts/armor.ts`), plating the truly deadly zones
+loses about 12 bombers per 100 sorties; plating the holes loses about 18, and
+no plate about 20.
 
 **Loadouts:** engine variant, guns, turret configuration, fuel tanks
 (self-sealing option), bomb load.
@@ -393,6 +398,18 @@ That reward for careful observation is a core skill of the game.
     times to press his attacks home; you agreed once.");
   - a word from his successor.
 - **Faces:** every leader has a unique pixel portrait, built from his name.
+- **Succession:** when a CO is lost, two flight commanders could take over. Both
+  have a visible character, and about half already have a name in the wing.
+  The senior one takes command, but the commander may appoint the other in the
+  week that follows. After a merge, the absorbed squadron's CO can be appointed
+  the same way.
+- **Medical rest:** the medical officer can take a "Shaken" CO off operations
+  for two weeks, once per man. His deputy leads meanwhile. It costs a little
+  squadron morale and 2 confidence. He comes back "Steady" 60% of the time;
+  otherwise he is still shaken.
+- **Exposure:** a CO keeps a damaged aircraft flying longer and presses only
+  one attack in defence, so COs are lost about 1.7 times per 10 weeks across
+  a four-squadron wing.
   It is shown on the squadron card and in the general's dispatch, in sepia
   with a mourning band when he is dead.
 - **Prisoners of war:** parachutes are counted on every loss. Two to four weeks
@@ -452,6 +469,19 @@ perceived picture of you, its own biased squadrons, and its own High Command.
 - **Imperfect:** because its picture is distorted, it can over-react, chase a
   phantom, or ignore a real weakness. Players can exploit this by being
   deliberately unpredictable.
+- **Strategist** *(implemented)*: the higher the difficulty, the more often it
+  plays the duel on purpose:
+  - **Counter-offensive:** when our squadrons are worn out (average fatigue
+    from 5/10, or from 3.5/10 while we keep flying close support), it throws
+    its bombers and up to three escort squadrons at our front.
+  - **Crippling campaign:** it picks the type of our works nearest the
+    front that is closest to the crippling line and strikes those sites week
+    after week.
+
+  The Y-Service names either plan when it reads the enemy correctly. An AI
+  keeps to the target it fixed a week ahead whenever it can still fly it.
+  The strategist plays on Green 15%, Seasoned 45% and Wald 90% of its
+  insight.
 
 ### 10.2 PvP
 

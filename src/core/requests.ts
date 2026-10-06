@@ -37,6 +37,8 @@ export function generateRequests(rng: Rng, state: GameState, side: SideState, d:
   for (const sq of side.squadrons) {
     // Recon pilots fly alone and unarmed; they have no doctrine or tactics to argue about.
     if (sq.kind === 'recon') continue;
+    // A CO on rest leaves the squadron's business to his deputy.
+    if (sq.leader.resting) continue;
     const recs = [...d.returned.filter((r) => r.squadronId === sq.id)];
     const lost = d.missing.filter((m) => m.squadronId === sq.id).length;
     const sent = recs.length + lost;

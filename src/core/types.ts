@@ -88,6 +88,10 @@ export interface Leader {
   said?: string;
   /** His last few debrief remarks, so he does not repeat himself every other week. */
   recent?: string[];
+  /** Weeks left on the medical officer's rest: his deputy leads the squadron meanwhile. */
+  resting?: number;
+  /** He has had his rest already: the medical officer won't sign it twice. */
+  restedOnce?: boolean;
 }
 
 export interface Squadron {
@@ -113,6 +117,9 @@ export interface Squadron {
   lastRemark?: string;
   /** Week each kind of request was last put to the commander (leaders don't nag every week). */
   asked?: Partial<Record<RequestKind, number>>;
+  /** After a change of command or a merge: the other flight commander the commander may appoint instead, this week only. */
+  candidate?: Leader;
+  candidateWeek?: number;
 }
 
 export interface Resources {
@@ -236,7 +243,8 @@ export interface SideState {
   /** Facility types given emergency repairs this week (one each per week). */
   repaired?: FacilityType[];
   /** The AI's chosen next operation, fixed a week ahead so enemy intelligence can get wind of it. */
-  intent?: { target: TargetId; siteId?: string };
+  /** An AI wing's next operation, fixed a week ahead. `push`: a counter-offensive with everything it has; `focus`: part of a campaign to cripple one type of works. */
+  intent?: { target: TargetId; siteId?: string; push?: boolean; focus?: boolean };
   /** Letters still in the post: Red Cross cards about prisoners, delivered on their week. */
   post?: { due: number; from: string; subject: string; body: string; returns?: { squadronId: string; leader: Leader }; /** An obituary is written when the letter goes out, so it names whoever leads the squadron then. */ obit?: { leader: Leader; squadronId: string; squadron: string; week: number; lastWords?: string }; serial?: string; fate?: 'prisoner' | 'returned' | 'killed' }[];
   /** Everyone posted missing in this war, and what became of them as far as we know. */

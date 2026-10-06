@@ -25,5 +25,7 @@ await p.evaluate(({ state, plan, screen, sqId }) => {
   else sb.go({ kind: 'hq', side: 0, tab: kind });
 }, { state: save.state, plan: save.plan, screen, sqId });
 await p.waitForTimeout(screen === 'radio' ? 9000 : 500);
+// SHOT_SCROLL=<css selector> scrolls that element into view first.
+if (process.env.SHOT_SCROLL) await p.evaluate((sel) => document.querySelector(sel)?.scrollIntoView({ block: 'center' }), process.env.SHOT_SCROLL);
 await p.screenshot({ path: out });
 await b.close();

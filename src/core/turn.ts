@@ -168,7 +168,7 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
     // The operation he was lost on counts too.
     if (leaderLost) sq.leader.ops = (sq.leader.ops ?? 0) + 1;
     // He planned and briefed this one even if he stayed behind with a squadron too small to lead.
-    if (!leaderLost) {
+    if (!leaderLost && !sq.leader.resting) {
       sq.leader.ops = (sq.leader.ops ?? 0) + 1;
       sq.leader.kills = (sq.leader.kills ?? 0) + kills;
       if (sq.leader.ops >= 5 && !sq.leader.trait) {
@@ -190,22 +190,58 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
       if (old.said) side.usedLines = [...(side.usedLines ?? []), old.said];
       // Never reuse a name already heard in this war, so a new CO is never mistaken for the man he replaces.
       side.usedNames = [...new Set([...(side.usedNames ?? []), old.name])];
-      sq.leader = makeLeader(rng, side.id, undefined, [...side.squadrons.map((q) => q.leader.name), ...side.usedNames]);
-      // A replacement is never senior to the man he replaces: usually a step junior, or the same rank.
-      const ranks = RANKS[side.id];
-      const oldRank = Math.max(0, ranks.indexOf(old.rank));
-      sq.leader.rank = ranks[Math.max(0, oldRank - (rng.chance(0.6) ? 1 : 0))];
+      // Two flight commanders could take over. The senior takes command; the commander may appoint the other this week.
+      const [senior, other] = flightCommanders(rng, state, side, sq, old);
+      sq.leader = senior;
+      sq.candidate = other;
+      sq.candidateWeek = state.turn + 1;
       const lostLead = mine.find((r) => r.lead && r.fate === 'lost');
-      sq.leader.since = state.turn + 1;
-      sq.leader.ops = 0;
       const line = `${old.rank} ${old.name}, commanding ${sq.name}, is missing${lostLead ? ` with ${lostLead.serial}` : ''}. ${sq.leader.rank} ${sq.leader.name} takes command.`;
       news.push(line);
       if (lostLead) leaderFate(rng, state, side, sq, lostLead, old);
       sq.notables.unshift(`Week ${state.turn}: ${old.rank} ${old.name} missing; ${sq.leader.rank} ${sq.leader.name} in command.`);
-      memo(side, state.turn + 1, 'notice', `${sq.name}: change of command`, `${line} The squadron's first impression of the new commanding officer: "${ARCHETYPE_INFO[sq.leader.archetype].label}". ${ARCHETYPE_INFO[sq.leader.archetype].blurb}`, 'Group HQ');
+      memo(side, state.turn + 1, 'notice', `${sq.name}: change of command`, `${line} ${describeFlightCommander(sq.leader, 'He is the senior flight commander')} The other flight commander, ${describeFlightCommander(other, `${other.rank} ${other.name}`)} You may appoint him instead this week (Squadrons).`, 'Group HQ');
     }
     sq.notables = [...new Set(sq.notables)].slice(0, 5);
   }
+}
+
+/**
+ * The two flight commanders who could take over a squadron, senior first. They
+ * have flown with it for a while, so some already have a name in the wing.
+ * A replacement is never senior to the man he replaces.
+ */
+function flightCommanders(rng: Rng, state: GameState, side: SideState, sq: Squadron, old: Leader): [Leader, Leader] {
+  const taken = [...side.squadrons.map((q) => q.leader.name), ...(side.usedNames ?? [])];
+  const a = makeLeader(rng, side.id, undefined, taken);
+  const b = makeLeader(rng, side.id, undefined, [...taken, a.name]);
+  const ranks = RANKS[side.id];
+  const top = Math.max(0, ranks.indexOf(old.rank));
+  a.rank = ranks[top];
+  b.rank = ranks[Math.max(0, top - 1)];
+  for (const c of [a, b]) {
+    c.since = state.turn + 1;
+    c.ops = 0;
+    if (rng.chance(0.55)) {
+      const w: Record<Trait, number> = {
+        ace: sq.kind === 'fighter' ? 0.5 : 0,
+        lucky: 1,
+        steady: 1.4 + (c.archetype === 'timid' ? 0.4 : 0),
+        sharpEyed: c.archetype === 'byTheBook' ? 2 : 0.7,
+        shaken: sq.trauma > 0.3 ? 0.8 : 0.2,
+      };
+      c.trait = rng.weighted(w) as Trait;
+      remember(c, state.turn, `was known as "${TRAIT_INFO[c.trait].label}" as a flight commander`);
+    }
+  }
+  // Their names are spoken for now, whichever of them commands.
+  side.usedNames = [...new Set([...(side.usedNames ?? []), a.name, b.name])];
+  return [a, b];
+}
+
+/** One sentence on a flight commander: his character and, if he has one, his name in the wing. */
+export function describeFlightCommander(l: Leader, who: string): string {
+  return `${who}: "${ARCHETYPE_INFO[l.archetype].label}" (${ARCHETYPE_INFO[l.archetype].blurb.replace(/\.$/, '')})${l.trait ? `, known in the wing as "${TRAIT_INFO[l.trait].label}"` : ''}.`;
 }
 
 /** The reputation a leader earns, coloured by what his squadron went through. */
@@ -317,7 +353,7 @@ function intelligenceWarnings(state: GameState, raids: [RaidResult | null, RaidR
   const names = theaterDef(state).sectors;
   for (const side of state.sides) {
     const enemy = state.sides[(1 - side.id) as SideId];
-    let truth: { target: TargetId; siteId?: string } | null;
+    let truth: SideState['intent'] | null;
     if (enemy.isAI) truth = enemy.intent = aiIntent(state, enemy.id);
     else {
       const last = raids[enemy.id];
@@ -336,11 +372,13 @@ function intelligenceWarnings(state: GameState, raids: [RaidResult | null, RaidR
     if (!guess || guess.target === 'sweep') text = `${prefix}: enemy wireless traffic is quiet. No major bomber operation is expected.`;
     else if (guess.target === 'support') {
       sector = frontSector(t, enemy.id);
-      text = `${prefix}: enemy bombers appear to be massing against our forward positions at ${names[sector]}.`;
+      text = guess === truth && truth?.push
+        ? `${prefix}: heavy traffic from every enemy squadron. They are preparing a counter-offensive against ${names[sector]}, with all the fighters they can spare.`
+        : `${prefix}: enemy bombers appear to be massing against our forward positions at ${names[sector]}.`;
     } else {
       const site = t.sites.find((x) => x.id === guess!.siteId);
       sector = site?.sector;
-      text = `${prefix}: signals traffic points to a raid on our ${site?.name ?? 'works'}${sector !== undefined ? ` (${names[sector]})` : ''}.`;
+      text = `${prefix}: signals traffic points to a raid on our ${site?.name ?? 'works'}${sector !== undefined ? ` (${names[sector]})` : ''}.${guess === truth && truth?.focus && site ? ` They seem set on wrecking our ${site.type === 'industry' ? 'aircraft works' : site.type === 'airfield' ? 'airfields' : 'fuel depots'} one by one.` : ''}`;
     }
     const rec = side.perceived.warningRecord ?? [];
     const record = rec.length ? ` (Their record: right ${rec.filter(Boolean).length} of the last ${rec.length}.)` : '';
@@ -818,6 +856,11 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     .map((sid) => state.sides[id].squadrons.find((q) => q.id === sid))
     .filter((q): q is NonNullable<typeof q> => !!q && flyable(q).length > 0));
   const mods = theaterMods(state);
+  // A choice of commanding officer not taken in its week lapses: the senior man keeps command.
+  for (const sd of state.sides) for (const q of sd.squadrons) if (q.candidate && (q.candidateWeek ?? 0) <= state.turn) {
+    delete q.candidate;
+    delete q.candidateWeek;
+  }
 
   // Pay for stores.
   for (const id of [0, 1] as SideId[]) {
@@ -922,6 +965,25 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     if (n > 0) lossNews[id].push(`Cratered runways kept ${n === 1 ? 'one of our aircraft' : `${n} of our aircraft`} on the ground (airfields at ${state.sides[id].facilities.airfield}%).`);
   }
   for (const id of [0, 1] as SideId[]) applyLosses(rng, state, state.sides[id], allRecs, lossNews[id]);
+  // Commanding officers on the medical officer's rest: two weeks, then back, usually steadier.
+  for (const id of [0, 1] as SideId[]) {
+    for (const q of state.sides[id].squadrons) {
+      const l = q.leader;
+      if (!l.resting) continue;
+      l.resting--;
+      if (l.resting > 0) continue;
+      delete l.resting;
+      const name = `${l.rank} ${l.name}`;
+      if (rng.chance(0.6)) {
+        l.trait = 'steady';
+        remember(l, state.turn, 'came back from rest a steadier man');
+        lossNews[id].push(`${name} is back with ${q.name} after his rest. The squadron says he is his old self again, and steadier: "${TRAIT_INFO.steady.label}".`);
+      } else {
+        remember(l, state.turn, 'came back from rest, still shaken');
+        lossNews[id].push(`${name} is back with ${q.name} after his rest. The medical officer is not satisfied: he is still a shaken man.`);
+      }
+    }
+  }
   // Letters arriving this week: Red Cross news of men who were posted missing.
   for (const id of [0, 1] as SideId[]) {
     const sd = state.sides[id];

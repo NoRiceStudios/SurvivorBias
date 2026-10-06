@@ -90,3 +90,10 @@ The missing now come back, and the game remembers that they were mourned: a wake
   - "Defending the airfields" replaces "in reserve".
   - The plan is shown once per chain.
   - Intel lists the works that count, with the Intelligence Section's cross-check.
+
+## Designer decisions after this round
+
+- **Succession: implemented.** After a CO is lost, the player can choose between two flight commanders. Each has a visible character, and some already have a name in the wing. After a merge, the absorbed squadron's CO can also be appointed.
+- **Medical rest: implemented.** The medical officer can rest a "Shaken" CO for two weeks, once per man. It costs some morale and confidence. He usually comes back "Steady".
+- **Strategist enemy: implemented, scaled by difficulty.** The enemy counter-attacks a worn-out wing and works methodically at crippling one type of our works near the front. The Y-Service names either plan.
+- **Armour: deadly zones made sharper.** In measurement, plating the right zones now loses about a third fewer bombers than plating the holes.

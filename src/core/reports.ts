@@ -155,7 +155,7 @@ export function squadronReport(
   const mine = (own.filter(fresh).length >= 1 ? own : all).filter(fresh);
   const pool = mine.length ? mine : all.filter((x) => x !== sq.lastRemark && !retired.some((r) => x.includes(`"${r}"`)));
   const ledHimself = recs.some((r) => r.lead) || sq.kind === 'recon';
-  const said = ledHimself ? rng.pick(pool.length ? pool : all) : `${L} stayed behind to rebuild the squadron and debriefed the crews himself on their return.`;
+  const said = ledHimself ? rng.pick(pool.length ? pool : all) : sq.leader.resting ? `${L} is on the medical officer's rest. His deputy led the squadron and wrote this report.` : `${L} stayed behind to rebuild the squadron and debriefed the crews himself on their return.`;
   sq.lastRemark = said;
   if (ledHimself) sq.leader.recent = [...recent, said].slice(-3);
   const quote = ledHimself ? said.match(/"(.+)"/) : null;

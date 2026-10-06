@@ -23,7 +23,7 @@ import {
 import { CRIPPLED, facilityEffects } from '../core/effects';
 import { flyable } from '../core/sim';
 import { bomberRange, countedSites, currentStage, facilityCondition, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS, WEATHER_LABEL } from '../core/theaters';
-import { crewShortfall, STORES_CAP } from '../core/turn';
+import { crewShortfall, describeFlightCommander, STORES_CAP } from '../core/turn';
 import type { AircraftKind, FighterApproach, Hit, SideId, SideState, Squadron, TargetId, TrainingFocus } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
@@ -208,6 +208,10 @@ export function adjutantNotes(app: App, side: SideState): string[] {
     if (have > 0 && have <= 6 && onOrder === 0) notes.push(`Only ${plural(have, 'aircraft', 'aircraft')} of type ${AIRCRAFT[kind].name[side.id]} left and none on order. Order more at the Factory: crews follow the aircraft (or ask the Ministry for crews, Training).`);
     else if (have > 0 && lost3 >= 4 && onOrder * 2 < lost3) notes.push(`We have lost ${lost3} ${AIRCRAFT[kind].name[side.id]} in three weeks and have ${onOrder === 0 ? 'none' : onOrder} on order. At this rate the type will be gone in ${Math.max(1, Math.round((have / lost3) * 3))} weeks.`);
   }
+  const choosing = side.squadrons.filter((q) => q.candidate && q.candidateWeek === st.turn);
+  if (choosing.length) notes.push(`${choosing.map((q) => q.name).join(', ')} ${choosing.length > 1 ? 'have' : 'has'} a new commanding officer. You may appoint the other flight commander instead, this week only (Squadrons).`);
+  const shaken = side.squadrons.filter((q) => q.leader.trait === 'shaken' && !q.leader.restedOnce && !q.leader.resting && q.airframes.length > 0);
+  if (shaken.length) notes.push(`The medical officer is worried about ${shaken.map((q) => `${q.leader.rank} ${q.leader.name} (${q.name})`).join(', ')}. He could rest ${shaken.length > 1 ? 'them' : 'him'} for two weeks (Squadrons).`);
   const gutted = side.squadrons.filter((q) => q.airframes.length <= 2 && side.squadrons.some((o) => o !== q && o.kind === q.kind));
   if (gutted.length) notes.push(`${gutted.map((q) => q.name).join(', ')} ${gutted.length > 1 ? 'are' : 'is'} down to one or two aircraft and could be merged into another squadron of the same type (Squadrons).`);
   const thin = (plan.raid?.squadronIds ?? []).map((id) => side.squadrons.find((q) => q.id === id)).filter((q): q is Squadron => !!q && flyable(q).length > 0 && flyable(q).length <= 2);
@@ -426,6 +430,20 @@ function squadrons(app: App, side: SideState): HTMLElement {
         h('div', { class: 'doc-row' }, h('span', null, 'Break off at'), slider(d.breakOff, set('breakOff'), '10% lost', 'Never'), h('span', { class: 'small' }, pct(d.breakOff))),
       ),
       sq.notables.length ? h('ul', { class: 'notables' }, sq.notables.slice(0, 3).map((n) => h('li', null, n))) : null,
+      // After a change of command or a merge: the other flight commander could be appointed instead, this week only.
+      sq.candidate && sq.candidateWeek === app.state!.turn
+        ? h('div', { class: 'merge-row appoint-row' },
+          h('div', { class: 'cand-photo' }, leaderPortrait(sq.candidate, side.id, 1)),
+          h('span', { class: 'small' }, describeFlightCommander(sq.candidate, `The other flight commander, ${sq.candidate.rank} ${sq.candidate.name}`), ' This week only: ',
+            h('button', { class: 'btn small choice', onclick: () => app.cmd(side.id, { k: 'appoint', sq: sq.id }) }, 'Appoint him to command')))
+        : null,
+      // The medical officer can rest a shaken CO once.
+      sq.leader.resting
+        ? h('div', { class: 'merge-row' }, h('span', { class: 'small' }, `${sq.leader.rank} ${sq.leader.name} is on the medical officer's rest: ${plural(sq.leader.resting, 'week', 'weeks')} to go. His deputy leads.`))
+        : sq.leader.trait === 'shaken' && !sq.leader.restedOnce
+          ? h('div', { class: 'merge-row' }, h('span', { class: 'small' }, 'The medical officer could take him off operations for two weeks. He usually comes back steadier; the squadron and High Command will notice (morale and confidence fall a little). '),
+            h('button', { class: 'btn small choice', onclick: () => app.cmd(side.id, { k: 'restCO', sq: sq.id }) }, 'Two weeks\' rest'))
+          : null,
       // A gutted squadron can be folded into another of the same type.
       sq.airframes.length <= 2 && side.squadrons.some((q) => q !== sq && q.kind === sq.kind)
         ? h('div', { class: 'merge-row' }, h('span', { class: 'small' }, `${sq.name} is down to ${plural(sq.airframes.length, 'aircraft', 'aircraft')}. Merge into: `),

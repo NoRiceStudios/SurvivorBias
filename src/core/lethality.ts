@@ -60,6 +60,8 @@ export function rollLethality(rng: Rng): LethalityTable {
       const z = rng.pick<ZoneId>(['cockpit', 'engines', 'fuel']);
       t[z] = rng.range(0.07, 0.13);
     }
+    // The deadly zones are very deadly: a commander who leaves them bare pays for it.
+    for (const z of ZONES) if (t[z] >= 0.14) t[z] = Math.min(0.5, t[z] * 1.3);
     for (const z of ZONES) t[z] = Math.round(t[z] * 1000) / 1000;
     table[kind] = t;
   }

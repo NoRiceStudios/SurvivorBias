@@ -10,6 +10,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  appointLeader,
+  restLeader,
+  describeFlightCommander,
   countedSites,
   AIRCRAFT,
   APPROACH_LABEL,
@@ -178,6 +181,11 @@ function adjutant(): string[] {
     if (have > 0 && have <= 6 && onOrder === 0) notes.push(`Only ${have} ${AIRCRAFT[kind].name[0]} left and none on order: order more (build ${kind}); crews follow aircraft, or ask the Ministry (crews N).`);
     else if (have > 0 && lost3 >= 4 && onOrder * 2 < lost3) notes.push(`We have lost ${lost3} ${AIRCRAFT[kind].name[0]} in three weeks and have ${onOrder} on order. At this rate the type will be gone in ${Math.max(1, Math.round((have / lost3) * 3))} weeks (build ${kind}).`);
   }
+  for (const q of side.squadrons) {
+    if (q.candidate && q.candidateWeek === state!.turn) notes.push(`${sqCode(q)} ${q.name}: ${q.leader.rank} ${q.leader.name} has taken command. ${describeFlightCommander(q.candidate, `The other flight commander, ${q.candidate.rank} ${q.candidate.name}`)} Appoint him instead this week: appoint ${sqCode(q)}.`);
+    if (q.leader.trait === 'shaken' && !q.leader.restedOnce && !q.leader.resting && q.airframes.length) notes.push(`The medical officer is worried about ${q.leader.rank} ${q.leader.name} (${sqCode(q)}): rest-co ${sqCode(q)} takes him off operations for two weeks.`);
+    if (q.leader.resting) notes.push(`${q.leader.rank} ${q.leader.name} (${sqCode(q)}) is on rest for ${q.leader.resting} more week${q.leader.resting > 1 ? 's' : ''}; his deputy leads.`);
+  }
   const gutted = me().squadrons.filter((q) => q.airframes.length <= 2 && me().squadrons.some((o) => o !== q && o.kind === q.kind));
   for (const q of gutted) notes.push(`${sqCode(q)} ${q.name} is down to ${q.airframes.length} aircraft: merge it into another of its type (merge ${sqCode(q)} S#).`);
   const tired = side.squadrons.filter((q) => q.fatigue >= 0.7 && q.airframes.length > 0);
@@ -195,7 +203,7 @@ function adjutant(): string[] {
   if (side.factory.queue.length === 0 && side.resources.supplies >= 60) notes.push('Nothing is on order at the aircraft works (build ...).');
   if (side.trust < 30) notes.push(`High Command's confidence is ${side.trust}/100.`);
   if (state!.forecast[0] === 'storm') notes.push('Storms are forecast: bombing will be inaccurate, interceptions fewer, results hard to observe.');
-  return notes.slice(0, 6);
+  return notes.slice(0, 8);
 }
 
 function map() {
@@ -461,6 +469,8 @@ function run(cmd: string) {
       'Requests: approve R# · decline R# (squadron leaders\' requests, listed in the brief)',
       'crews N — ask the Ministry for N trained aircrew for aircraft without crews (price rises as confidence falls)',
       'merge S# S# — fold a squadron down to one or two aircraft into another of the same type',
+      'appoint S# — after a change of command or a merge, make the other flight commander CO (that week only)',
+      'rest-co S# — the medical officer rests a shaken CO for two weeks (once per man; costs a little morale and confidence)',
       `convoy — buy a stores convoy (${CONVOY.supplies} supplies for ${CONVOY.stores} stores, once a week)`,
       'repair airfield|fuel|industry — emergency repairs to our own works (40 supplies, once a week per type)',
       'fit — trim this week\'s plan to the stores we hold (drops the feint, then recon, then bomber squadrons each with a matching escort, then patrols)',
@@ -568,6 +578,18 @@ function run(cmd: string) {
       const into = findSq(a[1]);
       check(mergeSquadrons(state, side, from.id, into.id, plan));
       say(`${from.name} merged into ${into.name}. Squadron codes have changed: see 'squadrons'.`);
+      return;
+    }
+    case 'appoint': {
+      const sq = findSq(a[0]);
+      check(appointLeader(state, side, sq.id));
+      say(`${sq.leader.rank} ${sq.leader.name} takes command of ${sq.name}.`);
+      return;
+    }
+    case 'rest-co': {
+      const sq = findSq(a[0]);
+      check(restLeader(state, side, sq.id));
+      say(`${sq.leader.rank} ${sq.leader.name} goes on two weeks' rest; his deputy leads ${sq.name}. Confidence ${side.trust}.`);
       return;
     }
     case 'convoy': check(buyConvoy(state, side)); say(`Convoy bought: stores now ${side.resources.stores}.`); return;

@@ -149,8 +149,8 @@ export const AIRCRAFT: Record<AircraftKind, AircraftSpec> = {
 
 export const MAX_ARMOR_PER_ZONE = 3;
 /** Each armor point on a zone multiplies lethality by this. */
-export const ARMOR_FACTOR = 0.55;
-export const ARMOR_FACTOR_ALLOY = 0.42;
+export const ARMOR_FACTOR = 0.45;
+export const ARMOR_FACTOR_ALLOY = 0.34;
 
 /** Numeric effects a development can have. Values of the same key add up. */
 export type TechKey =

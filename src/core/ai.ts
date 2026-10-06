@@ -2,7 +2,8 @@ import { buyConvoy, CONVOY, requestCrews, emergencyRepair, emptyPlan, queueAircr
 import { AIRCRAFT, APPROACH_ZONES, MAX_ARMOR_PER_ZONE, RESEARCH, ZONE_AREA } from './data';
 import { Rng } from './rng';
 import { flyable } from './sim';
-import { bomberRange, depthFor, escortRange, frontSector, reachableSites, sectorAtDepth, theaterMods } from './theaters';
+import { bomberRange, countedSites, depthFor, escortRange, facilityCondition, frontSector, reachableSites, sectorAtDepth, theaterMods } from './theaters';
+import { CRIPPLED } from './effects';
 import { act } from './turn';
 import type { GameState, SideId, SideState, Squadron, TargetId, TurnPlan, ZoneId } from './types';
 import { ZONES } from './types';
@@ -56,7 +57,7 @@ function ready(sq: Squadron): number {
 }
 
 /** Next week's target for an AI wing: close support or a strike on a site, weighted by value. */
-export function aiIntent(state: GameState, id: SideId): { target: TargetId; siteId?: string } {
+export function aiIntent(state: GameState, id: SideId): NonNullable<SideState['intent']> {
   const side = state.sides[id];
   const t = state.theater;
   const rng = new Rng({ s: (state.rng.s ^ (0x5bd1e995 * (id + 1)) ^ (state.turn * 7907)) >>> 0 });
@@ -64,6 +65,29 @@ export function aiIntent(state: GameState, id: SideId): { target: TargetId; site
   const minRange = Math.min(...bombers.map((q) => bomberRange(q.kind)), 3);
   const targets = reachableSites(state, id, bombers.some((q) => q.kind === 'medium') ? 'medium' : 'heavy').filter((x) => depthFor(t.held0, id, x.sector) <= minRange);
   const pressured = side.perceived.front < -12 || theaterMods(state).support > 1;
+  // A strategist (more so the higher the difficulty) answers an enemy pushing with worn-out squadrons
+  // with a counter-offensive of its own over the front.
+  const enemy = state.sides[(1 - id) as SideId];
+  const flying = enemy.squadrons.filter((q) => q.kind !== 'recon' && q.airframes.length > 0);
+  const worn = flying.length ? flying.reduce((a, q) => a + q.fatigue, 0) / flying.length : 0;
+  const strategist = side.isAI ? side.insight : 0;
+  if (bombers.length && (worn >= 0.5 || (side.observed.support > 1.2 && worn >= 0.35)) && rng.chance(strategist * 0.9)) return { target: 'support', push: true };
+  // ...and works methodically at crippling one type of the enemy's works near the front, the one closest to breaking.
+  if (targets.length && rng.chance(strategist * 0.75)) {
+    const types = (['airfield', 'fuel', 'industry'] as const).map((type) => {
+      const counted = countedSites(t, (1 - id) as SideId, type).filter((x) => targets.includes(x));
+      const believed = (x: { id: string }) => side.perceived.sites[x.id] ?? 100;
+      const avg = facilityCondition(t, (1 - id) as SideId, type, believed);
+      return { type, counted, avg, believed };
+    }).filter((x) => x.counted.length && x.avg > 20)
+      // Closest above the crippling line first; already crippled works are kept down only if nothing else is in reach.
+      .sort((a, b) => (a.avg >= CRIPPLED ? a.avg - CRIPPLED : 100 + a.avg) - (b.avg >= CRIPPLED ? b.avg - CRIPPLED : 100 + b.avg));
+    const pick = types[0];
+    if (pick) {
+      const site = [...pick.counted].sort((a, b) => pick.believed(b) - pick.believed(a))[0];
+      return { target: site.type, siteId: site.id, focus: true };
+    }
+  }
   if (rng.chance(pressured ? 0.55 : 0.3) || targets.length === 0) return { target: 'support' };
   const fighters = side.squadrons.filter((s) => s.kind === 'fighter').reduce((x, s) => x + ready(s), 0);
   const reach = escortRange(side);
@@ -167,12 +191,14 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   const escorts = spareFighters.filter((f) => !plan.defense.includes(f.id));
 
   const minRange = Math.min(...readyBombers.map((q) => bomberRange(q.kind)), 3);
-  if (alert && escorts.length && rng.chance(0.35)) {
+  // A target fixed a week ago is kept to (so the other side's intelligence may have got wind of it).
+  const fixed = readyBombers.length > 0 ? validIntent(state, id, side.intent, minRange) : undefined;
+  if (!fixed && alert && escorts.length && rng.chance(0.35)) {
     plan.raid = { target: 'sweep', squadronIds: escorts.map((q) => q.id) };
-  } else if (readyBombers.length > 0 && rng.chance(0.85)) {
-    // The target was chosen a week ago (so the other side's intelligence may have got wind of it).
-    const intent = validIntent(state, id, side.intent, minRange) ?? aiIntent(state, id);
-    plan.raid = { target: intent.target, ...(intent.siteId ? { siteId: intent.siteId } : {}), squadronIds: [...readyBombers.map((q) => q.id), ...escorts.slice(0, 1).map((q) => q.id)] };
+  } else if (readyBombers.length > 0 && (fixed || rng.chance(0.85))) {
+    const intent = fixed ?? aiIntent(state, id);
+    // A counter-offensive goes in with every escort it can spare.
+    plan.raid = { target: intent.target, ...(intent.siteId ? { siteId: intent.siteId } : {}), squadronIds: [...readyBombers.map((q) => q.id), ...escorts.slice(0, intent.push ? 3 : 1).map((q) => q.id)] };
   } else if (escorts.length > 0) {
     plan.raid = { target: 'sweep', squadronIds: [escorts[0].id] };
   }

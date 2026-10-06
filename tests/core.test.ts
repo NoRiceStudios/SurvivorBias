@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   aiPlan,
+  aiIntent,
   applyCommands,
   redactFor,
   type Command,
@@ -966,5 +967,53 @@ describe('designer decisions after round 2', () => {
       expect(view.sides[0].roll ?? []).toEqual([]);
     }
     expect(fulfilled).toBeGreaterThan(0);
+  });
+  it('a lost CO leaves a choice of two flight commanders; a shaken CO can be rested', () => {
+    let chose = 0;
+    for (let g = 0; g < 10 && !chose; g++) {
+      const s = startCampaign({ seed: `appoint${g}` });
+      for (let w = 0; w < 12 && !s.outcome && !chose; w++) {
+        endTurnSingle(s, playerPlan(s));
+        const sq = s.sides[0].squadrons.find((q) => q.candidate);
+        if (!sq) continue;
+        const other = sq.candidate!;
+        expect(applyCommand(s, 0, { k: 'appoint', sq: sq.id }).ok).toBe(true);
+        expect(sq.leader).toBe(other);
+        expect(sq.candidate).toBeUndefined();
+        // Only once.
+        expect(applyCommand(s, 0, { k: 'appoint', sq: sq.id }).ok).toBe(false);
+        chose++;
+      }
+    }
+    expect(chose).toBe(1);
+    const s = startCampaign({ seed: 'rest' });
+    const sq = s.sides[0].squadrons[0];
+    expect(applyCommand(s, 0, { k: 'restCO', sq: sq.id }).ok).toBe(false);
+    sq.leader.trait = 'shaken';
+    const trust = s.sides[0].trust;
+    expect(applyCommand(s, 0, { k: 'restCO', sq: sq.id }).ok).toBe(true);
+    expect(s.sides[0].trust).toBeLessThan(trust);
+    for (let w = 0; w < 2; w++) {
+      endTurnSingle(s, playerPlan(s));
+      // While he rests his deputy flies callsign 1: the CO is never lost.
+      expect(s.lastDebriefs[0]?.returned.some((r) => r.lead && r.squadronId === sq.id) ?? false).toBe(false);
+    }
+    expect(sq.leader.resting).toBeUndefined();
+    expect(['steady', 'shaken']).toContain(sq.leader.trait);
+    expect(applyCommand(s, 0, { k: 'restCO', sq: sq.id }).ok).toBe(false);
+  });
+
+  it('a strategist enemy counter-attacks a worn-out wing and works at crippling one type of works', () => {
+    let push = 0, focus = 0;
+    for (let g = 0; g < 20; g++) {
+      const s = startCampaign({ seed: `strat${g}`, aiInsight: 0.9 });
+      for (const q of s.sides[0].squadrons) q.fatigue = 0.8;
+      const i = aiIntent(s, 1);
+      if (i.push) push++;
+      for (const q of s.sides[0].squadrons) q.fatigue = 0;
+      if (aiIntent(s, 1).focus) focus++;
+    }
+    expect(push).toBeGreaterThan(8);
+    expect(focus).toBeGreaterThan(5);
   });
 });

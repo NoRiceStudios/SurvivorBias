@@ -5,8 +5,10 @@
  * host never has to trust a client's copy of the game.
  */
 import {
+  appointLeader,
   buyConvoy,
   mergeSquadrons,
+  restLeader,
   requestCrews,
   cancelQueued,
   emergencyRepair,
@@ -51,7 +53,9 @@ export type Command =
   | { k: 'repair'; what: FacilityType }
   | { k: 'convoy' }
   | { k: 'crews'; n: number }
-  | { k: 'merge'; from: string; into: string };
+  | { k: 'merge'; from: string; into: string }
+  | { k: 'appoint'; sq: string }
+  | { k: 'restCO'; sq: string };
 
 export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?: TurnPlan): ActionResult {
   const side = state.sides[sideId];
@@ -73,6 +77,8 @@ export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?
     case 'convoy': return buyConvoy(state, side);
     case 'crews': return requestCrews(side, c.n);
     case 'merge': return mergeSquadrons(state, side, c.from, c.into, plan);
+    case 'appoint': return appointLeader(state, side, c.sq);
+    case 'restCO': return restLeader(state, side, c.sq);
   }
 }
 

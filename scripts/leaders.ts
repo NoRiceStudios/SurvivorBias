@@ -20,7 +20,8 @@ for (let g = 0; g < games; g++) {
     sqWeeks += s.sides[0].squadrons.filter((q) => q.kind !== 'recon').length;
     for (const [id, name] of before) {
       const q = s.sides[0].squadrons.find((x) => x.id === id);
-      if (q && q.leader.name !== name && !(s.sides[0].usedNames ?? []).includes(q.leader.name)) changes++;
+      // A change of command that isn't a missing CO coming back.
+      if (q && q.leader.name !== name && !(q.leader.log ?? []).some((e) => e.text.startsWith('came back through the lines') && e.week === s.turn - 1)) changes++;
     }
     for (const q of s.sides[0].squadrons) if (q.leader.trait && !seen.has(q.leader.name)) { seen.add(q.leader.name); traits[q.leader.trait] = (traits[q.leader.trait] ?? 0) + 1; }
   }

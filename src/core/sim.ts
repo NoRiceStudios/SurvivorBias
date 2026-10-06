@@ -121,7 +121,7 @@ export function applyHit(rng: Rng, f: Flier, approach: Approach): boolean {
   f.rec.hits.push(hit);
   const armor = f.sq.armor[zone];
   // An old hand flies the best-kept aircraft and keeps a damaged one in the air longer.
-  f.condition -= ZONE_DAMAGE[zone] * Math.pow(0.8, armor) * (f.af.kind === 'fighter' ? 1.4 : 1) * (f.rec.lead ? 0.65 : 1);
+  f.condition -= ZONE_DAMAGE[zone] * Math.pow(0.9, armor) * (f.af.kind === 'fighter' ? 1.4 : 1) * (f.rec.lead ? 0.65 : 1);
   const roll = rng.next();
   if (roll < hitLethality(zone, f) || f.condition <= 0) {
     hit.lethal = true;
@@ -204,7 +204,7 @@ function makeFlier(sq: Squadron, af: Airframe, side: SideState, role: PlaneRecor
       enemiesSeen: 0,
       // The squadron leader flies the first aircraft and answers to callsign 1.
       // The CO leads from callsign 1, but stays to rebuild a squadron that can put up only one or two aircraft.
-      lead: index === 0 && role !== 'recon' && flyable(sq).length >= 3 ? true : undefined,
+      lead: index === 0 && role !== 'recon' && flyable(sq).length >= 3 && !sq.leader.resting ? true : undefined,
     },
     af,
     sq,
