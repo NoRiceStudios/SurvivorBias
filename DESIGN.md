@@ -140,6 +140,13 @@ The crew is modelled at squadron level:
   discipline**. That last option is unusual: it lowers future bias, but at the
   cost of combat skill.
 - **Quality vs speed:** you choose between rushed graduates now and better ones later.
+- **Crews follow aircraft:** airmen are posted, and pupils taken in, only for
+  aircraft the wing has or has on order. Crewless squadrons (such as a new recon
+  flight) get graduates first.
+- **The school on screen** is a pixel-art airfield that grows with each level:
+  more huts, hangars, a classroom block, a tower and a headquarters. The
+  syllabus shows (gunnery butts, a blackboard, a looping trainer), and pupils
+  parade in ranks.
 
 ### 6.4 Factory
 
@@ -147,9 +154,24 @@ The crew is modelled at squadron level:
 - **Quality control:** low QC is cheaper and faster but adds hidden defects.
   Those turn up as unexplained losses, which crews blame on the enemy.
 - **Refit capacity:** how many airframes can have armor or loadouts changed each turn.
-- **R&D tree:** new engines, self-sealing tanks, armor alloys, new airframes,
-  production techniques, gun cameras, and better radios (which make the radio log
-  more complete).
+- **R&D tree** *(implemented, 35 developments)*: six branches of mostly
+  small, tiered steps. Their numeric effects add up (`core/tech.ts`).
+  - **Gunnery:** manuals → gyro sight → cannon; power turrets → twin tail
+    turret; gun cameras.
+  - **Engines & airframes:** tuning → uprated engines; drop tanks; four-engine
+    airframe → Mk II.
+  - **Protection:** self-sealing tanks → face-hardened plate → light alloy
+    plate; extinguishers; escape hatches → air-sea rescue (lost crews come
+    home).
+  - **Bombing:** bombsight Mk II → stabilised sight; target markers (less
+    weather penalty); heavy-case bombs.
+  - **Signals & intelligence:** VHF radios; radar → radar chain; photo recon →
+    long-focus cameras; intelligence section.
+  - **Industry & logistics:** jigs → moving line → shadow factories; repair
+    gangs → field workshops; fuel economy → pooled stores; synthetic trainers.
+- **The works on screen** grow with the factory level (sheds, chimneys,
+  assembly hall, crane, rail siding). They show the build queue on the line,
+  the QC policy (sparks or inspectors) and bomb damage (craters, fires).
 
 ### 6.5 Economy
 
@@ -231,6 +253,19 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
   Kill quotas follow the median of the wing's recent returns, so one inflated
   week doesn't set an impossible target. HQ only calls enemy fighter strength
   "broken" after a run of big claims.
+- **The strategic duel.**
+  - **Intentions:** the AI fixes its next target a week ahead, and the
+    Y-Service warns of it. The warning is right 55–90% of the time, depending
+    on radar, the radar chain and the intelligence section. Against a human
+    enemy the analysts guess from habit. The warning shows on the briefing and
+    on Operations, so patrols have a job.
+  - **Emergency repairs:** 40 supplies patch every site of one type we hold by
+    20%, once a week per type.
+  - **Tipping points:** below 50% a type of works is CRIPPLED. Crippled
+    airfields ground more of each operation and halve fighter cover; crippled
+    depots and works lose a further 30%.
+- **Front warnings:** the Army warns a week ahead when either side's line is
+  about to give way.
 - **No capture without air cover.** A sector cannot fall in a week in which the
   side that would take it flew no operation, feint or defensive patrol. The
   pressure waits just short of the threshold.
@@ -306,6 +341,25 @@ That reward for careful observation is a core skill of the game.
 - Command Trust rises with *reported* success, so **inflating your own reports**
   upward is a real temptation. Getting caught (contradicted by recon, or
   exposed by a failed offensive) wrecks trust.
+
+## 8.6 Squadron leaders as characters *(implemented)*
+
+- **Reputation:** after five operations in command a leader earns a
+  reputation, coloured by what his squadron went through:
+  - **Ace:** his squadron shoots 10% better.
+  - **Lucky:** rarely lost, and usually gets out when he is.
+  - **Steady:** losses shake his squadron's morale less.
+  - **Sharp-eyed:** his reports exaggerate half as much.
+  - **Shaken:** his squadron tires faster and his reports wander.
+- **Survival:** the leader flies callsign 1. When his aircraft is lost he bales
+  out and makes it back about half the time.
+- **Record:** each leader keeps a record of his requests and how they were
+  answered, his close calls and his heavy losses.
+- **Obituary:** a veteran's death brings an obituary built from that record
+  ("He asked three times to press his attacks home; you agreed once.").
+- **Prisoners of war:** parachutes are counted on every loss. Two to four weeks
+  later the Red Cross reports some missing men, leaders included, as prisoners.
+- **Names:** no name is reused within a war.
 
 ## 8.5 Squadron leaders' requests *(implemented)*
 
@@ -526,6 +580,16 @@ replayed, and verified identically on both machines in PvP.
 - **Writing:** spare and grim when it comes to loss. Memos and forms
   (*"Form 27-B: Request for Additional Armor, denied pending Form 27-A"*) carry
   the dry humor.
+- **High Command in person:** each week's memos are read out by the general
+  (or the Directorate's officer) in an animated pop-up with a pixel-art
+  portrait and typed text.
+- **Radio:** every call has several wordings, depending on weather, aircraft
+  type and the leader's character, plus wounded calls and background chatter.
+  Without VHF sets the wing listens on old HF equipment: many calls are lost or
+  broken by static. Tower and ground reports come by telephone.
+- **Tutorial:** a guided Green campaign. The adjutant walks through orders,
+  resources, mission choice, the radio log, the damage plot, Form 541s, the
+  missing, the front and armor, pointing at each element.
 - **Audio (v1):** procedural sound effects only, generated with WebAudio:
   typewriter keys, rubber stamps, radio static and squelch, distant engine drone,
   the hangar ambience.

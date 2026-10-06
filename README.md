@@ -27,6 +27,7 @@ The war is fought across three theaters: the Narrow Sea, the Kessel Basin and th
 | `node scripts/screenshots.mjs` | Drive the real UI in Chromium and screenshot every screen (after `npm run build`) |
 | `npm run balance -- 40` | Play 40 headless campaigns and print outcome statistics |
 | `xvfb-run -a node scripts/electron-smoke.mjs` | Launch the Electron app headlessly and check that saving works |
+| `node scripts/tutorial-smoke.mjs` | Walk through the whole tutorial in Chromium, doing what each step asks |
 | `node scripts/hotseat-smoke.mjs` | Play a two-commander hotseat campaign through the real UI: names, feints, Esc cover, sealed orders across save/load, theater changes, end diaries |
 | `xvfb-run -a node scripts/lan-smoke.mjs` | Two desktop instances play over TCP: redaction, command replay, several weeks, disconnect and rejoin |
 | `npm run balance -- 40 --mirror` | AI against AI with symmetric rules: theater results and length |
