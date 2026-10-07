@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AIRCRAFT,
   COSTS,
+  SALVAGE,
   doctrineEffects,
   doctrineKeys,
   type DoctrineEffect,
@@ -837,6 +839,39 @@ describe('designer decisions after round 2', () => {
     side.research.push('fuelEconomy', 'pooledStores');
     expect(tech(side, 'economy')).toBeCloseTo(0.2);
     expect(planCost(side, plan).stores).toBeLessThan(before);
+  });
+
+  it('requisition developments add a flat weekly supply bonus, independent of trust', () => {
+    const delivered = (s: GameState) => Number(/Delivered this week: (\d+) supplies/.exec(s.sides[0].memos.find((m) => m.kind === 'supply')!.body)![1]);
+    for (const trust of [20, 90]) {
+      const a = startCampaign({ seed: 'requisition' });
+      a.sides[0].trust = trust;
+      const b = JSON.parse(JSON.stringify(a)) as GameState;
+      b.sides[0].research.push('requisition', 'warEconomy');
+      expect(tech(b.sides[0], 'supply')).toBe(30);
+      endTurnSingle(a, playerPlan(a));
+      endTurnSingle(b, playerPlan(b));
+      expect(delivered(b) - delivered(a)).toBe(30);
+    }
+  });
+
+  it('wrecks on our side of the line return part of their cost as salvage', () => {
+    let salvaged = 0;
+    for (let g = 0; g < 8 && !salvaged; g++) {
+      const s = startCampaign({ seed: `salvage${g}` });
+      for (let w = 0; w < 12 && !s.outcome && !salvaged; w++) {
+        endTurnSingle(s, playerPlan(s));
+        const d = s.lastDebriefs[0];
+        const crashed = d?.returned.filter((r) => r.fate === 'crashed') ?? [];
+        const line = d?.theaterNews.find((n) => n.startsWith('Salvage parties'));
+        // Written off on landing always counts; so do defenders shot down over our own country.
+        if (crashed.length) expect(line).toBeDefined();
+        if (!line) continue;
+        salvaged = Number(/(\d+) supplies recovered/.exec(line)![1]);
+        expect(salvaged).toBeGreaterThanOrEqual(crashed.reduce((a, r) => a + Math.round(AIRCRAFT[r.kind].cost * SALVAGE), 0));
+      }
+    }
+    expect(salvaged).toBeGreaterThan(0);
   });
 
   it('leaders earn a reputation, are remembered, and some missing men turn up as prisoners', () => {
