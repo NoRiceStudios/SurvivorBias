@@ -151,8 +151,9 @@ astern, almost nothing ahead) or a chin turret (answers head-on attacks,
 weaker astern). A refit costs 15 supplies. The Squadrons tab shows the
 defensive fire per direction next to what the gunners report. Enemy pilots
 see the guns and, over a few weeks, shift their attacks round them, so no
-layout stays right for long. In measurement (`scripts/turrets.ts`) a fixed
-tail-heavy layout loses the most bombers once the enemy adapts.
+layout stays right for long. In measurement (`scripts/turrets.ts`) no fixed
+layout wins clearly (17 to 19 bombers lost per 100 sorties); the tail-heavy
+wall only pays until the enemy turns head-on.
 
 **Loadouts (planned):** engine variant, guns, fuel tanks (self-sealing
 option), bomb load.
