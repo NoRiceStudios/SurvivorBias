@@ -177,6 +177,9 @@ export const TURRET_REFIT_COST = 15;
 /** Share of its build cost a wreck on our side of the line returns as salvage. */
 export const SALVAGE = 0.35;
 
+/** Maximum effort: the raid's squadrons use this many times the stores, and the bombers carry this much more. */
+export const MAX_EFFORT = { stores: 1.5, payload: 0.35 };
+
 export const MAX_ARMOR_PER_ZONE = 3;
 /** Each armor point on a zone multiplies lethality by this. */
 export const ARMOR_FACTOR = 0.45;

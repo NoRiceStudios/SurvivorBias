@@ -1,6 +1,7 @@
-import { buyConvoy, CONVOY, requestCrews, emergencyRepair, emptyPlan, queueAircraft, REPAIR_COST, setApproach, setTurrets, startResearch, upgradeFactory, upgradeFlak, upgradeTraining, validatePlan } from './actions';
+import { buyConvoy, CONVOY, planCost, requestCrews, emergencyRepair, emptyPlan, queueAircraft, REPAIR_COST, setApproach, setTurrets, startResearch, upgradeFactory, upgradeFlak, upgradeTraining, validatePlan } from './actions';
 import { AIRCRAFT, APPROACH_ZONES, MAX_ARMOR_PER_ZONE, RESEARCH, TURRET_FITS, TURRET_REFIT_COST, ZONE_AREA } from './data';
 import { Rng } from './rng';
+import { fitPlanToStores } from './plans';
 import { flyable } from './sim';
 import { bomberRange, countedSites, depthFor, escortRange, facilityCondition, frontSector, reachableSites, sectorAtDepth, theaterMods } from './theaters';
 import { CRIPPLED } from './effects';
@@ -166,6 +167,8 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   }
   // Aircraft waiting for crews and supplies to spare: ask the Ministry.
   if (side.resources.supplies > 220) requestCrews(side, 3);
+  // Live-fire practice at the school only while the depots can spare it.
+  side.training.liveFire = side.resources.stores > 90;
   // Short of stores with supplies to spare: buy a convoy.
   if (side.resources.stores < 60 && side.resources.supplies > CONVOY.supplies + 120) buyConvoy(state, side);
   // Emergency repairs to badly damaged works, when supplies allow.
@@ -270,14 +273,35 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
     plan.defense = plan.defense.slice(0, 1);
     if (plan.raid) plan.raid.squadronIds = plan.raid.squadronIds.slice(0, 2);
   }
-  // Trim the plan until it fits the stores available.
+  // Trim the plan until it fits the stores available. The announced raid matters most:
+  // extra patrols go first, then bomber squadrons together with their escort...
+  const over = () => planCost(side, plan).stores > side.resources.stores;
+  while (over() && plan.defense.length > 1) delete plan.cover[plan.defense.pop()!];
+  if (over() && plan.raid) {
+    const raid = plan.raid;
+    const patrols = plan.defense;
+    plan.defense = [];
+    fitPlanToStores(state, side.id, plan);
+    plan.defense = patrols;
+    // ...then, as a last resort, one bomber squadron goes without its escort.
+    if (!plan.raid || over()) {
+      const bomber = raid.squadronIds.find((id) => side.squadrons.find((q) => q.id === id)?.kind !== 'fighter');
+      if (bomber) plan.raid = { ...raid, squadronIds: [bomber] };
+    }
+  }
   let guard = 0;
   while (!validatePlan(side, plan, state).ok && guard++ < 10) {
     if (plan.recon) plan.recon = null;
     else if (plan.feint) plan.feint = null;
     else if (plan.raid && plan.raid.squadronIds.length > 1) plan.raid.squadronIds.pop();
+    else if (plan.raid && plan.defense.length) delete plan.cover[plan.defense.pop()!];
     else if (plan.raid) plan.raid = null;
     else if (plan.defense.length) plan.defense.pop();
+  }
+  // Stores to spare after the plan: send the bombers out at maximum effort.
+  if (plan.raid && plan.raid.target !== 'sweep' && plan.raid.target !== 'feint') {
+    plan.raid.maxEffort = true;
+    if (!validatePlan(side, plan, state).ok || side.resources.stores - planCost(side, plan).stores < 20) plan.raid.maxEffort = false;
   }
   plan.embellish = side.isAI ? 0.1 : 0;
   return plan;

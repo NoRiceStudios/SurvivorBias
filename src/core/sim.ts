@@ -4,6 +4,7 @@ import {
   ARMOR_FACTOR,
   ARMOR_FACTOR_ALLOY,
   CALLSIGNS,
+  MAX_EFFORT,
   TURRET_FITS,
   ZONE_AREA,
   ZONE_DAMAGE,
@@ -581,7 +582,9 @@ export function resolveRaid(
     }
     // Bombsights, bigger bombs and target markers.
     const blind = wx.accuracy + (1 - wx.accuracy) * tech(attacker, 'blindBombing');
-    damage *= 1.25 * blind * (1 + tech(attacker, 'accuracy')) * (1 + tech(attacker, 'payload'));
+    // Maximum effort: every bay full to the last rack.
+    const overload = raidPlan.maxEffort ? 1 + MAX_EFFORT.payload : 1;
+    damage *= 1.25 * blind * (1 + tech(attacker, 'accuracy')) * (1 + tech(attacker, 'payload')) * overload;
     if (bombers.some((b) => b.alive && !b.out)) say(ctx, attacker.id, speaker(bombers.filter((b) => !b.out)).callsign, rt(rng, BOMBS_GONE));
     // Defender's ground observers see the bombs fall.
     say(ctx, defender.id, 'Ground', rt(rng, support ? GROUND_SUPPORT : GROUND_SITE, { site: site?.name ?? 'our facilities' }), defender.id);

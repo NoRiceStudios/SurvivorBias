@@ -54,13 +54,15 @@ export function carryPlan(state: GameState, side: SideId, prev: TurnPlan): TurnP
 
 
 /**
- * Shrink a plan until the wing can afford it: the feint goes first, then bomber
+ * Shrink a plan until the wing can afford it: maximum effort goes first, then the feint, then bomber
  * squadrons together with a matching escort, so the raid keeps its cover for as
  * long as possible. Patrols go last.
  */
 export function fitPlanToStores(state: GameState, side: SideId, plan: TurnPlan): TurnPlan {
   const s = state.sides[side];
   const over = () => planCost(s, plan).stores > s.resources.stores;
+  // The extra load goes before any squadron does.
+  if (over() && plan.raid?.maxEffort) plan.raid.maxEffort = undefined;
   if (over() && plan.feint) plan.feint = null;
   if (over() && plan.recon) plan.recon = null;
   const kindOf = (id: string) => s.squadrons.find((q) => q.id === id)?.kind;

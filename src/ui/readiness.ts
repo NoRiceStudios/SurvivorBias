@@ -38,7 +38,7 @@ export function readinessChips(app: App, side: SideState): Chip[] {
   const v = validatePlan(side, plan, st);
   if (!v.ok && !/stores/i.test(v.reason)) chips.push({ label: v.reason.split(/[.:]/)[0], level: 'block', tab: 'war', focus: '.orders-col', detail: v.reason });
   const c = planCost(side, plan);
-  if (c.stores > side.resources.stores) chips.push({ label: `Stores short by ${c.stores - side.resources.stores}`, level: 'block', tab: 'war', focus: '.orders-col', detail: `This plan needs ${c.stores} stores and we hold ${side.resources.stores}. Stand a squadron down, fly a smaller operation, use "Fit to stores" or buy a convoy (${CONVOY.supplies} supplies for ${CONVOY.stores} stores).` });
+  if (c.stores > side.resources.stores) chips.push({ label: `Stores short by ${c.stores - side.resources.stores}`, level: 'block', tab: 'war', focus: '.orders-col', detail: `This plan needs ${c.stores} stores and we hold ${side.resources.stores}. Stand a squadron down, drop maximum effort, fly a smaller operation, use "Fit to stores" or buy a convoy (${CONVOY.supplies} supplies for ${CONVOY.stores} stores).` });
   // Striking a site our own crews believe is already wrecked.
   const tgt = plan.raid?.siteId ? st.theater.sites.find((x) => x.id === plan.raid!.siteId) : undefined;
   if (tgt && tgt.owner !== side.id && believed(st, side.id, tgt) <= 20) {
@@ -121,7 +121,7 @@ export function readinessBar(app: App, sideId: SideId): HTMLElement {
       chipRow(app, sideId, chips.filter((c) => c !== blocked), 3),
     ),
     h('div', { class: 'launch-actions' },
-      c.stores > side.resources.stores ? h('button', { class: 'btn small choice', ...tip('Drop the feint, then escorts and squadrons from the raid, until the plan fits the stores we hold.'), onclick: () => app.act(() => app.fitToStores(sideId)) }, 'Fit to stores') : null,
+      c.stores > side.resources.stores ? h('button', { class: 'btn small choice', ...tip('Drop maximum effort and the feint, then escorts and squadrons from the raid, until the plan fits the stores we hold.'), onclick: () => app.act(() => app.fitToStores(sideId)) }, 'Fit to stores') : null,
       h('button', { class: 'btn small', disabled: side.convoyWeek === st.turn || side.resources.supplies < CONVOY.supplies, ...tip(`Buy a stores convoy: ${CONVOY.supplies} supplies for ${CONVOY.stores} stores, once a week.`), onclick: () => app.cmd(sideId, { k: 'convoy' }) }, side.convoyWeek === st.turn ? 'Convoy bought' : `Convoy +${CONVOY.stores}`),
       h('div', { class: 'cta' },
         h('button', { class: 'btn primary launch', disabled: !!blocked, onclick: () => void app.seal(sideId) }, label),
