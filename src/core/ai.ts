@@ -1,6 +1,6 @@
 import { buyConvoy, CONVOY, planCost, requestCrews, emergencyRepair, emptyPlan, queueAircraft, REPAIR_COST, setApproach, setTurrets, startResearch, upgradeFactory, upgradeFlak, upgradeTraining, validatePlan } from './actions';
 import { AIRCRAFT, APPROACH_ZONES, MAX_ARMOR_PER_ZONE, RESEARCH, TURRET_FITS, TURRET_REFIT_COST, ZONE_AREA } from './data';
-import { researchCost, spec } from './factions';
+import { aiProfile, researchCost, spec, storesCap, type AiProfile } from './factions';
 import { Rng } from './rng';
 import { fitPlanToStores } from './plans';
 import { flyable } from './sim';
@@ -86,7 +86,7 @@ function ready(sq: Squadron): number {
 }
 
 /** Next week's target for an AI wing: close support or a strike on a site, weighted by value. */
-export function aiIntent(state: GameState, id: SideId): NonNullable<SideState['intent']> {
+export function aiIntent(state: GameState, id: SideId, profile: AiProfile = aiProfile(state.sides[id])): NonNullable<SideState['intent']> {
   const side = state.sides[id];
   const t = state.theater;
   const rng = new Rng({ s: (state.rng.s ^ (0x5bd1e995 * (id + 1)) ^ (state.turn * 7907)) >>> 0 });
@@ -119,14 +119,14 @@ export function aiIntent(state: GameState, id: SideId): NonNullable<SideState['i
       return { target: site.type, siteId: site.id, focus: true };
     }
   }
-  if (rng.chance(pressured ? 0.55 : 0.3) || targets.length === 0) return { target: 'support' };
+  if (rng.chance(Math.min(0.9, (pressured ? 0.55 : 0.3) * profile.support)) || targets.length === 0) return { target: 'support' };
   const fighters = side.squadrons.filter((s) => s.kind === 'fighter').reduce((x, s) => x + ready(s), 0);
   const reach = escortRange(side);
   const w: Record<string, number> = {};
   targets.forEach((x, k) => {
     const believed = side.perceived.sites[x.id] ?? 100;
     const depth = depthFor(t.held0, id, x.sector);
-    w[k] = (believed + 10) * (x.type === 'industry' ? 1.4 : x.type === 'airfield' && side.perceived.enemyFighters > fighters * 1.5 ? 1.6 : 1) * (depth <= reach ? 1.3 : 0.7);
+    w[k] = (believed + 10) * (x.type === 'industry' ? 1.4 : x.type === 'airfield' && side.perceived.enemyFighters > fighters * 1.5 ? 1.6 : 1) * (x.type === 'airfield' ? 1 : profile.works) * (depth <= reach ? 1.3 : 0.7);
   });
   const site = targets[Number(rng.weighted(w))];
   return { target: site.type, siteId: site.id };
@@ -139,7 +139,11 @@ function validIntent(state: GameState, id: SideId, intent: SideState['intent'], 
   return site && site.owner !== id && depthFor(state.theater.held0, id, site.sector) <= range ? intent : undefined;
 }
 
-export function aiPlan(state: GameState, id: SideId): TurnPlan {
+/**
+ * The AI's orders for the week. It plays its nation's `AiProfile` unless given another
+ * (the balance runner passes `CLASSIC_AI` to measure what the profile is worth).
+ */
+export function aiPlan(state: GameState, id: SideId, profile: AiProfile = aiProfile(state.sides[id])): TurnPlan {
   const side = state.sides[id];
   const rng = new Rng({ s: (state.rng.s ^ (0x9e3779b9 * (id + 1) + state.turn * 7919)) >>> 0 });
   const plan = emptyPlan();
@@ -150,7 +154,7 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   for (const sq of side.squadrons) {
     if (sq.kind === 'recon') continue;
     // Re-plate only every few turns to save supplies, and only once there is evidence.
-    if (state.turn % 3 === 0 && ZONES.reduce((x, z) => x + side.perceived.survivorHits[z], 0) > 10) {
+    if (state.turn % profile.replate === 0 && ZONES.reduce((x, z) => x + side.perceived.survivorHits[z], 0) > 10) {
       const target = chooseArmor(side, sq);
       const cost = ZONES.reduce((x, z) => x + Math.max(0, target[z] - sq.armor[z]), 0) * 4;
       if (side.resources.supplies > cost + 60) {
@@ -171,13 +175,15 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   // Live-fire practice at the school only while the depots can spare it.
   side.training.liveFire = side.resources.stores > 90;
   // Short of stores with supplies to spare: buy a convoy.
-  if (side.resources.stores < 60 && side.resources.supplies > CONVOY.supplies + 120) buyConvoy(state, side);
+  if (side.resources.stores < storesCap(side) * profile.convoyAt && side.resources.supplies > CONVOY.supplies + 120) buyConvoy(state, side);
   // Emergency repairs to badly damaged works, when supplies allow.
   for (const type of ['airfield', 'fuel', 'industry'] as const) {
     if (side.facilities[type] < 70 && side.resources.supplies > REPAIR_COST + 100) emergencyRepair(state, side, type);
   }
   if (!side.researching) {
-    const prefs = ['radar', 'gunneryManual', 'dropTanks', 'selfSealing', 'powerTurrets', 'gunCameras', a >= 2 ? 'heavyAirframe' : 'photoRecon', 'gyroSight', 'engineTuning', 'armorAlloy', 'assembly1', 'radios', 'extinguishers', 'bombsight2', 'intelOfficer', 'radarChain', 'photoRecon', 'heavyAirframe'];
+    // From the second act the four-engine airframe moves up to seventh, if it is not earlier already.
+    const prefs = [...profile.research];
+    if (a >= 2 && prefs.indexOf('heavyAirframe') > 6) prefs.splice(6, 0, ...prefs.splice(prefs.indexOf('heavyAirframe'), 1));
     // Then anything else that is open, cheapest first.
     const rest = RESEARCH.filter((r) => !prefs.includes(r.id)).sort((x, y) => researchCost(side, x) - researchCost(side, y)).map((r) => r.id);
     for (const p of [...prefs, ...rest]) {
@@ -189,14 +195,14 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   }
   const fighters = side.squadrons.filter((s) => s.kind === 'fighter').reduce((x, s) => x + s.airframes.length, 0);
   const bombers = bomberSqs.reduce((x, s) => x + s.airframes.length, 0);
-  for (let i = 0; i < 4; i++) {
-    if (side.resources.supplies < 90) break;
-    const kind = fighters < 14 + a * 2 ? 'fighter' : side.research.includes('heavyAirframe') && rng.chance(0.5) ? 'heavy' : bombers < 12 ? 'medium' : 'fighter';
+  for (let i = 0; i < profile.orders; i++) {
+    if (side.resources.supplies < profile.reserve) break;
+    const kind = fighters < profile.fighters + a * 2 ? 'fighter' : side.research.includes('heavyAirframe') && rng.chance(profile.heavy) ? 'heavy' : bombers < profile.bombers ? 'medium' : 'fighter';
     if (!queueAircraft(side, kind).ok) break;
   }
-  if (side.resources.supplies > 260 && side.factory.level < 4) upgradeFactory(side);
+  if (side.resources.supplies > profile.factoryAt && side.factory.level < 4) upgradeFactory(side);
   if (side.resources.supplies > 220 && side.training.level < 3) upgradeTraining(side);
-  if (side.resources.supplies > 240 && side.flak < 1 + a * 0.15) upgradeFlak(side);
+  if (side.resources.supplies > profile.flakAt && side.flak < 1 + a * 0.15) upgradeFlak(side);
 
   // --- Tactics: adapt interceptor approach to what pilots report. ---
   // As the war goes on the AI discovers head-on attacks; imperfectly.
@@ -222,7 +228,7 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   const coverSquadrons = [fighterSqs[0], ...(spareFighters.length > 1 ? [spareFighters[spareFighters.length - 1]] : [])].filter(Boolean);
   for (const sq of coverSquadrons) {
     if (!plan.defense.includes(sq.id)) plan.defense.push(sq.id);
-    if (exposed.length && rng.chance(0.65)) {
+    if (exposed.length && rng.chance(profile.cover)) {
       const w: Record<string, number> = {};
       exposed.forEach((x, k) => (w[k] = x.condition * (x.type === 'industry' ? 1.5 : 1)));
       plan.cover[sq.id] = exposed[Number(rng.weighted(w))].sector;
@@ -240,7 +246,7 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   if (!fixed && alert && escorts.length && rng.chance(0.35)) {
     plan.raid = { target: 'sweep', squadronIds: escorts.map((q) => q.id) };
   } else if (readyBombers.length > 0 && (fixed || rng.chance(0.85))) {
-    const intent = fixed ?? aiIntent(state, id);
+    const intent = fixed ?? aiIntent(state, id, profile);
     // A counter-offensive goes in with every escort it can spare.
     plan.raid = { target: intent.target, ...(intent.siteId ? { siteId: intent.siteId } : {}), squadronIds: [...readyBombers.map((q) => q.id), ...escorts.slice(0, intent.push ? 3 : 1).map((q) => q.id)] };
   } else if (escorts.length > 0) {
@@ -255,14 +261,14 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   }
   const recon = side.squadrons.find((q) => q.kind === 'recon' && ready(q) > 0);
   const enemySites = t.sites.filter((x) => x.owner !== id);
-  if (recon && enemySites.length && rng.chance(0.6)) {
+  if (recon && enemySites.length && rng.chance(profile.recon)) {
     const lastSite = plan.raid?.siteId;
     plan.recon = { squadronId: recon.id, siteId: lastSite ?? rng.pick(enemySites).id };
   }
 
   // Doctrine: bolder when morale is high.
   for (const sq of side.squadrons) {
-    sq.doctrine.aggression = Math.max(0.2, Math.min(0.9, 0.35 + sq.morale * 0.5));
+    sq.doctrine.aggression = Math.max(0.2, Math.min(0.9, 0.35 + sq.morale * 0.5 + profile.aggression));
     sq.doctrine.formation = sq.kind === 'fighter' ? 0.4 : 0.75;
     sq.doctrine.breakOff = 0.45;
   }
