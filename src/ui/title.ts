@@ -4,9 +4,13 @@ import { isMuted, setMuted, sfxClick } from './audio';
 import { animOn, h, setAnim } from './dom';
 import { titleScene } from './scene';
 import { storage } from './storage';
+import { chosen, chosenFactions, nationPicker, nationToggle } from './nation';
+import { NATIONS } from '../core/factions';
 
 let menu: 'main' | 'new' | 'load' | 'hotseat' = 'main';
 let saves: { slot: string; modified: number }[] = [];
+/** Names typed for hotseat, kept while the nations are changed. */
+const names: [string, string] = ['', ''];
 
 export function renderTitle(app: App): HTMLElement {
   const scene = titleScene();
@@ -20,25 +24,34 @@ export function renderTitle(app: App): HTMLElement {
   const menuItems = (): HTMLElement[] => {
     if (menu === 'new') {
       return [
-        h('div', { class: 'menu-head' }, 'Select the enemy'),
-        btn('Green', () => { menu = 'main'; app.newGame('single', 0.15); }),
+        h('div', { class: 'menu-head' }, 'Choose the war'),
+        ...(chosen.on ? [nationPicker(0, 'Your nation:', refresh), nationPicker(1, 'The enemy:', refresh)] : []),
+        nationToggle(refresh),
+        h('div', { class: 'menu-head' }, 'Select the enemy staff'),
+        btn('Green', () => { menu = 'main'; app.newGame('single', 0.15, undefined, chosenFactions()); }),
         h('div', { class: 'menu-note' }, 'Enemy staff armor what their survivors show them.'),
-        btn('Seasoned', () => { menu = 'main'; app.newGame('single', 0.45); }),
+        btn('Seasoned', () => { menu = 'main'; app.newGame('single', 0.45, undefined, chosenFactions()); }),
         h('div', { class: 'menu-note' }, 'Enemy staff are learning to read their losses.'),
-        btn('Wald', () => { menu = 'main'; app.newGame('single', 0.9); }),
+        btn('Wald', () => { menu = 'main'; app.newGame('single', 0.9, undefined, chosenFactions()); }),
         h('div', { class: 'menu-note' }, 'The enemy has a statistician. Good luck.'),
         btn('Back', () => { menu = 'main'; refresh(); }, 'small'),
       ];
     }
     if (menu === 'hotseat') {
-      const n0 = h('input', { class: 'name-input', maxlength: '40', placeholder: 'Air Commodore …', value: '' }) as HTMLInputElement;
-      const n1 = h('input', { class: 'name-input', maxlength: '40', placeholder: 'Oberst …', value: '' }) as HTMLInputElement;
+      const nat = chosenFactions() ?? ['aldmere', 'directorate'];
+      const n0 = h('input', { class: 'name-input', maxlength: '40', placeholder: `${NATIONS[nat[0]].title} …`, value: names[0] }) as HTMLInputElement;
+      const n1 = h('input', { class: 'name-input', maxlength: '40', placeholder: `${NATIONS[nat[1]].title} …`, value: names[1] }) as HTMLInputElement;
+      n0.oninput = () => { names[0] = n0.value; };
+      n1.oninput = () => { names[1] = n1.value; };
       return [
         h('div', { class: 'menu-head' }, 'Two commanders, one table'),
-        h('label', { class: 'menu-note' }, 'Commanding the Aldmere wing:'), n0,
-        h('label', { class: 'menu-note' }, 'Commanding the Directorate wing:'), n1,
+        ...(chosen.on ? [nationPicker(0, 'First commander\'s nation:', refresh)] : []),
+        h('label', { class: 'menu-note' }, `Commanding the ${NATIONS[nat[0]].short} wing:`), n0,
+        ...(chosen.on ? [nationPicker(1, 'Second commander\'s nation:', refresh)] : []),
+        h('label', { class: 'menu-note' }, `Commanding the ${NATIONS[nat[1]].short} wing:`), n1,
+        nationToggle(refresh),
         h('div', { class: 'menu-note' }, 'You plan in turn behind closed folders; the battle is fought once both orders are sealed. Press Esc at any time to close your folder.'),
-        btn('Begin the war', () => { menu = 'main'; app.newGame('hotseat', 0.4, [n0.value || 'Air Commodore', n1.value || 'Oberst']); }, 'primary'),
+        btn('Begin the war', () => { menu = 'main'; app.newGame('hotseat', 0.4, [n0.value || NATIONS[nat[0]].title, n1.value || NATIONS[nat[1]].title], chosenFactions()); }, 'primary'),
         btn('Back', () => { menu = 'main'; refresh(); }, 'small'),
       ];
     }

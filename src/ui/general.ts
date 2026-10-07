@@ -3,7 +3,8 @@
  * bottom-right. Cards queue and show one at a time. Only the card itself takes
  * pointer events, so the rest of the screen (and automation) stays usable.
  */
-import type { Leader, Memo, SideId, SideState } from '../core/types';
+import { look, nationAt } from './nation';
+import type { Leader, Memo, NationId, SideId, SideState } from '../core/types';
 import { sfxClick, sfxKey } from './audio';
 import { h } from './dom';
 
@@ -153,7 +154,7 @@ let els: { text: HTMLElement; meta: HTMLElement; page: HTMLElement; btn: HTMLBut
 
 function build() {
   const c = current!;
-  const side = c.d.side ?? 0;
+  const side = look(c.d.side ?? 0);
   const canvas = h('canvas', { class: 'pix dispatch-face', width: PW, height: PH });
   const text = h('div', { class: 'dispatch-text' });
   const meta = h('div', { class: 'dispatch-meta' });
@@ -684,7 +685,7 @@ function background(ctx: CanvasRenderingContext2D, L: Look) {
 export function portraitCanvas(speaker: Speaker, side: SideId = 0, scale = 3): HTMLCanvasElement {
   const c = h('canvas', { class: 'pix', width: PW, height: PH, style: `width:${PW * scale}px;height:${PH * scale}px` });
   const g = c.getContext('2d')!;
-  const L = LOOKS[speaker][side];
+  const L = LOOKS[speaker][look(side)];
   background(g, L);
   figure(L).draw(g);
   return c;
@@ -779,7 +780,6 @@ const SKINS: [string, string, string][] = [
 const HAIRS = ['#2a2420', '#4a3424', '#6a4a2e', '#8a5a2a', '#c8a050', '#a04a22', '#3a3a38'];
 const BLUEGREY: [string, string, string] = ['#7888a0', '#5a6a84', '#3e4a60'];
 const LEATHER: [string, string, string] = ['#8a5a36', '#6a4428', '#4a2e1a'];
-const RANK_ORDER: [string[], string[]] = [['Flt Lt', 'Sqn Ldr', 'Wg Cdr'], ['Hauptmann', 'Major', 'Oberst']];
 
 /** FNV-1a hash of a string, then a small deterministic generator (mulberry32). */
 function nameRng(name: string): () => number {
@@ -793,11 +793,12 @@ function nameRng(name: string): () => number {
   };
 }
 
-function faceFor(leader: Leader, side: SideId): Face {
-  const r = nameRng(`${side}:${leader.name}`);
+function faceFor(leader: Leader, seat: SideId): Face {
+  const r = nameRng(`${seat}:${leader.name}`);
   const pick = <T,>(xs: T[]) => xs[Math.floor(r() * xs.length)];
   const chance = (p: number) => r() < p;
-  const rank = Math.max(0, RANK_ORDER[side].indexOf(leader.rank));
+  const rank = Math.max(0, nationAt(seat).ranks.indexOf(leader.rank));
+  const side = look(seat);
   // Seniority greys the hair and thins it.
   const grey = chance(0.08 + rank * 0.18);
   const hair = grey ? pick(['#9a968c', '#bdb8ac', '#7a7670']) : pick(HAIRS);
@@ -1155,7 +1156,7 @@ const LH = 32;
 export function leaderPortrait(leader: Leader, side: SideId, scale = 2): HTMLCanvasElement {
   const c = h('canvas', { class: 'pix leader-face', width: LW, height: LH, style: `width:${LW * scale}px;height:${LH * scale}px`, title: `${leader.rank} ${leader.name}` });
   const g = c.getContext('2d')!;
-  const wall = side === 0 ? ['#7a8478', '#6a7468', '#5a6458'] : ['#767c82', '#666c72', '#565c62'];
+  const wall = look(side) === 0 ? ['#7a8478', '#6a7468', '#5a6458'] : ['#767c82', '#666c72', '#565c62'];
   g.fillStyle = wall[2];
   g.fillRect(0, 0, LW, LH);
   // Studio backdrop: a soft light behind the head.
@@ -1182,7 +1183,7 @@ export function leaderInMemo(side: SideState, m: Memo): Leader | null {
   const current = side.squadrons.map((q) => q.leader).find((l) => s.includes(l.name));
   if (current) return current;
   // A man no longer on strength: read his rank and name from the subject.
-  for (const rank of [...RANK_ORDER[side.id]].sort((a, b) => b.length - a.length)) {
+  for (const rank of [...nationAt(side.id).ranks].sort((a, b) => b.length - a.length)) {
     const i = s.indexOf(`${rank} `);
     if (i < 0) continue;
     const name = s.slice(i + rank.length + 1).replace(/\s+(is back|is alive|presumed killed)$/i, '').trim();
@@ -1196,11 +1197,16 @@ export function leaderInMemo(side: SideState, m: Memo): Leader | null {
 const STAMP: Record<Memo['kind'], string> = { order: 'DIRECTIVE', intel: 'INTELLIGENCE', supply: 'SUPPLY', reprimand: 'REPRIMAND', commendation: 'COMMENDED', notice: 'NOTICE' };
 const PRIORITY: Memo['kind'][] = ['reprimand', 'order', 'commendation', 'intel', 'notice'];
 
-/** The officer who reads each side's mail. */
-export const HIGH_COMMAND: [{ name: string; title: string }, { name: string; title: string }] = [
-  { name: 'Gen. Sir Hector Pemberton', title: 'Commander-in-Chief, High Command' },
-  { name: 'General Ewald Rennecke', title: 'Chief of the Directorate Air Staff' },
-];
+const HIGH_COMMANDS: Record<NationId, { name: string; title: string }> = {
+  aldmere: { name: 'Gen. Sir Hector Pemberton', title: 'Commander-in-Chief, High Command' },
+  directorate: { name: 'General Ewald Rennecke', title: 'Chief of the Directorate Air Staff' },
+  varn: { name: 'Generalmajor Sigurd Brekke', title: 'Chief of the League Air Staff' },
+};
+
+/** The officer who reads a side's mail. */
+export function highCommand(side: SideId): { name: string; title: string } {
+  return HIGH_COMMANDS[nationAt(side).id];
+}
 
 /** Trim a memo to about three typed lines: subject, then as many whole sentences as fit. */
 export function summarise(m: Memo, max = 150): string {
@@ -1238,7 +1244,7 @@ export function letterMemos(side: SideState, turn: number, max = 6): Memo[] {
 export function memoDispatch(side: SideState, turn: number, maxPages = 4): Dispatch | null {
   const memos = letterMemos(side, turn, maxPages);
   if (!memos.length) return null;
-  const hc = HIGH_COMMAND[side.id];
+  const hc = highCommand(side.id);
   return {
     speaker: 'general',
     side: side.id,

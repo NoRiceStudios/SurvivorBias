@@ -3,7 +3,7 @@
  * so nothing has to be explained in paragraphs on the screens themselves.
  */
 import { SECTOR_PRESSURE, DECISIVE_GAIN } from '../core/theaters';
-import { STORES_CAP } from '../core/turn';
+
 import type { Hit, ZoneId } from '../core/types';
 import { h } from './dom';
 import { icon } from './icons';
@@ -45,10 +45,11 @@ const ART: Record<string, () => HTMLElement> = {
 };
 
 const PAGES: [string, string, string][] = [
+  ['Nations', 'The war', 'Each side fights for a nation with its own strengths and weaknesses; hover the crest at the top left for yours. Aldmere, the radar net: sees raids coming and reports honestly, but its bombers carry less and its escorts turn back early. The Directorate, the elite: heavily armored aircraft and fast-learning crews, short of fuel, aircraft and men. The League of Varn: cheap aircraft in numbers and lend-lease supplies every week, built in a hurry and reported by showmen. A classic war gives both sides the same rules.'],
   ['The turn', 'How a week goes', 'Plan in the War Room (mission, tasks, doctrine, armor, factory, research), launch, listen to the radio, read the debrief, file your reports. High Command answers, and the next week begins. You never see the battle itself, only what the crews who come back say about it.'],
   ['Survivorship bias', 'The point of the game', 'The holes on the aircraft that come back show where an aircraft can be hit and still come home. The aircraft that were hit somewhere else did not come back, so their damage is never recorded. Last calls on the radio are the only clue to what brings an aircraft down.'],
   ['Supplies', 'Resource', 'Pay for armor, aircraft, training, research and repairs. Delivered every week; more when High Command trusts you.'],
-  ['Stores', 'Resource', `Fuel, bombs and ammunition. Every aircraft that flies uses them. Depots hold at most ${STORES_CAP}; wrecked fuel depots cut deliveries. A convoy buys more once a week.`],
+  ['Stores', 'Resource', `Fuel, bombs and ammunition. Every aircraft that flies uses them. Depots hold at most 240 (150 for the Directorate); wrecked fuel depots cut deliveries. A convoy buys more once a week.`],
   ['Confidence', 'High Command', 'How far High Command trusts you (0-100). It moves with the results you report, not the results you get. Deliveries grow with it; at 0 you are relieved. Optimistic returns raise it until photographs or the observers catch you out.'],
   ['Pressure and sectors', 'The front', `The Army liaison's estimate of who is winning on the ground. When it reaches about ±${SECTOR_PRESSURE} a sector changes hands, at most one a week. Take ${DECISIVE_GAIN} sectors to win a theater outright. Losses inflicted, close support and damage to enemy works push it your way.`],
   ['Strike', 'Mission', 'Bomb a named enemy airfield, aircraft works or fuel depot. Damage cuts the enemy\'s output and adds pressure week after week. Only sites within your bombers\' range can be struck; escorts may not reach as far.'],

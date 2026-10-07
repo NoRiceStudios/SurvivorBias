@@ -51,6 +51,10 @@ import {
   startCampaign,
   validatePlan,
   ZONES,
+  aircraftName,
+  researchCost,
+  spec,
+  storesCap,
   type GameState,
   type TurnPlan,
   type ZoneId,
@@ -407,7 +411,7 @@ describe('hotseat missions', () => {
       side.resources.munitions = 90;
     }
     const loaded = deserialize(JSON.stringify(old));
-    expect(loaded.version).toBe(5);
+    expect(loaded.version).toBe(6);
     expect(loaded.sides[0].resources.stores).toBe(173);
     expect('fuel' in loaded.sides[0].resources).toBe(false);
     expect(loaded.lethality.medium.cockpit).toBeGreaterThan(0);
@@ -1073,5 +1077,63 @@ describe('designer decisions after round 2', () => {
     for (const q of s.sides[1].squadrons) if (q.kind === 'medium' || q.kind === 'heavy') q.airframes = [];
     endTurnSingle(s, playerPlan(s));
     expect(s.sides[0].perceived.warning?.text).toContain('no bomber force');
+  });
+});
+
+describe('nations', () => {
+  it('a classic war keeps the symmetric rules and the old names', () => {
+    const s = startCampaign({ seed: 'classic' });
+    expect(s.sides.map((x) => x.faction)).toEqual([undefined, undefined]);
+    expect(s.sides.map((x) => x.short)).toEqual(['Aldmere', 'Directorate']);
+    expect(spec(s.sides[0], 'medium')).toMatchObject({ cost: 55, armorBudget: 6 });
+    expect(tech(s.sides[0], 'detection')).toBe(0);
+    expect(s.sides[0].research).toEqual([]);
+  });
+
+  it('each nation brings its own names, wing and starting strengths', () => {
+    const s = startCampaign({ seed: 'nations', factions: ['varn', 'aldmere'], mode: 'hotseat' });
+    const [varn, ald] = s.sides;
+    expect(varn.short).toBe('Varn');
+    expect(ald.short).toBe('Aldmere');
+    expect(varn.squadrons.every((q) => q.name.startsWith('Skvadron'))).toBe(true);
+    expect(varn.squadrons.filter((q) => q.kind === 'fighter')).toHaveLength(3);
+    expect(varn.research).toContain('heavyAirframe');
+    expect(ald.research).toEqual(expect.arrayContaining(['radar', 'photoRecon']));
+    expect(tech(ald, 'detection')).toBeCloseTo(0.12);
+    expect(s.sides[1].memos.some((m) => m.body.includes('No. 7 Composite Wing'))).toBe(true);
+    expect(aircraftName('fighter', varn)).toBe('Varg J-21');
+  });
+
+  it('two sides cannot fight for the same nation', () => {
+    expect(() => startCampaign({ factions: ['varn', 'varn'] })).toThrow();
+  });
+
+  it('aircraft are built to each nation\'s pattern, and fit their armor budget from the start', () => {
+    const s = startCampaign({ seed: 'build', factions: ['directorate', 'varn'], mode: 'hotseat' });
+    const [dir, varn] = s.sides;
+    expect(spec(dir, 'heavy').armorBudget).toBe(11);
+    expect(spec(dir, 'fighter').cost).toBe(38);
+    expect(spec(varn, 'fighter')).toMatchObject({ armorBudget: 2, cost: 24 });
+    for (const q of varn.squadrons) expect(ZONES.reduce((a, z) => a + q.armor[z], 0)).toBeLessThanOrEqual(spec(varn, q.kind).armorBudget);
+    expect(researchCost(dir, RESEARCH.find((r) => r.id === 'cannon')!)).toBe(60);
+    expect(dir.resources.stores).toBeLessThanOrEqual(storesCap(dir));
+  });
+
+  it('lend-lease arrives whatever High Command thinks, and the Directorate\'s depots stay small', () => {
+    const s = startCampaign({ seed: 'lendlease', factions: ['varn', 'directorate'], mode: 'hotseat' });
+    s.sides[0].trust = 0;
+    s.sides[1].resources.stores = 0;
+    resolveTurn(s, [emptyPlan(), emptyPlan()]);
+    expect(s.sides[0].memos.find((m) => m.subject === 'Deliveries')?.body).toContain('lend-lease');
+    for (let w = 0; w < 6 && !s.outcome; w++) resolveTurn(s, [emptyPlan(), emptyPlan()]);
+    expect(s.sides[1].resources.stores).toBeLessThanOrEqual(150);
+  });
+
+  it('a war between nations survives save and load', () => {
+    const s = startCampaign({ seed: 'natsave', factions: ['aldmere', 'varn'] });
+    endTurnSingle(s, playerPlan(s));
+    const loaded = deserialize(serialize(s));
+    expect(loaded.sides.map((x) => x.faction)).toEqual(['aldmere', 'varn']);
+    expect(loaded.sides[1].commander).toBe('Oberst Halvard Moe');
   });
 });

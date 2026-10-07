@@ -1,4 +1,4 @@
-import { AIRCRAFT, CREW_FIRST, CREW_LAST, FIRST_NAMES, LAST_NAMES, RANKS, SIDE_NAMES, SQUADRON_NAMES } from './data';
+import { nationOf, NATIONS, rulesOf, spec, type SideRef } from './factions';
 import { Rng } from './rng';
 import { rollLethality } from './lethality';
 import { enterTheater } from './theaters';
@@ -9,6 +9,7 @@ import type {
   Doctrine,
   GameState,
   Leader,
+  NationId,
   Perceived,
   SideId,
   SideState,
@@ -17,13 +18,13 @@ import type {
 } from './types';
 import { ZONES } from './types';
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export function zoneMap<T>(fn: (z: (typeof ZONES)[number]) => T): ZoneMap<T> {
   return Object.fromEntries(ZONES.map((z) => [z, fn(z)])) as ZoneMap<T>;
 }
 
-export function defaultArmor(kind: AircraftKind): ZoneMap<number> {
+export function defaultArmor(kind: AircraftKind, budget = Infinity): ZoneMap<number> {
   // "Factory standard" layout: plates where the pre-war manual said to put them.
   const a = zoneMap(() => 0);
   if (kind === 'fighter') {
@@ -42,6 +43,14 @@ export function defaultArmor(kind: AircraftKind): ZoneMap<number> {
     a.cockpit = 1;
   } else {
     a.fuselage = 1;
+  }
+  // A lighter airframe takes off the plates it has no room for, least useful first.
+  let over = ZONES.reduce((n, z) => n + a[z], 0) - budget;
+  for (const z of ['outerWing', 'fuselage', 'tail', 'cockpit'] as const) {
+    while (over > 0 && a[z] > 0) {
+      a[z]--;
+      over--;
+    }
   }
   return a;
 }
@@ -63,15 +72,12 @@ export function makeAirframe(
   state: { nextId: number },
   rng: Rng,
   kind: AircraftKind,
-  side: SideId,
+  side: SideRef,
   defectScale = 0.5,
 ): Airframe {
   const n = state.nextId++;
-  const letters = side === 0 ? 'ABCDEFGHJKLMNPRSTVWX' : 'ABCDEFGHKLMNPRSTUVWZ';
-  const serial =
-    side === 0
-      ? `${letters[n % letters.length]}${letters[(n * 7) % letters.length]}-${100 + ((n * 37) % 900)}`
-      : `${10 + (n % 89)}+${letters[(n * 3) % letters.length]}${letters[(n * 11) % letters.length]}`;
+  const serial = nationOf(side).serial(n);
+  defectScale *= rulesOf(side).defects;
   return {
     id: `af${n}`,
     serial,
@@ -87,38 +93,53 @@ export function makeAirframe(
 }
 
 /** A squadron leader. Avoids reusing a first name or surname already in `taken`. */
-export function makeLeader(rng: Rng, side: SideId, archetype?: Archetype, taken: string[] = []): Leader {
-  const archetypes: Archetype[] = ['braggart', 'pessimist', 'gloryHunter', 'byTheBook', 'timid'];
+export function makeLeader(rng: Rng, side: SideRef, archetype?: Archetype, taken: string[] = []): Leader {
+  const nat = nationOf(side);
   const usedFirst = new Set(taken.map((n) => n.split(' ')[0]));
   const usedLast = new Set(taken.map((n) => n.split(' ').slice(1).join(' ')));
   const free = (pool: string[], used: Set<string>) => pool.filter((x) => !used.has(x));
   // Officers' names come first; the wider crew pools keep a long war from running out of names.
-  const firstPool = [...new Set([...FIRST_NAMES[side], ...CREW_FIRST[side]])];
-  const lastPool = [...new Set([...LAST_NAMES[side], ...CREW_LAST[side]])];
-  const firsts = free(FIRST_NAMES[side], usedFirst).length ? free(FIRST_NAMES[side], usedFirst) : free(firstPool, usedFirst);
-  const lasts = free(LAST_NAMES[side], usedLast).length ? free(LAST_NAMES[side], usedLast) : free(lastPool, usedLast);
+  const firstPool = [...new Set([...nat.firstNames, ...nat.crewFirst])];
+  const lastPool = [...new Set([...nat.lastNames, ...nat.crewLast])];
+  const firsts = free(nat.firstNames, usedFirst).length ? free(nat.firstNames, usedFirst) : free(firstPool, usedFirst);
+  const lasts = free(nat.lastNames, usedLast).length ? free(nat.lastNames, usedLast) : free(lastPool, usedLast);
   return {
     name: `${rng.pick(firsts.length ? firsts : firstPool)} ${rng.pick(lasts.length ? lasts : lastPool)}`,
-    rank: rng.pick(RANKS[side]),
-    archetype: archetype ?? rng.pick(archetypes),
+    rank: rng.pick(nat.ranks),
+    archetype: archetype ?? pickArchetype(rng, side),
   };
+}
+
+const ARCHETYPES: Archetype[] = ['braggart', 'pessimist', 'gloryHunter', 'byTheBook', 'timid'];
+
+/** A leader's character, weighted by what kind of officer the nation promotes. */
+export function pickArchetype(rng: Rng, side: SideRef, avoid: Archetype[] = []): Archetype {
+  const w = rulesOf(side).leaders;
+  const pool = ARCHETYPES.filter((a) => !avoid.includes(a));
+  const from = pool.length ? pool : ARCHETYPES;
+  let r = rng.next() * from.reduce((t, a) => t + w[a], 0);
+  for (const a of from) {
+    r -= w[a];
+    if (r < 0) return a;
+  }
+  return from[from.length - 1];
 }
 
 export function makeSquadron(
   state: { nextId: number },
   rng: Rng,
-  side: SideId,
+  side: SideRef,
   kind: AircraftKind,
   size: number,
   nameIndex: number,
   archetype?: Archetype,
   takenNames: string[] = [],
 ): Squadron {
-  const names = SQUADRON_NAMES[side];
+  const names = nationOf(side).squadronNames;
   const sq: Squadron = {
     id: newId(state, 'sq'),
     name: names[nameIndex % names.length],
-    side,
+    side: side.id,
     kind,
     airframes: [],
     crews: size,
@@ -128,7 +149,7 @@ export function makeSquadron(
     trauma: 0,
     leader: makeLeader(rng, side, archetype, takenNames),
     doctrine: defaultDoctrine(kind),
-    armor: defaultArmor(kind),
+    armor: defaultArmor(kind, spec(side, kind).armorBudget),
     notables: [],
     insignia: nameIndex % 10,
   };
@@ -154,33 +175,37 @@ export function emptyPerceived(): Perceived {
   };
 }
 
-function makeSide(state: GameState, rng: Rng, id: SideId, isAI: boolean): SideState {
-  const archetypes: Archetype[] = rng.shuffle(['braggart', 'pessimist', 'gloryHunter', 'byTheBook', 'timid']);
+function makeSide(state: GameState, rng: Rng, id: SideId, isAI: boolean, faction?: NationId): SideState {
+  const ref: SideRef = { id, faction };
+  const nat = nationOf(ref);
+  const rules = rulesOf(ref);
+  // A classic wing gets one leader of each character; a nation's wing leans the way its officers do.
+  const archetypes: Archetype[] = faction ? [] : rng.shuffle([...ARCHETYPES]);
   const order = rng.shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
   const squadrons: Squadron[] = [];
-  const kinds: [AircraftKind, number][] = [['fighter', 8], ['fighter', 8], ['medium', 6], ['medium', 6]];
-  kinds.forEach(([kind, size], i) =>
-    squadrons.push(makeSquadron(state, rng, id, kind, size, order[i], archetypes[i], squadrons.map((q) => q.leader.name))),
-  );
-  // Keep fighter names for fighters on the Directorate side where names imply role.
+  rules.squadrons.forEach(([kind, size], i) => {
+    const archetype = faction ? pickArchetype(rng, ref, squadrons.map((q) => q.leader.archetype)) : archetypes[i];
+    squadrons.push(makeSquadron(state, rng, ref, kind, size, order[i], archetype, squadrons.map((q) => q.leader.name)));
+  });
   return {
     id,
-    name: SIDE_NAMES[id].name,
-    commander: isAI ? 'Oberst Reinhold Kranz' : id === 0 ? 'Air Commodore' : 'Oberst',
-    short: SIDE_NAMES[id].short,
+    ...(faction ? { faction } : {}),
+    name: nat.name,
+    commander: isAI ? nat.aiCommander : nat.title,
+    short: nat.short,
     isAI,
     insight: 0.35,
-    resources: { supplies: 160, stores: 220, replacements: 6 },
+    resources: { supplies: 160, stores: Math.min(220, rules.storesCap), replacements: 6 },
     squadrons,
     factory: { level: 1, qc: 'standard', queue: [], progress: 0 },
     training: { level: 1, focus: 'balanced', inTraining: 0 },
     facilities: { industry: 100, airfield: 100, fuel: 100 },
-    research: [],
+    research: [...rules.research],
     researching: null,
     researchProgress: 0,
     trust: 60,
     approach: { tail: 0.6, headOn: 0.1, beam: 0.3 },
-    flak: 0.5,
+    flak: rules.flak,
     perceived: emptyPerceived(),
     orders: [],
     memos: [],
@@ -197,6 +222,8 @@ export interface NewGameOptions {
   maxTurns?: number;
   /** AI difficulty: 0 (naive) .. 1 (understands survivorship bias). */
   aiInsight?: number;
+  /** The nation each side fights for. Absent: a classic war of Aldmere against the Directorate with symmetric rules. */
+  factions?: [NationId, NationId];
 }
 
 export function newGame(opts: NewGameOptions = {}): GameState {
@@ -223,7 +250,9 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     nextId: 1,
   };
   const single = state.mode === 'single';
-  state.sides = [makeSide(state, rng, 0, false), makeSide(state, rng, 1, single)];
+  const f = opts.factions;
+  if (f && (f[0] === f[1] || !NATIONS[f[0]] || !NATIONS[f[1]])) throw new Error('Each side needs a different nation');
+  state.sides = [makeSide(state, rng, 0, false, f?.[0]), makeSide(state, rng, 1, single, f?.[1])];
   if (single) state.sides[1].insight = opts.aiInsight ?? 0.4;
   state.lethality = rollLethality(rng.fork('lethality'));
   enterTheater(state, 0, rng, null);
@@ -231,20 +260,16 @@ export function newGame(opts: NewGameOptions = {}): GameState {
   return state;
 }
 
-export function aircraftName(kind: AircraftKind, side: SideId): string {
-  return AIRCRAFT[kind].name[side];
+export function aircraftName(kind: AircraftKind, side: SideRef): string {
+  return nationOf(side).aircraft[kind];
 }
 
-const CREW_RANKS: [string[], string[]] = [
-  ['Plt Off', 'Fg Off', 'Flt Lt', 'Sgt', 'Flt Sgt', 'WO'],
-  ['Leutnant', 'Oberleutnant', 'Feldwebel', 'Unteroffizier', 'Oberfeldwebel'],
-];
-
 /** The captain of an aircraft: drawn per campaign (seed) and airframe, from the aircrew name pool. */
-export function captainName(side: SideId, serial: string, seed = ''): string {
+export function captainName(side: SideRef, serial: string, seed = ''): string {
+  const nat = nationOf(side);
   let h = 2166136261;
   for (const ch of `${seed}|${serial}`) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
   h = Math.imul(h ^ (h >>> 15), 2246822507);
   const u = h >>> 0;
-  return `${CREW_RANKS[side][u % CREW_RANKS[side].length]} ${CREW_FIRST[side][(u >>> 3) % CREW_FIRST[side].length]} ${CREW_LAST[side][(u >>> 11) % CREW_LAST[side].length]}`;
+  return `${nat.crewRanks[u % nat.crewRanks.length]} ${nat.crewFirst[(u >>> 3) % nat.crewFirst.length]} ${nat.crewLast[(u >>> 11) % nat.crewLast.length]}`;
 }

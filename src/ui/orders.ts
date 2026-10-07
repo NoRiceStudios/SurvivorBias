@@ -2,6 +2,7 @@
  * The sealed orders: an overview of what a commander has ordered for the week,
  * shown once the folder is sealed, with the way back to amend it.
  */
+import { nationAt } from './nation';
 import { planCost } from '../core/actions';
 import type { Command } from '../core/commands';
 import { AIRCRAFT, RESEARCH } from '../core/data';
@@ -46,7 +47,7 @@ export function ordersOverview(app: App, sideId: SideId): HTMLElement {
         h('div', { class: 'sq-face' }, leaderPortrait(q.leader, sideId, 1)),
         h('div', null,
           h('div', { class: 'sq-name' }, sqLabel(q.name)),
-          h('div', { class: 'small muted' }, `${AIRCRAFT[q.kind].name[sideId]} · ${flying ? `${n(q)} flying` : `${n(q)} ready`}`),
+          h('div', { class: 'small muted' }, `${nationAt(sideId).aircraft[q.kind]} · ${flying ? `${n(q)} flying` : `${n(q)} ready`}`),
           q.kind === 'recon' ? null : h('div', { class: 'small muted' }, [
             q.kind !== 'fighter' ? doctrineSummary(q.kind, 'formation', d.formation).split(':')[0].replace(/\.$/, '') : null,
             `${doctrineSummary(q.kind, 'altitude', d.altitude).split('.')[0]}`,
@@ -91,7 +92,7 @@ function describeCommands(app: App, sideId: SideId, cmds: Command[]): string[] {
   for (const c of cmds) if (c.k === 'armorAll') out.push(`Armor layout of ${name(c.sq)} copied to its type`);
   const doctrine = new Set(cmds.filter((c) => c.k === 'doctrine').map((c) => name((c as { sq: string }).sq)));
   if (doctrine.size) out.push(`Doctrine changed: ${[...doctrine].join(', ')}`);
-  const built = cmds.filter((c) => c.k === 'build').map((c) => AIRCRAFT[(c as { kind: keyof typeof AIRCRAFT }).kind].name[sideId]);
+  const built = cmds.filter((c) => c.k === 'build').map((c) => nationAt(sideId).aircraft[(c as { kind: keyof typeof AIRCRAFT }).kind]);
   if (built.length) out.push(`Ordered: ${built.join(', ')}`);
   for (const c of cmds) {
     if (c.k === 'research') out.push(`Development funded: ${RESEARCH.find((r) => r.id === c.id)?.name ?? c.id}`);

@@ -1,4 +1,5 @@
-import { AIRCRAFT, APPROACH_LABEL, ARCHETYPE_INFO, CALLSIGNS, ZONE_LABEL } from '../core/data';
+import { AIRCRAFT, APPROACH_LABEL, ARCHETYPE_INFO, ZONE_LABEL } from '../core/data';
+import { nationAt } from './nation';
 import type { AircraftKind, Archetype, Debrief, FighterApproach, Hit, SideId, SquadronReport, ZoneId } from '../core/types';
 import { leaderPortrait } from './general';
 import { REPORTS_LIKE } from './squadronsui';
@@ -21,7 +22,7 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
   const lines = d.radio;
   const log = h('div', { class: 'radio-log', 'data-keep-scroll': 'radio' }, h('div', { class: 'radio-line watch' }, h('span', { class: 'tx' }, '— LISTENING WATCH OPENED T+000 —')));
   const maxT = Math.max(60, ...lines.map((l) => l.t));
-  const map = plotMap(app, sideId, maxT, d.reports.map((r) => { const sq = side.squadrons.find((q) => q.id === r.squadronId); return sq ? CALLSIGNS[sideId][sq.insignia % CALLSIGNS[sideId].length] : ''; }).filter(Boolean));
+  const map = plotMap(app, sideId, maxT, d.reports.map((r) => { const sq = side.squadrons.find((q) => q.id === r.squadronId); return sq ? nationAt(sideId).callsigns[sq.insignia % nationAt(sideId).callsigns.length] : ''; }).filter(Boolean));
   let shown = 0;
   let typing = false;
   let done = false;
@@ -32,7 +33,7 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
   // One row per squadron that flew, by its call sign: how many went, how many called in trouble.
   const groups = d.reports.map((r) => {
     const sq = side.squadrons.find((q) => q.id === r.squadronId);
-    const cs = sq ? CALLSIGNS[sideId][sq.insignia % CALLSIGNS[sideId].length] : r.squadronName;
+    const cs = sq ? nationAt(sideId).callsigns[sq.insignia % nationAt(sideId).callsigns.length] : r.squadronName;
     return { cs, name: r.squadronName, sent: r.sent, trouble: new Set<string>(), aborted: new Set<string>() };
   });
   const tally = h('div', { class: 'radio-tally' });
@@ -323,7 +324,7 @@ function returnsSheet(app: App, d: Debrief): HTMLElement {
     h('section', { class: 'paper panel damage-board' },
       h('div', { class: 'board-head' },
         h('h2', null, 'The damage board'),
-        kinds.length > 1 ? h('div', { class: 'seg mini' }, kinds.map((k) => h('button', { class: `seg-btn ${k === kind ? 'on' : ''}`, onclick: () => { boardKind = k; app.render(); } }, AIRCRAFT[k].name[d.side]))) : null),
+        kinds.length > 1 ? h('div', { class: 'seg mini' }, kinds.map((k) => h('button', { class: `seg-btn ${k === kind ? 'on' : ''}`, onclick: () => { boardKind = k; app.render(); } }, nationAt(d.side).aircraft[k]))) : null),
       board),
     h('section', { class: 'paper panel dispersal-panel' },
       h('h2', null, 'Dispersal: who came home'),
@@ -336,7 +337,7 @@ function returnsSheet(app: App, d: Debrief): HTMLElement {
       d.missing.length ? h('table', { class: 'missing' },
         h('thead', null, h('tr', null, h('th', null, 'Serial'), h('th', null, 'Unit'), h('th', null, 'Captain and crew'), h('th', null, 'Last heard'))),
         h('tbody', null, d.missing.map((m) => h('tr', null,
-          h('td', null, m.serial, h('div', { class: 'small muted' }, AIRCRAFT[m.kind].name[d.side])), h('td', null, sqName(m.squadronId)),
+          h('td', null, m.serial, h('div', { class: 'small muted' }, nationAt(d.side).aircraft[m.kind])), h('td', null, sqName(m.squadronId)),
           h('td', null, `${m.captain ?? 'Unknown'}${AIRCRAFT[m.kind].crew > 1 && !m.captain?.includes('(') ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}`),
           h('td', { class: 'typed' }, m.lastWords ? `"${m.lastWords}"` : 'Nothing heard.', m.witnessed ? h('div', { class: 'small muted' }, m.witnessed) : null))))) : null,
       d.missing.length ? h('p', { class: 'muted small' }, 'Next-of-kin telegrams will be sent in due course.') : null) : null,
@@ -374,7 +375,7 @@ function damageBoard(app: App, d: Debrief, kind: AircraftKind): HTMLElement {
       h('div', { class: 'hero-row' }, holder,
         h('ul', { class: 'zone-tally' }, tally.map(([z, n]) => h('li', null, h('span', null, ZONE_LABEL[z]), h('b', null, String(n)))),
           tally.length ? null : h('li', { class: 'muted' }, 'No holes'))),
-      h('figcaption', null, h('b', null, `${hits.length} holes`), ` on ${back.length} ${AIRCRAFT[kind].name[d.side]} that came back`, earlier.length ? h('span', { class: 'muted' }, ` · faint: ${earlier.length} from earlier weeks`) : null),
+      h('figcaption', null, h('b', null, `${hits.length} holes`), ` on ${back.length} ${nationAt(d.side).aircraft[kind]} that came back`, earlier.length ? h('span', { class: 'muted' }, ` · faint: ${earlier.length} from earlier weeks`) : null),
       h('p', { class: 'handwritten' }, fitterSays(hits))),
     h('div', { class: 'hero-right' },
       h('h3', null, lost.length ? `${lost.length} did not return` : 'Every one came back'),
@@ -412,7 +413,7 @@ function dispersal(app: App, d: Debrief, landing: boolean): HTMLElement {
     const groupW = items.reduce((a, p) => a + pw(p.kind), 0);
     if (x > 14 && x + Math.min(groupW, W - 28) > W - 14) { x = 14; row++; }
     // Only the call sign over each group, so neighbouring labels never run into each other.
-    labels.push({ x, y: row * ROW + 16, w: Math.min(groupW, W - 28) - 6, text: sq ? CALLSIGNS[d.side][sq.insignia % CALLSIGNS[d.side].length].toUpperCase() : 'DISBANDED' });
+    labels.push({ x, y: row * ROW + 16, w: Math.min(groupW, W - 28) - 6, text: sq ? nationAt(d.side).callsigns[sq.insignia % nationAt(d.side).callsigns.length].toUpperCase() : 'DISBANDED' });
     for (const p of items) {
       if (x + pw(p.kind) > W - 14) { x = 14; row++; }
       p.x = x + pw(p.kind) / 2;

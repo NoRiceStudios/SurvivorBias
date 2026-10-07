@@ -173,7 +173,8 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .crest-sub { font-size: 17px; color: var(--brass); }
 .crest { padding-left: 34px; position: relative; }
 .crest::before { content: ''; position: absolute; left: 0; top: 2px; width: 24px; height: 24px; border-radius: 50%; background: radial-gradient(circle, #a8332a 0 30%, #e8e4d4 31% 58%, #2c4672 59% 100%); box-shadow: 0 0 0 2px #16171a; }
-.crest.side1::before { border-radius: 0; transform: rotate(45deg) scale(0.8); background: radial-gradient(circle, #1a1a1a 0 55%, #d8b040 56%); }
+.crest.nation-directorate::before { border-radius: 0; transform: rotate(45deg) scale(0.8); background: radial-gradient(circle, #1a1a1a 0 55%, #d8b040 56%); }
+.crest.nation-varn::before { background: radial-gradient(circle, #e8e4d4 0 30%, #2f5a3a 31% 70%, #e8e4d4 71% 100%); }
 .week { display: flex; align-items: center; gap: 8px; color: var(--paper); }
 .week .act { color: var(--brass); font-size: 18px; }
 .resources { margin-left: auto; display: flex; gap: 18px; align-items: center; }
@@ -1335,3 +1336,9 @@ body[data-phase=dawn] .content .paper { filter: saturate(0.9) brightness(1.02); 
 /* Sealed: the task beside its squadron, top-aligned */
 .orders-table .sq-row { align-items: start; }
 .orders-table .task { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+
+/* Choosing the nations: a row of buttons per seat and one line on the chosen nation. */
+.nation-pick { margin: 0 0 8px; }
+.title-menu .nation-pick { margin-left: 22px; }
+.title-menu .nation-pick .menu-note { margin-left: 0; }
+.nation-blurb { color: var(--ink-2); margin-top: 4px; max-width: 340px; line-height: 1.1; }

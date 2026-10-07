@@ -2,6 +2,7 @@ import { reception } from './radio';
 import { AIRCRAFT, ARCHETYPE_BIAS, TARGETS, ZONE_LABEL } from './data';
 import type { Rng } from './rng';
 import { captainName } from './setup';
+import { rulesOf } from './factions';
 import { emptyApproach } from './sim';
 import { WEATHER_EFFECT } from './theaters';
 import type {
@@ -47,7 +48,7 @@ export function squadronReport(
   const discipline = side.training.focus === 'reporting' ? 0.6 : 1;
   const noise = (0.12 + sq.trauma * 0.5 + lossFrac * 0.4 + (sq.leader.trait === 'shaken' ? 0.15 : 0)) * discipline;
   const sharp = sq.leader.trait === 'sharpEyed' ? 0.5 : 1;
-  const biasScale = (b: number) => 1 + (b - 1) * (side.training.focus === 'reporting' ? 0.6 : 1) * sharp;
+  const biasScale = (b: number) => 1 + (b - 1) * (side.training.focus === 'reporting' ? 0.6 : 1) * sharp * rulesOf(side).bias;
   const report: SquadronReport = {
     squadronId,
     squadronName: sq.name,
@@ -217,7 +218,7 @@ export function buildDebrief(
   ]);
   const missing = mine
     .filter((p) => p.fate === 'lost')
-    .map((p) => ({ serial: p.serial, squadronId: p.squadronId, kind: p.kind, lastWords: p.lastWords, lastZone: p.lastZone, witnessed: p.witnessed, captain: p.captain ?? captainName(side.id, p.serial, seed) }));
+    .map((p) => ({ serial: p.serial, squadronId: p.squadronId, kind: p.kind, lastWords: p.lastWords, lastZone: p.lastZone, witnessed: p.witnessed, captain: p.captain ?? captainName(side, p.serial, seed) }));
 
   const mainRaid = myRaids.find((r) => r.target !== 'feint') ?? null;
   const reports: SquadronReport[] = [];

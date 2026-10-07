@@ -2,7 +2,7 @@
  * Headless balance runner: plays many campaigns with a scripted player against
  * the AI and prints outcome statistics.  Usage: npm run balance -- [games]
  */
-import { aiPlan, endTurnSingle, reachableSites, startCampaign, validatePlan, type GameState, type TurnPlan } from '../src/core';
+import { aiPlan, endTurnSingle, NATION_IDS, reachableSites, resolveTurn, startCampaign, validatePlan, type GameState, type NationId, type TurnPlan } from '../src/core';
 
 function scriptedPlan(state: GameState): TurnPlan {
   const side = state.sides[0];
@@ -30,6 +30,26 @@ function scriptedPlan(state: GameState): TurnPlan {
 }
 
 const games = Number(process.argv[2] ?? 40);
+
+// --matrix: the AI commands both nations, with equal resources, in every pairing (and the classic war for reference).
+if (process.argv.includes('--matrix')) {
+  const pairs: ([NationId, NationId] | undefined)[] = [undefined];
+  for (const a of NATION_IDS) for (const b of NATION_IDS) if (a !== b) pairs.push([a, b]);
+  console.log('pairing                  side 0 wins / draws / side 1 wins   (theaters)   avg weeks');
+  for (const f of pairs) {
+    const res = [0, 0, 0];
+    let wk = 0;
+    for (let g = 0; g < games; g++) {
+      const s = startCampaign({ seed: `mx${g}`, mode: 'hotseat', factions: f });
+      while (!s.outcome) resolveTurn(s, [aiPlan(s, 0), aiPlan(s, 1)]);
+      for (const r of s.theaterResults) res[r.winner === 0 ? 0 : r.winner === 1 ? 2 : 1]++;
+      wk += s.archive.length;
+    }
+    const label = f ? `${f[0]} v ${f[1]}` : 'classic';
+    console.log(`${label.padEnd(25)}${res.join(' / ').padEnd(40)}${(wk / games).toFixed(1)}`);
+  }
+  process.exit(0);
+}
 // --mirror: the AI commands both sides (tests the symmetric rules).
 const mirror = process.argv.includes('--mirror');
 const outcomes: Record<string, number> = {};

@@ -2,7 +2,8 @@
  * Procedural pixel-art aircraft. Each sprite is rasterised from simple shapes
  * tagged with a hit zone, so damage can be placed exactly where it landed.
  */
-import type { AircraftKind, Hit, SideId, ZoneId } from '../core/types';
+import { nationAt, ROUNDEL } from './nation';
+import type { AircraftKind, Hit, NationId, SideId, ZoneId } from '../core/types';
 import { ZONES } from '../core/types';
 
 export const PAL = {
@@ -31,10 +32,11 @@ export const PAL = {
   black: '#1a1a1a',
 };
 
-const CAMO: Record<SideId, { a: string[]; b: string[]; under: string }> = {
+const CAMO: Record<NationId, { a: string[]; b: string[]; under: string }> = {
   // [shadow, base, light, highlight]
-  0: { a: ['#36412b', '#4b5a39', '#5f6f47', '#7c8a5a'], b: ['#4a3d2a', '#64523a', '#7a674a', '#94805e'], under: '#8f9a8a' },
-  1: { a: ['#3c434c', '#535d68', '#68737f', '#87929c'], b: ['#2f3a33', '#42504a', '#55645c', '#6f7f76'], under: '#a3aab0' },
+  aldmere: { a: ['#36412b', '#4b5a39', '#5f6f47', '#7c8a5a'], b: ['#4a3d2a', '#64523a', '#7a674a', '#94805e'], under: '#8f9a8a' },
+  varn: { a: ['#2f3d44', '#43555e', '#586c75', '#73878f'], b: ['#3a4636', '#4e5c48', '#62715a', '#7d8c72'], under: '#9aa6a8' },
+  directorate: { a: ['#3c434c', '#535d68', '#68737f', '#87929c'], b: ['#2f3a33', '#42504a', '#55645c', '#6f7f76'], under: '#a3aab0' },
 };
 
 type Mat = 'skin' | 'glass' | 'engine' | 'prop' | 'metal';
@@ -288,7 +290,8 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
   const { w, h, mat } = def;
   const data = new Uint8ClampedArray(new ArrayBuffer(w * h * 4));
   const style = opts.style ?? 'camo';
-  const camo = CAMO[opts.side];
+  const nation = nationAt(opts.side).id;
+  const camo = CAMO[nation];
   const seed = opts.seed ?? 7;
   const put = (i: number, c: string, a = 255) => {
     const [r, g, b] = hex(c);
@@ -358,10 +361,11 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
           if (!filled(x, y)) continue;
           const d = Math.hypot(x + 0.5 - ix, y + 0.5 - iy);
           const i = y * w + x;
-          if (opts.side === 0) {
-            if (d <= rr * 0.45) put(i, PAL.red);
-            else if (d <= rr * 0.8) put(i, PAL.white);
-            else if (d <= rr + 0.2) put(i, PAL.blue);
+          if (nation !== 'directorate') {
+            const [centre, ring, edge] = ROUNDEL[nation];
+            if (d <= rr * 0.45) put(i, centre);
+            else if (d <= rr * 0.8) put(i, ring);
+            else if (d <= rr + 0.2) put(i, edge);
           } else {
             // Directorate: black diamond edged in yellow.
             const md = Math.abs(x + 0.5 - ix) + Math.abs(y + 0.5 - iy);

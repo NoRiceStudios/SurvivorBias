@@ -4,8 +4,9 @@
  * the build queue, QC policy and bomb damage. Drawn at an integer scale and
  * lightly animated (smoke, propellers, flags, walkers) until detached.
  */
+import { look, nationAt } from './nation';
 import { AIRCRAFT } from '../core/data';
-import type { AircraftKind, SideId, SideState } from '../core/types';
+import type { AircraftKind, NationId, SideId, SideState } from '../core/types';
 import { h } from './dom';
 
 const S = 3;
@@ -36,6 +37,9 @@ interface Pal {
   camo: [string, string, string];
   id?: SideId;
 }
+
+/** Fin flash and small insignia: [upper, lower]. */
+const FLAG: Record<NationId, [string, string]> = { aldmere: ['#2c4672', '#a8332a'], directorate: ['#1a1a1a', '#d8b040'], varn: ['#2f5a3a', '#e8e4d4'] };
 
 const PALS: Record<SideId, Pal> = {
   0: {
@@ -136,8 +140,8 @@ function cached(key: string, make: () => HTMLCanvasElement): HTMLCanvasElement {
 
 /** Biplane trainer, side view facing left. 18x9 (+outline). */
 function biplane(side: SideId, prop: number): HTMLCanvasElement {
-  return cached(`bi${side}${prop}`, () => {
-    const [lt, base, dk] = PALS[side].trainer;
+  return cached(`bi${nationAt(side).id}${prop}`, () => {
+    const [lt, base, dk] = PALS[look(side)].trainer;
     return sprite(18, 9, (p) => {
       for (let x = 4; x <= 13; x++) p(x, 1, x === 4 ? lt : base);
       for (let x = 2; x <= 14; x++) {
@@ -154,7 +158,7 @@ function biplane(side: SideId, prop: number): HTMLCanvasElement {
       p(5, 6, '#2e3130'); p(4, 7, '#1a1a1a'); p(5, 7, '#1a1a1a');
       p(16, 5, '#2e3130');
       // Markings.
-      if (side === 0) { p(12, 3, '#2c4672'); p(12, 4, '#a8332a'); } else { p(12, 3, '#1a1a1a'); p(12, 4, '#d8b040'); }
+      { const [a, b] = FLAG[nationAt(side).id]; p(12, 3, a); p(12, 4, b); }
       // Propeller: blades up/down, or a blur when turning.
       if (prop === 0) { p(0, 1, '#8d9398'); p(0, 2, '#8d9398'); p(0, 5, '#8d9398'); p(0, 6, '#8d9398'); }
       else if (prop === 1) { p(0, 2, '#c9ced2'); p(0, 5, '#8d9398'); }
@@ -166,8 +170,8 @@ function biplane(side: SideId, prop: number): HTMLCanvasElement {
 
 /** Monoplane advanced trainer (level 5), side view facing left. */
 function monoplane(side: SideId): HTMLCanvasElement {
-  return cached(`mono${side}`, () => {
-    const [lt, base, dk] = PALS[side].trainer;
+  return cached(`mono${nationAt(side).id}`, () => {
+    const [lt, base, dk] = PALS[look(side)].trainer;
     return sprite(18, 7, (p) => {
       for (let x = 2; x <= 15; x++) { p(x, 2, x < 5 ? lt : base); p(x, 3, base); }
       for (let x = 3; x <= 13; x++) p(x, 4, dk);
@@ -177,7 +181,7 @@ function monoplane(side: SideId): HTMLCanvasElement {
       p(1, 2, '#3a3d40'); p(1, 3, '#2e3130');
       p(0, 1, '#8d9398'); p(0, 4, '#8d9398'); p(0, 2, '#c9ced2'); p(0, 3, '#8d9398');
       p(6, 5, '#2e3130'); p(6, 6, '#1a1a1a'); p(15, 4, '#2e3130');
-      if (side === 0) { p(12, 2, '#2c4672'); p(12, 3, '#a8332a'); } else { p(12, 2, '#1a1a1a'); p(12, 3, '#d8b040'); }
+      { const [a, b] = FLAG[nationAt(side).id]; p(12, 2, a); p(12, 3, b); }
     });
   });
 }
@@ -190,10 +194,10 @@ const KIND_LEN: Record<AircraftKind, number> = { fighter: 15, medium: 21, heavy:
  */
 function warplane(kind: AircraftKind, side: SideId, paint: number): HTMLCanvasElement {
   const steps = Math.round(paint * 6);
-  return cached(`wp${kind}${side}${steps}`, () => {
+  return cached(`wp${kind}${nationAt(side).id}${steps}`, () => {
     const L = KIND_LEN[kind];
     const tall = kind === 'heavy' ? 9 : kind === 'fighter' ? 7 : 8;
-    const [cl, cb, cd] = PALS[side].camo;
+    const [cl, cb, cd] = PALS[look(side)].camo;
     const metal: [string, string, string] = ['#c8ccc8', '#a8acaa', '#80847f'];
     const done = (steps / 6) * L;
     return sprite(L, tall, (p) => {
@@ -239,8 +243,9 @@ function warplane(kind: AircraftKind, side: SideId, paint: number): HTMLCanvasEl
       // Insignia once painted.
       const ix = Math.round(L * 0.6);
       if (ix <= done) {
-        if (side === 0) { p(ix, fy, '#2c4672'); p(ix, fy + 1, '#a8332a'); p(ix + 1, fy, '#2c4672'); p(ix + 1, fy + 1, '#2c4672'); }
-        else { p(ix, fy, '#d8b040'); p(ix, fy + 1, '#1a1a1a'); p(ix + 1, fy, '#1a1a1a'); p(ix + 1, fy + 1, '#d8b040'); }
+        const nation = nationAt(side).id;
+        if (nation === 'directorate') { p(ix, fy, '#d8b040'); p(ix, fy + 1, '#1a1a1a'); p(ix + 1, fy, '#1a1a1a'); p(ix + 1, fy + 1, '#d8b040'); }
+        else { const [a, b] = FLAG[nation]; p(ix, fy, a); p(ix, fy + 1, b); p(ix + 1, fy, a); p(ix + 1, fy + 1, a); }
       }
     });
   });
@@ -277,12 +282,17 @@ function shade(c: string, f: number): string {
 function flag(g: G, x: number, top: number, side: SideId, wave: number) {
   R(g, x, top, 1, GY - top + 1, '#3a3028');
   R(g, x, top - 1, 1, 1, '#d8b040');
-  const P = PALS[side].flag;
+  const P = PALS[look(side)].flag;
   for (let i = 0; i < 7; i++) {
     const dy = (i + wave) % 4 === 0 ? 1 : 0;
     for (let j = 0; j < 5; j++) {
       let c = P[0];
-      if (side === 0) {
+      if (nationAt(side).id === 'varn') {
+        // Green field with a white roundel in the fly.
+        c = '#3f6a4a';
+        if (i < 3 && j < 2) c = '#e8e4d4';
+        if (i >= 3 && i <= 5 && j >= 1 && j <= 3) c = i === 4 && j === 2 ? '#2f5a3a' : '#e8e4d4';
+      } else if (side === 0 || nationAt(side).id === 'aldmere') {
         // Light blue field with a roundel in the fly.
         c = '#6c8cb4';
         if (i < 3 && j < 2) c = '#2c4672';
@@ -643,7 +653,7 @@ interface SchoolLayout {
 const SL: SchoolLayout = { sock: 4, hut: 14, pole: 48, hangarA: 60, classroom: 116, tower: 162, hangarB: 190, hq: 244, range: 290 };
 
 export function schoolScene(side: SideState): HTMLElement {
-  const P = PALS[side.id];
+  const P = PALS[look(side.id)];
   const t = side.training;
   const lv = Math.max(1, Math.min(5, t.level));
   const pupils = Math.min(t.inTraining, 18);
@@ -935,7 +945,7 @@ function rubble(g: G, x: number, y: number, P: Pal, seed: number) {
 }
 
 export function worksScene(side: SideState): HTMLElement {
-  const P: Pal = { ...PALS[side.id], id: side.id };
+  const P: Pal = { ...PALS[look(side.id)], id: look(side.id) };
   const f = side.factory;
   const lv = Math.max(1, Math.min(5, f.level));
   const cond = side.facilities.industry;

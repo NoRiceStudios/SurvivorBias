@@ -3,11 +3,12 @@
  * the adjutant's warnings as chips (click one to go to the problem), and the
  * button that seals the orders. A blocking problem disables the button and says why.
  */
+import { nationAt } from './nation';
 import { AIRCRAFT } from '../core/data';
 import { CONVOY, planCost, validatePlan } from '../core/actions';
 import { flyable } from '../core/sim';
 import { frontSector, THEATERS } from '../core/theaters';
-import { STORES_CAP } from '../core/turn';
+import { storesCap } from '../core/factions';
 import type { AircraftKind, SideId, SideState, Squadron } from '../core/types';
 import type { App } from './app';
 import { h, plural } from './dom';
@@ -66,12 +67,12 @@ export function readinessChips(app: App, side: SideState): Chip[] {
   for (const kind of ['medium', 'heavy', 'fighter'] as const) {
     const have = side.squadrons.filter((q) => q.kind === kind).reduce((a, q) => a + q.airframes.length, 0);
     const onOrder = side.factory.queue.filter((k) => k === kind).length;
-    if (have > 0 && have <= 6 && onOrder === 0) chips.push({ label: `${AIRCRAFT[kind].name[side.id]} running out`, level: 'warn', tab: 'works', detail: `Only ${have} left and none on order. Crews follow the aircraft.` });
+    if (have > 0 && have <= 6 && onOrder === 0) chips.push({ label: `${nationAt(side.id).aircraft[kind]} running out`, level: 'warn', tab: 'works', detail: `Only ${have} left and none on order. Crews follow the aircraft.` });
   }
   if (!side.researching && side.resources.supplies >= 70) chips.push({ label: 'Engineers idle', level: 'info', tab: 'works', focus: '.works-research', detail: 'No development project is funded. One at a time; each takes a few weeks.' });
   if (side.facilities.industry < 50) chips.push({ label: `Works damaged: ${side.facilities.industry}%`, level: 'warn', tab: 'intel', detail: 'Enemy bombing has cut our aircraft production. Emergency repairs are under Intelligence, Effect of the bombing.' });
   if (side.factory.queue.length === 0 && side.resources.supplies >= 60) chips.push({ label: 'Factory idle', level: 'info', tab: 'works', focus: '.works-factory', detail: 'Nothing is on order at the aircraft works.' });
-  if (c.stores <= side.resources.stores && side.resources.stores >= STORES_CAP - 5) chips.push({ label: 'Depots full', level: 'info', tab: 'war', detail: `Deliveries beyond ${STORES_CAP} stores are lost: we can afford a bigger effort.` });
+  if (c.stores <= side.resources.stores && side.resources.stores >= storesCap(side) - 5) chips.push({ label: 'Depots full', level: 'info', tab: 'war', detail: `Deliveries beyond ${storesCap(side)} stores are lost: we can afford a bigger effort.` });
   return chips;
 }
 

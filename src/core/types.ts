@@ -1,6 +1,8 @@
 import type { RngState } from './rng';
 
 export type SideId = 0 | 1;
+/** The nations at war (see `factions.ts`). */
+export type NationId = 'aldmere' | 'directorate' | 'varn';
 
 export const ZONES = [
   'nose',
@@ -215,6 +217,8 @@ export interface Perceived {
 
 export interface SideState {
   id: SideId;
+  /** The nation this side fights for, with its strengths and weaknesses. Absent: a classic game with symmetric rules. */
+  faction?: NationId;
   name: string;
   /** The human (or AI) in command, shown in hotseat handovers. */
   commander: string;

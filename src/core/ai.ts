@@ -1,5 +1,6 @@
 import { buyConvoy, CONVOY, requestCrews, emergencyRepair, emptyPlan, queueAircraft, REPAIR_COST, setApproach, startResearch, upgradeFactory, upgradeFlak, upgradeTraining, validatePlan } from './actions';
-import { AIRCRAFT, APPROACH_ZONES, MAX_ARMOR_PER_ZONE, RESEARCH, ZONE_AREA } from './data';
+import { APPROACH_ZONES, MAX_ARMOR_PER_ZONE, RESEARCH, ZONE_AREA } from './data';
+import { researchCost, spec } from './factions';
 import { Rng } from './rng';
 import { flyable } from './sim';
 import { bomberRange, countedSites, depthFor, escortRange, facilityCondition, frontSector, reachableSites, sectorAtDepth, theaterMods } from './theaters';
@@ -17,7 +18,7 @@ export function chooseArmor(side: SideState, sq: Squadron): Record<ZoneId, numbe
   const own = side.perceived.survivorHitsByKind?.[sq.kind];
   const seen = own && ZONES.reduce((a, z) => a + own[z], 0) > 10 ? own : side.perceived.survivorHits;
   const totalSeen = ZONES.reduce((a, z) => a + seen[z], 0);
-  const budget = AIRCRAFT[sq.kind].armorBudget;
+  const budget = spec(side, sq.kind).armorBudget;
   const weights = {} as Record<ZoneId, number>;
   // Expected exposure if every hit were equally survivable.
   const exp = {} as Record<ZoneId, number>;
@@ -144,7 +145,7 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
     const rest = RESEARCH.filter((r) => !prefs.includes(r.id)).sort((x, y) => x.cost - y.cost).map((r) => r.id);
     for (const p of [...prefs, ...rest]) {
       const item = RESEARCH.find((r) => r.id === p)!;
-      if (!side.research.includes(p) && side.resources.supplies > item.cost + 80) {
+      if (!side.research.includes(p) && side.resources.supplies > researchCost(side, item) + 80) {
         if (startResearch(side, p).ok) break;
       }
     }
