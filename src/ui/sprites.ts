@@ -266,7 +266,7 @@ export interface RenderOpts {
   seed?: number;
   /** highlight zones (blueprint mode) */
   zoneTint?: Partial<Record<ZoneId, string>>;
-  /** Armor plates per zone (blueprint mode): drawn as white hatching, denser with more plates. */
+  /** Armor plates per zone (blueprint mode): the zone is filled in pale steel, paler with more plates. */
   zonePlates?: Partial<Record<ZoneId, number>>;
   /** Line colour for the 'outline' style (a chalk outline on the ground). */
   lineColor?: string;
@@ -280,7 +280,9 @@ export interface RenderOpts {
 }
 
 /** The blueprint palette: Wald's diagram, drawn by a draughtsman. */
-export const BLUE = { fill: '#24426a', shade: '#2b4d78', zone: '#6f8fb4', line: '#e3ebf2', plate: '#e3ebf2', faint: '#7f9cc0', hole: '#ff6a3c' };
+export const BLUE = { fill: '#24426a', shade: '#2b4d78', zone: '#6f8fb4', line: '#e3ebf2', plate: '#e3ebf2', plateHatch: '#56769a', faint: '#7f9cc0', hole: '#ff6a3c' };
+/** Steel fill of a plated zone by number of plates (1..3): the more plate, the paler. */
+export const PLATE_FILL = ['', '#93acc8', '#b9cbdd', '#e0e9f1'];
 
 /** Render an aircraft into an ImageData-compatible RGBA buffer. */
 export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: number; h: number; data: Uint8ClampedArray<ArrayBuffer> } {
@@ -318,12 +320,13 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
       const lightEdge = !filled(x, y - 1) || !filled(x - 1, y);
       const darkEdge = !filled(x, y + 1) || !filled(x + 1, y);
       if (style === 'blueprint') {
-        // A draughtsman's drawing: blue fill, white lines; plates as white hatching.
+        // A draughtsman's drawing: blue fill, white lines; plated zones in pale steel with a fine hatch,
+        // so armor reads at a glance against the dark blue of bare skin.
         const zi = def.zone[i];
         const tint = zi >= 0 ? opts.zoneTint?.[ZONES[zi]] : undefined;
         const plates = zi >= 0 ? opts.zonePlates?.[ZONES[zi]] ?? 0 : 0;
         let c = tint ?? (m === MAT_ID.glass || m === MAT_ID.engine || m === MAT_ID.prop ? BLUE.shade : BLUE.fill);
-        if (plates > 0 && (x + y) % (5 - plates) === 0) c = BLUE.plate;
+        if (plates > 0) c = (x - y + 64) % 4 === 0 ? BLUE.plateHatch : PLATE_FILL[Math.min(plates, PLATE_FILL.length - 1)];
         // Zone boundaries as fine lines.
         const zr = def.zone[i + 1];
         const zd = def.zone[i + w];
@@ -430,6 +433,26 @@ export function aircraftCanvas(kind: AircraftKind, opts: RenderOpts, scale = 3):
 }
 
 /** The hit zone under a pixel of a type's sprite (sprite coordinates), or null. */
+/** A point inside each zone, near its middle, in sprite pixels: where a label for the zone can sit. */
+export function zoneCentre(kind: AircraftKind, z: ZoneId): { x: number; y: number } | null {
+  const def = spriteDef(kind);
+  const px = def.zonePixels[z];
+  if (!px?.length) return null;
+  let sx = 0;
+  let sy = 0;
+  for (const i of px) { sx += i % def.w; sy += Math.floor(i / def.w); }
+  const mx = sx / px.length;
+  const my = sy / px.length;
+  // The zone pixel closest to the mean, so a split zone (two wings) labels a real part of it.
+  let best = px[0];
+  let bd = Infinity;
+  for (const i of px) {
+    const d = (i % def.w - mx) ** 2 + (Math.floor(i / def.w) - my) ** 2;
+    if (d < bd) { bd = d; best = i; }
+  }
+  return { x: best % def.w, y: Math.floor(best / def.w) };
+}
+
 export function zoneAt(kind: AircraftKind, x: number, y: number): ZoneId | null {
   const def = spriteDef(kind);
   if (x < 0 || y < 0 || x >= def.w || y >= def.h) return null;
