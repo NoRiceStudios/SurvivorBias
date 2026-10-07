@@ -3,11 +3,11 @@
  * or recorded: the "band" is oscillators and filtered noise, so the game still ships
  * without audio assets or licences. All tunes are original.
  *
- * The music is a military band that takes itself far too seriously: drums that never
- * stop, oom-pah tubas, brass, a fife and a glockenspiel cheerfully doubling the tune
- * while the wing loses a third of its crews. Each mood is a short march in bars; a
- * scheduler queues the next bar a little ahead of time and moods crossfade when the
- * screen changes.
+ * The style follows the war-game scores of the early 2000s: heroic themes in minor for
+ * brass over galloping strings, timpani and a snare that never stops, with a wink of
+ * comedy (bassoon and pizzicato) in the planning room. Each mood is a short piece in
+ * bars; a scheduler queues the next bar a little ahead of time and moods crossfade when
+ * the screen changes.
  */
 import { musicOut, musicVolume, onAudioWake } from './audio';
 
@@ -73,17 +73,6 @@ function brass(r: Rig, m: number, t: number, dur: number, vol: number) {
   }
 }
 
-/** The off-beat "pah": a short chord from the horns. */
-function stab(r: Rig, chord: number[], t: number, vol: number) {
-  const { c } = r;
-  const g = gainEnv(r, t, 0.012, vol, 0.07, 0.08);
-  const lp = c.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.value = 1300;
-  lp.connect(g).connect(r.out);
-  for (const m of chord) osc(r, 'sawtooth', hz(m), t, t + 0.2, lp);
-}
-
 /** The tuba's "oom". */
 function tuba(r: Rig, m: number, t: number, dur: number, vol: number) {
   const { c } = r;
@@ -97,42 +86,36 @@ function tuba(r: Rig, m: number, t: number, dur: number, vol: number) {
   osc(r, 'sine', hz(m), t, t + dur + 0.1, g);
 }
 
-/** The fife: a breathy, slightly sharp little flute. */
-function fife(r: Rig, m: number, t: number, dur: number, vol: number) {
+/** Pizzicato strings: a plucked note that dies at once. */
+function pizz(r: Rig, m: number, t: number, vol: number) {
   const { c } = r;
-  const g = gainEnv(r, t, 0.02, vol, Math.max(0.02, dur - 0.05), 0.05);
-  g.connect(r.out);
-  const o = osc(r, 'triangle', hz(m), t, t + dur + 0.08, g, 8);
-  const vib = c.createOscillator();
-  vib.frequency.value = 6.5;
-  const vd = c.createGain();
-  vd.gain.value = 12;
-  vib.connect(vd).connect(o.detune);
-  vib.start(t);
-  vib.stop(t + dur + 0.08);
-  // The chiff of breath at the start of each note.
-  const n = c.createBufferSource();
-  n.buffer = noiseBuf(c);
-  const bp = c.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.value = hz(m) * 2;
-  bp.Q.value = 4;
-  const ng = gainEnv(r, t, 0.005, vol * 0.5, 0.01, 0.04);
-  n.connect(bp).connect(ng).connect(r.out);
-  n.start(t, Math.random() * 0.5, 0.08);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(2400, t);
+  lp.frequency.exponentialRampToValueAtTime(500, t + 0.2);
+  lp.connect(g).connect(r.out);
+  osc(r, 'triangle', hz(m), t, t + 0.4, lp);
+  osc(r, 'sawtooth', hz(m), t, t + 0.4, lp, 4);
 }
 
-/** Glockenspiel: a bright struck bar with an inharmonic overtone. */
-function glock(r: Rig, m: number, t: number, vol: number) {
+/** Bassoon: a reedy, nasal low voice, for the tune that sneaks about. */
+function bassoon(r: Rig, m: number, t: number, dur: number, vol: number) {
   const { c } = r;
-  for (const [mul, lvl, len] of [[1, 1, 0.9], [2.76, 0.3, 0.3], [5.4, 0.1, 0.12]] as const) {
-    const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol * lvl, t + 0.003);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-    g.connect(r.out);
-    osc(r, 'sine', hz(m) * mul, t, t + len + 0.02, g);
-  }
+  const g = gainEnv(r, t, 0.02, vol, Math.max(0.02, dur - 0.04), 0.05);
+  const bp = c.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 520;
+  bp.Q.value = 1.2;
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 1800;
+  bp.connect(lp).connect(g).connect(r.out);
+  osc(r, 'square', hz(m), t, t + dur + 0.08, bp);
+  osc(r, 'sawtooth', hz(m), t, t + dur + 0.08, bp, 6);
 }
 
 /** Short bowed strings (spiccato) for the radio room's running eighths. */
@@ -243,59 +226,59 @@ function play(tune: Tune, t: number, b: number, f: (m: number, at: number, dur: 
   }
 }
 
-/** The march's engine: tuba on the beat, horns on the off-beat. */
-function oomPah(r: Rig, bar: Bar, t: number, b: number, tubaVol: number, stabVol: number) {
-  for (let k = 0; k < 4; k++) {
-    if (k % 2 === 0) tuba(r, k === 0 ? bar.root : bar.fifth, t + k * b, b * 0.7, tubaVol);
-    else stab(r, bar.chord, t + k * b, stabVol);
-  }
-}
-
 /** One bar of a snare cadence: sixteen sixteenths, each a velocity (0 = silent). */
 function cadence(r: Rig, pattern: number[], t: number, b: number, vol: number) {
   pattern.forEach((v, k) => snare(r, t + (k * b) / 4, v * vol));
 }
 
-// Chords in D. D4 = 62.
-const D = [62, 66, 69], G = [62, 67, 71], A = [61, 64, 69], A7 = [61, 67, 69], Bm = [62, 66, 71];
-const Dm = [62, 65, 69], C = [60, 64, 67], Bb = [62, 65, 70], AM = [61, 64, 69];
+/** The galloping strings under a war film: two sixteenths and an eighth on every beat. */
+function gallop(r: Rig, root: number, t: number, b: number, vol: number) {
+  for (let k = 0; k < 4; k++) {
+    const at = t + k * b;
+    spic(r, [root + 12, root + 24], at, vol * 1.2);
+    spic(r, [root + 12, root + 24], at + b / 4, vol * 0.7);
+    spic(r, [root + 12, root + 24], at + b / 2, vol * 0.9);
+  }
+}
 
-/** "Forward, Regardless": the title march. Dotted rhythms, full of itself. */
-const FORWARD: Bar[] = [
-  { chord: D, root: 38, fifth: 45, tune: [[69, 0.75], [69, 0.25], [74, 1], [78, 1], [74, 1]] },
-  { chord: D, root: 38, fifth: 45, tune: [[69, 0.75], [69, 0.25], [74, 1], [78, 1.5], [76, 0.5]] },
-  { chord: G, root: 43, fifth: 38, tune: [[74, 1], [71, 1], [67, 1], [71, 1]] },
-  { chord: A, root: 45, fifth: 40, tune: [[69, 2], [76, 1], [73, 1]] },
-  { chord: D, root: 38, fifth: 45, tune: [[74, 0.75], [74, 0.25], [78, 1], [81, 1], [78, 1]] },
-  { chord: Bm, root: 47, fifth: 42, tune: [[79, 0.75], [78, 0.25], [76, 1], [74, 1], [71, 1]] },
-  { chord: A7, root: 45, fifth: 40, tune: [[69, 0.75], [71, 0.25], [73, 1], [76, 1], [73, 1]] },
-  { chord: D, root: 38, fifth: 45, tune: [[74, 1], [69, 1], [62, 1], [0, 1]] },
+// D minor. D4 = 62.
+const Dm = [62, 65, 69], Bb = [62, 65, 70], C = [60, 64, 67], F = [60, 65, 69], Gm = [62, 67, 70], A = [61, 64, 69];
+
+/** "Hold the Line": the title theme. Heroic, in minor, over galloping strings. */
+const HOLD: Bar[] = [
+  { chord: Dm, root: 38, fifth: 45, tune: [[62, 0.75], [62, 0.25], [69, 1.5], [67, 0.5], [65, 1]] },
+  { chord: Bb, root: 34, fifth: 41, tune: [[65, 0.75], [67, 0.25], [70, 1.5], [69, 0.5], [67, 1]] },
+  { chord: C, root: 36, fifth: 43, tune: [[67, 0.75], [64, 0.25], [72, 2], [70, 0.5], [69, 0.5]] },
+  { chord: Dm, root: 38, fifth: 45, tune: [[69, 3], [0, 1]] },
+  { chord: Dm, root: 38, fifth: 45, tune: [[62, 0.75], [62, 0.25], [69, 1.5], [67, 0.5], [65, 1]] },
+  { chord: F, root: 41, fifth: 36, tune: [[65, 0.75], [69, 0.25], [72, 1.5], [74, 0.5], [72, 1]] },
+  { chord: Gm, root: 43, fifth: 38, tune: [[70, 0.75], [69, 0.25], [67, 1], [70, 1], [74, 1]] },
+  { chord: A, root: 45, fifth: 40, tune: [[73, 2], [69, 1], [64, 1]] },
 ];
-const MARCH_SNARE = [1, 0, 0.35, 0.35, 0.7, 0, 0.35, 0, 1, 0, 0.35, 0.35, 0.7, 0.35, 0.35, 0.35];
+const WAR_SNARE = [1, 0, 0.3, 0.3, 0.6, 0, 0.3, 0.3, 1, 0, 0.3, 0.3, 0.6, 0.3, 0.6, 0.3];
 
-/** "Requisition Form B": fife and drums for planning, a little too jaunty. */
-const REQUISITION: Bar[] = [
-  { chord: Dm, root: 38, fifth: 45, tune: [[74, 0.5], [77, 0.5], [81, 1], [81, 0.5], [79, 0.5], [77, 1]] },
-  { chord: Dm, root: 38, fifth: 45, tune: [[76, 0.5], [77, 0.5], [74, 1], [69, 2]] },
-  { chord: C, root: 36, fifth: 43, tune: [[79, 0.5], [76, 0.5], [72, 1], [76, 0.5], [79, 0.5], [84, 1]] },
-  { chord: Dm, root: 38, fifth: 45, tune: [[81, 1.5], [77, 0.5], [74, 2]] },
-  { chord: Bb, root: 34, fifth: 41, tune: [[77, 0.5], [77, 0.5], [82, 1], [81, 0.5], [79, 0.5], [77, 1]] },
-  { chord: C, root: 36, fifth: 43, tune: [[76, 0.5], [76, 0.5], [79, 1], [77, 0.5], [76, 0.5], [74, 1]] },
-  { chord: AM, root: 45, fifth: 40, tune: [[73, 0.5], [76, 0.5], [81, 1], [79, 0.5], [77, 0.5], [76, 1]] },
-  { chord: Dm, root: 38, fifth: 45, tune: [[74, 2], [0, 2]] },
+/** "Paperwork": planning. Sneaking about in minor on bassoon and pizzicato, a wink at the absurd. */
+const PAPERWORK: Bar[] = [
+  { chord: Dm, root: 38, fifth: 45, tune: [[62, 0.5], [0, 0.5], [65, 0.5], [0, 0.5], [69, 0.5], [68, 0.5], [69, 1]] },
+  { chord: Dm, root: 38, fifth: 45, tune: [[70, 0.5], [69, 0.5], [67, 0.5], [65, 0.5], [64, 1], [0, 1]] },
+  { chord: Gm, root: 43, fifth: 38, tune: [[67, 0.5], [0, 0.5], [70, 0.5], [0, 0.5], [74, 0.5], [73, 0.5], [74, 1]] },
+  { chord: A, root: 45, fifth: 40, tune: [[73, 0.5], [76, 0.5], [79, 0.5], [76, 0.5], [73, 1], [0, 1]] },
+  { chord: Dm, root: 38, fifth: 45, tune: [[62, 0.5], [0, 0.5], [65, 0.5], [0, 0.5], [69, 0.5], [68, 0.5], [69, 1]] },
+  { chord: Bb, root: 34, fifth: 41, tune: [[70, 0.5], [69, 0.5], [67, 0.5], [65, 0.5], [62, 1], [0, 1]] },
+  { chord: A, root: 45, fifth: 40, tune: [[67, 0.5], [65, 0.5], [64, 0.5], [61, 0.5], [64, 1], [69, 1]] },
+  { chord: Dm, root: 38, fifth: 45, tune: [[62, 1], [57, 1], [62, 1], [0, 1]] },
 ];
-const FIFE_SNARE = [0.9, 0, 0.3, 0, 0.6, 0.3, 0.3, 0, 0.9, 0, 0.3, 0.3, 0.6, 0, 0.3, 0];
 
-/** "Mentioned in Dispatches": the debrief, triumphant whatever the count. */
-const DISPATCHES: Bar[] = [
-  { chord: D, root: 38, fifth: 45, tune: [[74, 1.5], [74, 0.5], [78, 1], [81, 1]] },
-  { chord: G, root: 43, fifth: 38, tune: [[83, 2], [81, 1], [79, 1]] },
-  { chord: D, root: 38, fifth: 45, tune: [[78, 1.5], [76, 0.5], [74, 1], [78, 1]] },
-  { chord: A, root: 45, fifth: 40, tune: [[76, 3], [0, 1]] },
-  { chord: Bm, root: 47, fifth: 42, tune: [[74, 1.5], [73, 0.5], [71, 1], [74, 1]] },
-  { chord: G, root: 43, fifth: 38, tune: [[79, 2], [78, 1], [76, 1]] },
-  { chord: A7, root: 45, fifth: 40, tune: [[69, 1], [73, 1], [76, 1], [79, 1]] },
-  { chord: D, root: 38, fifth: 45, tune: [[78, 1], [74, 3]] },
+/** "Roll of Honour": the debrief. A slow march, proud and grim. */
+const HONOUR: Bar[] = [
+  { chord: Dm, root: 38, fifth: 45, tune: [[69, 2], [74, 1.5], [72, 0.5]] },
+  { chord: Bb, root: 34, fifth: 41, tune: [[70, 2], [65, 2]] },
+  { chord: F, root: 41, fifth: 36, tune: [[69, 1.5], [67, 0.5], [65, 1], [69, 1]] },
+  { chord: C, root: 36, fifth: 43, tune: [[67, 3], [0, 1]] },
+  { chord: Gm, root: 43, fifth: 38, tune: [[67, 2], [70, 1.5], [69, 0.5]] },
+  { chord: Dm, root: 38, fifth: 45, tune: [[69, 2], [65, 1], [62, 1]] },
+  { chord: A, root: 45, fifth: 40, tune: [[64, 1.5], [65, 0.5], [67, 1], [73, 1]] },
+  { chord: Dm, root: 38, fifth: 45, tune: [[74, 4]] },
 ];
 
 /** The radio room: a running ostinato in the low strings, for every chord a bar. */
@@ -314,53 +297,48 @@ interface Piece {
 
 const PIECES: Record<Exclude<Mood, 'none'>, Piece> = {
   title: {
-    bpm: 112,
+    bpm: 104,
     bar: (r, t, i, b) => {
-      const n = i % FORWARD.length;
-      const bar = FORWARD[n];
-      // Verses: full band; fife and drums alone for a trio; full band with the tune low and pompous.
-      const pass = Math.floor(i / FORWARD.length) % 3;
-      if (pass !== 1) oomPah(r, bar, t, b, 0.09, 0.022);
-      else for (let k = 0; k < 4; k += 2) tuba(r, k ? bar.fifth : bar.root, t + k * b, b * 0.5, 0.06);
+      const n = i % HOLD.length;
+      const bar = HOLD[n];
+      // First the horns state the theme; then trumpets take it up high over trombones.
+      const pass = Math.floor(i / HOLD.length) % 2;
+      gallop(r, bar.root, t, b, 0.026);
+      pad(r, bar.chord.map((m) => m - 12), t, b * 4, pass ? 0.012 : 0.008);
+      timp(r, bar.root + 12, t, 0.16);
+      timp(r, bar.fifth + 12 > 52 ? bar.fifth : bar.fifth + 12, t + 2 * b, 0.1);
       if (n === 3 || n === 7) {
-        cadence(r, MARCH_SNARE.slice(0, 8), t, b, 0.05);
-        roll(r, t + 2 * b, 2 * b, b, 0.02, 0.07);
-      } else cadence(r, MARCH_SNARE, t, b, 0.05);
-      bassDrum(r, t, 0.22);
-      bassDrum(r, t + 2 * b, 0.16);
-      if (n === 0 && pass !== 1) cymbal(r, t, 0.05);
+        cadence(r, WAR_SNARE.slice(0, 8), t, b, 0.05);
+        roll(r, t + 2 * b, 2 * b, b, 0.015, 0.08);
+      } else cadence(r, WAR_SNARE, t, b, 0.045);
+      if (n === 0) cymbal(r, t, pass ? 0.06 : 0.04);
       if (pass === 0) {
-        play(bar.tune, t, b, (m, at, d) => brass(r, m, at, d * 0.9, 0.032));
-        play(bar.tune, t, b, (m, at) => glock(r, m + 12, at, 0.05));
-      } else if (pass === 1) {
-        play(bar.tune, t, b, (m, at, d) => fife(r, m + 12, at, d * 0.85, 0.035));
+        play(bar.tune, t, b, (m, at, d) => brass(r, m, at, d * 0.92, 0.045));
       } else {
-        play(bar.tune, t, b, (m, at, d) => brass(r, m - 12, at, d * 0.9, 0.04));
-        play(bar.tune, t, b, (m, at, d) => fife(r, m + 12, at, d * 0.85, 0.02));
+        play(bar.tune, t, b, (m, at, d) => brass(r, m + 12, at, d * 0.92, 0.034));
+        play(bar.tune, t, b, (m, at, d) => brass(r, m - 12, at, d * 0.92, 0.04));
       }
     },
   },
   plan: {
-    bpm: 108,
+    bpm: 112,
     bar: (r, t, i, b) => {
-      const n = i % REQUISITION.length;
-      const bar = REQUISITION[n];
-      // Drums and tuba keep step throughout; the tune comes and goes so a long planning
-      // session is not one endless jingle.
-      const pass = Math.floor(i / REQUISITION.length) % 4;
-      for (let k = 0; k < 4; k++) tuba(r, k % 2 ? bar.fifth : bar.root, t + k * b, b * 0.45, 0.07);
-      cadence(r, FIFE_SNARE, t, b, 0.04);
-      if (n === 7) roll(r, t + 3 * b, b, b, 0.015, 0.05);
-      bassDrum(r, t, 0.14);
-      if (pass === 1) play(bar.tune, t, b, (m, at, d) => fife(r, m + 12, at, d * 0.8, 0.03));
+      const n = i % PAPERWORK.length;
+      const bar = PAPERWORK[n];
+      // The accompaniment tiptoes on; the tune comes and goes so long planning is not one jingle.
+      const pass = Math.floor(i / PAPERWORK.length) % 4;
+      for (let k = 0; k < 4; k++) {
+        if (k % 2 === 0) tuba(r, k ? bar.fifth : bar.root, t + k * b, b * 0.35, 0.07);
+        else for (const m of bar.chord) pizz(r, m - 12, t + k * b, 0.03);
+      }
+      for (let k = 0; k < 4; k++) snare(r, t + k * b + b / 2, 0.016);
+      if (n === 7) roll(r, t + 3 * b, b, b, 0.01, 0.04);
+      if (pass === 0) play(bar.tune, t, b, (m, at, d) => bassoon(r, m - 12, at, d * 0.6, 0.05));
+      else if (pass === 1) play(bar.tune, t, b, (m, at) => pizz(r, m + 12, at, 0.06));
       else if (pass === 2) {
-        // The tuba has a go at the tune, two octaves down. It is not a tuba's tune.
-        play(bar.tune, t, b, (m, at, d) => tuba(r, m - 24, at, d * 0.8, 0.06));
-        play(bar.tune, t, b, (m, at) => glock(r, m + 12, at, 0.03));
-      } else if (pass === 3) {
-        play(bar.tune, t, b, (m, at, d) => fife(r, m + 12, at, d * 0.8, 0.028));
-        play(bar.tune, t, b, (m, at) => glock(r, m + 12, at, 0.035));
-      } else for (let k = 1; k < 4; k += 2) stab(r, bar.chord, t + k * b, 0.012);
+        play(bar.tune, t, b, (m, at, d) => bassoon(r, m - 12, at, d * 0.6, 0.04));
+        play(bar.tune, t, b, (m, at) => pizz(r, m + 12, at, 0.04));
+      } else if (n % 4 === 0) pad(r, bar.chord, t, b * 4, 0.007);
     },
   },
   radio: {
@@ -379,23 +357,23 @@ const PIECES: Record<Exclude<Mood, 'none'>, Piece> = {
     },
   },
   dawn: {
-    bpm: 96,
+    bpm: 84,
     bar: (r, t, i, b) => {
-      const n = i % DISPATCHES.length;
-      const bar = DISPATCHES[n];
-      const pass = Math.floor(i / DISPATCHES.length) % 2;
-      oomPah(r, bar, t, b, 0.08, 0.02);
-      cadence(r, MARCH_SNARE, t, b, pass ? 0.045 : 0.03);
-      bassDrum(r, t, 0.18);
-      bassDrum(r, t + 2 * b, 0.12);
-      if (n === 0) cymbal(r, t, 0.05);
-      if (n === 7) {
-        // The big finish, every time.
-        cymbal(r, t, 0.07);
-        roll(r, t + b, 2 * b, b, 0.02, 0.08);
+      const n = i % HONOUR.length;
+      const bar = HONOUR[n];
+      const pass = Math.floor(i / HONOUR.length) % 2;
+      pad(r, bar.chord.map((m) => m - 12), t, b * 4, 0.012);
+      tuba(r, bar.root, t, b * 1.5, 0.06);
+      tuba(r, bar.fifth, t + 2 * b, b * 1.5, 0.05);
+      timp(r, bar.root + 12, t, 0.12);
+      // A slow march: a ruff into every other beat.
+      for (let k = 0; k < 4; k++) {
+        snare(r, t + k * b, k % 2 ? 0.02 : 0.035);
+        if (k === 3) roll(r, t + k * b + b / 2, b / 2, b, 0.015, 0.04);
       }
-      play(bar.tune, t, b, (m, at, d) => brass(r, pass ? m : m - 12, at, d * 0.92, 0.035));
-      if (pass) play(bar.tune, t, b, (m, at) => glock(r, m + 12, at, 0.04));
+      if (n === 7) cymbal(r, t, 0.05);
+      play(bar.tune, t, b, (m, at, d) => brass(r, pass ? m : m - 12, at, d * 0.94, 0.032));
+      if (pass) play(bar.tune, t, b, (m, at, d) => brass(r, m - 12, at, d * 0.94, 0.018));
     },
   },
 };
