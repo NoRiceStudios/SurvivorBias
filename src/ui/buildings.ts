@@ -365,7 +365,8 @@ function sceneEl(cls: string, label: (string | HTMLElement)[], def: SceneDef): H
   let ox = 0;
   const resize = (w: number) => {
     W = w;
-    ox = Math.max(0, Math.floor((W - BASE) / 2));
+    // Centred: a narrow view crops both edges evenly rather than the right side only.
+    ox = Math.floor((W - BASE) / 2);
     canvas.width = W;
     canvas.height = H;
     canvas.style.width = `${W * S}px`;

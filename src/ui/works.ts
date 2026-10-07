@@ -1,6 +1,8 @@
 /**
  * Works: the aircraft works, the training school and the development projects
- * on one screen, in three columns. Every locked or unaffordable action says why.
+ * on one screen, stacked. The works and the school each show their building
+ * across the full width, with their controls in columns beneath it. Every
+ * locked or unaffordable action says why.
  */
 import { canBuild, COSTS, crewNeed, crewPrice, researchTurns } from '../core/actions';
 import { AIRCRAFT, BRANCHES, RESEARCH } from '../core/data';
@@ -23,6 +25,11 @@ function banner(scene: HTMLElement): HTMLElement {
   return h('div', { class: 'banner' }, scene);
 }
 
+/** The controls under a building, in columns side by side. */
+function cols(...parts: (HTMLElement | null)[][]): HTMLElement {
+  return h('div', { class: 'works-cols' }, parts.map((p) => h('div', { class: 'works-sub' }, p)));
+}
+
 function factoryCol(app: App, side: SideState): HTMLElement {
   const f = side.factory;
   const sup = side.resources.supplies;
@@ -38,28 +45,32 @@ function factoryCol(app: App, side: SideState): HTMLElement {
   const upCost = COSTS.factoryUpgrade(f.level);
   return h('section', { class: 'paper panel works-col works-factory' },
     banner(worksScene(side)),
-    h('div', { class: 'kv' },
-      h('span', null, 'Level'), h('b', null, `${f.level}/5`),
-      h('span', tip({ head: 'Works condition', text: 'Enemy bombing wrecks our works; output falls with it. Emergency repairs are under Intelligence.' }), 'Condition'), meter(side.facilities.industry, 100, 10, side.facilities.industry < 50 ? 'bad' : ''),
-      h('span', tip('Build points a week. Each aircraft takes a number of points.'), 'Output'), h('b', null, `${rate.toFixed(1)} pts/wk`)),
-    h('button', { class: 'btn small', disabled: f.level >= 5 || sup < upCost, ...tip({ text: 'More output every week.', effect: `+2.5 pts/week for ${upCost} supplies` }), onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'factory' }) }, f.level >= 5 ? 'Fully expanded' : `Expand (${upCost})`, short(upCost, sup) ? h('small', null, ` ${short(upCost, sup)}`) : null),
-    h('h3', null, 'Order aircraft'),
-    h('div', { class: 'build-list' }, kinds.map((k) => {
-      const spec = AIRCRAFT[k];
-      const ok = canBuild(side, k);
-      const req = RESEARCH.find((r) => r.id === spec.requires)?.name;
-      return h('div', { class: `build ${ok ? '' : 'locked'}`, ...tip({ head: spec.name[side.id], text: `${spec.role}. Crew of ${spec.crew}. ${spec.build} build points.` }) },
-        aircraftCanvas(k, { side: side.id, seed: 2 }, 1),
-        h('div', { class: 'b-name' }, h('div', { class: 'sq-name' }, spec.name[side.id]), ok ? null : h('div', { class: 'small muted' }, `Needs ${req}`)),
-        ok ? h('button', { class: 'btn small', disabled: sup < spec.cost, onclick: () => app.cmd(side.id, { k: 'build', kind: k }) }, `Order ${spec.cost}`) : null);
-    })),
-    h('h3', null, 'On order'),
-    queue.length ? h('ol', { class: 'queue', ...tip('New aircraft join the squadron of their type with the fewest machines.') }, queue) : h('p', { class: 'small muted' }, 'Nothing on order.'),
-    h('h3', tip({ head: 'Quality control', text: 'Rushed production is faster, but some aircraft will have faults nobody finds until they fail in the air.' }), 'Quality control'),
-    seg([{ value: 'rushed', label: 'Rushed', tip: { text: 'Faster, with hidden faults.', effect: '+40% output' } }, { value: 'standard', label: 'Standard' }, { value: 'strict', label: 'Strict', tip: { text: 'Slower, sound aircraft.', effect: '−25% output' } }], f.qc, (v) => app.cmd(side.id, { k: 'qc', v }), 'mini'),
-    h('h3', null, 'Ground defences'),
-    h('div', { class: 'small' }, `Flak around our works and airfields: ${Math.round(side.flak * 100)}`),
-    h('button', { class: 'btn small', disabled: side.flak >= 1.5 || sup < COSTS.flakUpgrade(side.flak) || side.resources.stores < 20, onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'flak' }) }, side.flak >= 1.5 ? 'Flak at maximum' : `Add batteries (${COSTS.flakUpgrade(side.flak)} + 20 stores)`),
+    cols([
+      h('div', { class: 'kv' },
+        h('span', null, 'Level'), h('b', null, `${f.level}/5`),
+        h('span', tip({ head: 'Works condition', text: 'Enemy bombing wrecks our works; output falls with it. Emergency repairs are under Intelligence.' }), 'Condition'), meter(side.facilities.industry, 100, 10, side.facilities.industry < 50 ? 'bad' : ''),
+        h('span', tip('Build points a week. Each aircraft takes a number of points.'), 'Output'), h('b', null, `${rate.toFixed(1)} pts/wk`)),
+      h('button', { class: 'btn small', disabled: f.level >= 5 || sup < upCost, ...tip({ text: 'More output every week.', effect: `+2.5 pts/week for ${upCost} supplies` }), onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'factory' }) }, f.level >= 5 ? 'Fully expanded' : `Expand (${upCost})`, short(upCost, sup) ? h('small', null, ` ${short(upCost, sup)}`) : null),
+      h('h3', tip({ head: 'Quality control', text: 'Rushed production is faster, but some aircraft will have faults nobody finds until they fail in the air.' }), 'Quality control'),
+      seg([{ value: 'rushed', label: 'Rushed', tip: { text: 'Faster, with hidden faults.', effect: '+40% output' } }, { value: 'standard', label: 'Standard' }, { value: 'strict', label: 'Strict', tip: { text: 'Slower, sound aircraft.', effect: '−25% output' } }], f.qc, (v) => app.cmd(side.id, { k: 'qc', v }), 'mini'),
+    ], [
+      h('h3', null, 'Order aircraft'),
+      h('div', { class: 'build-list' }, kinds.map((k) => {
+        const spec = AIRCRAFT[k];
+        const ok = canBuild(side, k);
+        const req = RESEARCH.find((r) => r.id === spec.requires)?.name;
+        return h('div', { class: `build ${ok ? '' : 'locked'}`, ...tip({ head: spec.name[side.id], text: `${spec.role}. Crew of ${spec.crew}. ${spec.build} build points.` }) },
+          aircraftCanvas(k, { side: side.id, seed: 2 }, 1),
+          h('div', { class: 'b-name' }, h('div', { class: 'sq-name' }, spec.name[side.id]), ok ? null : h('div', { class: 'small muted' }, `Needs ${req}`)),
+          ok ? h('button', { class: 'btn small', disabled: sup < spec.cost, onclick: () => app.cmd(side.id, { k: 'build', kind: k }) }, `Order ${spec.cost}`) : null);
+      })),
+    ], [
+      h('h3', null, 'On order'),
+      queue.length ? h('ol', { class: 'queue', ...tip('New aircraft join the squadron of their type with the fewest machines.') }, queue) : h('p', { class: 'small muted' }, 'Nothing on order.'),
+      h('h3', null, 'Ground defences'),
+      h('div', { class: 'small' }, `Flak around our works and airfields: ${Math.round(side.flak * 100)}`),
+      h('button', { class: 'btn small', disabled: side.flak >= 1.5 || sup < COSTS.flakUpgrade(side.flak) || side.resources.stores < 20, onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'flak' }) }, side.flak >= 1.5 ? 'Flak at maximum' : `Add batteries (${COSTS.flakUpgrade(side.flak)} + 20 stores)`),
+    ]),
   );
 }
 
@@ -75,26 +86,30 @@ function schoolCol(app: App, side: SideState): HTMLElement {
   ];
   return h('section', { class: 'paper panel works-col works-school' },
     banner(schoolScene(side)),
-    h('div', { class: 'kv' },
-      h('span', null, 'Level'), h('b', null, `${t.level}/5`),
-      h('span', null, 'Intake a week'), h('b', null, `${1 + t.level * 2} crews`),
-      h('span', null, 'In training'), h('b', null, String(t.inTraining)),
-      h('span', tip('Recruits waiting for a place at the school.'), 'Awaiting intake'), h('b', null, String(side.resources.replacements)),
-      h('span', { class: crewNeed(side) ? 'bad' : '' }, 'Aircraft without crews'), h('b', { class: crewNeed(side) ? 'bad' : '' }, String(crewNeed(side)))),
-    h('button', { class: 'btn small', disabled: t.level >= 5 || sup < up, ...tip({ text: `Takes more pupils at once and turns out better shots. Pays when many aircraft wait for crews (now ${crewShortfall(side)}).`, effect: `+2 intake a week for ${up} supplies` }), onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'training' }) }, t.level >= 5 ? 'Fully expanded' : `Expand (${up})`),
-    h('h3', null, 'Trained crews from the Ministry'),
-    h('div', { class: 'small muted' }, `${crewPrice(side)} supplies each; dearer the less High Command trusts you.`),
-    h('div', null, [1, 3].map((n) => h('button', { class: 'btn small', disabled: crewNeed(side) === 0 || sup < n * crewPrice(side), onclick: () => app.cmd(side.id, { k: 'crews', n }) }, `+${n} (${n * crewPrice(side)})`))),
-    crewNeed(side) === 0 ? h('div', { class: 'small muted' }, 'Not needed: every aircraft has a crew.') : null,
-    h('h3', tip('Crews follow the aircraft: the Ministry posts aircrew, and the school takes pupils, only for aircraft the wing has or has on order.'), 'Syllabus'),
-    seg(focus.map((f) => ({ value: f.value, label: f.label, tip: f.tip })), t.focus, (v) => app.cmd(side.id, { k: 'focus', v }), 'mini'),
-    h('div', { class: 'small muted' }, focus.find((f) => f.value === t.focus)?.tip),
-    h('h3', tip('Pupils fly with live ammunition and real fuel. Their graduates start more skilled, but every pupil uses stores each week. If the depots cannot spare them, the class trains on the ground.'), 'Live-fire practice'),
-    seg<number>([
-      { value: 0, label: 'Ground school', tip: 'No stores used.' },
-      { value: 1, label: 'Live fire', tip: { text: 'Graduates start noticeably more skilled.', effect: `− ${LIVE_FIRE_STORES} stores a week per pupil (up to ${(1 + t.level * 2) * LIVE_FIRE_STORES})` } },
-    ], t.liveFire ? 1 : 0, (v) => app.cmd(side.id, { k: 'liveFire', on: v === 1 }), 'mini'),
-    t.liveFire && t.inTraining > 0 ? h('div', { class: 'small muted' }, t.liveFireClass ? `This class is on live fire (${t.inTraining * LIVE_FIRE_STORES} stores paid).` : 'This class trains on the ground: the depots could not spare the stores.') : null,
+    cols([
+      h('div', { class: 'kv' },
+        h('span', null, 'Level'), h('b', null, `${t.level}/5`),
+        h('span', null, 'Intake a week'), h('b', null, `${1 + t.level * 2} crews`),
+        h('span', null, 'In training'), h('b', null, String(t.inTraining)),
+        h('span', tip('Recruits waiting for a place at the school.'), 'Awaiting intake'), h('b', null, String(side.resources.replacements)),
+        h('span', { class: crewNeed(side) ? 'bad' : '' }, 'Aircraft without crews'), h('b', { class: crewNeed(side) ? 'bad' : '' }, String(crewNeed(side)))),
+      h('button', { class: 'btn small', disabled: t.level >= 5 || sup < up, ...tip({ text: `Takes more pupils at once and turns out better shots. Pays when many aircraft wait for crews (now ${crewShortfall(side)}).`, effect: `+2 intake a week for ${up} supplies` }), onclick: () => app.cmd(side.id, { k: 'upgrade', what: 'training' }) }, t.level >= 5 ? 'Fully expanded' : `Expand (${up})`),
+    ], [
+      h('h3', null, 'Trained crews from the Ministry'),
+      h('div', { class: 'small muted' }, `${crewPrice(side)} supplies each; dearer the less High Command trusts you.`),
+      h('div', null, [1, 3].map((n) => h('button', { class: 'btn small', disabled: crewNeed(side) === 0 || sup < n * crewPrice(side), onclick: () => app.cmd(side.id, { k: 'crews', n }) }, `+${n} (${n * crewPrice(side)})`))),
+      crewNeed(side) === 0 ? h('div', { class: 'small muted' }, 'Not needed: every aircraft has a crew.') : null,
+    ], [
+      h('h3', tip('Crews follow the aircraft: the Ministry posts aircrew, and the school takes pupils, only for aircraft the wing has or has on order.'), 'Syllabus'),
+      seg(focus.map((f) => ({ value: f.value, label: f.label, tip: f.tip })), t.focus, (v) => app.cmd(side.id, { k: 'focus', v }), 'mini'),
+      h('div', { class: 'small muted' }, focus.find((f) => f.value === t.focus)?.tip),
+      h('h3', tip('Pupils fly with live ammunition and real fuel. Their graduates start more skilled, but every pupil uses stores each week. If the depots cannot spare them, the class trains on the ground.'), 'Live-fire practice'),
+      seg<number>([
+        { value: 0, label: 'Ground school', tip: 'No stores used.' },
+        { value: 1, label: 'Live fire', tip: { text: 'Graduates start noticeably more skilled.', effect: `− ${LIVE_FIRE_STORES} stores a week per pupil (up to ${(1 + t.level * 2) * LIVE_FIRE_STORES})` } },
+      ], t.liveFire ? 1 : 0, (v) => app.cmd(side.id, { k: 'liveFire', on: v === 1 }), 'mini'),
+      t.liveFire && t.inTraining > 0 ? h('div', { class: 'small muted' }, t.liveFireClass ? `This class is on live fire (${t.inTraining * LIVE_FIRE_STORES} stores paid).` : 'This class trains on the ground: the depots could not spare the stores.') : null,
+    ]),
   );
 }
 
