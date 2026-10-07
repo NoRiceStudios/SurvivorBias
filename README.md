@@ -34,6 +34,9 @@ The war is fought across three theaters: the Narrow Sea, the Kessel Basin and th
 
 ### Layout
 
+The HQ has four tabs: **War Room** (map, orders, in-tray), **Squadrons** (roster and dossiers: doctrine, armor over the evidence, aircraft), **Works** (factory, school, development) and **Intelligence**. A readiness bar at the foot lists what still needs attention; F1 opens the Field Manual.
+
+
 - `src/core/`: pure, deterministic game logic with no DOM. Covers the seeded battle sim, the distortion pipeline that turns truth into reports, the economy, High Command, the AI commander and save/load.
 - `src/ui/`: renderer in plain TypeScript and DOM. Aircraft sprites are rasterised procedurally from shapes tagged with hit zones, so every bullet hole lands on the part of the airframe it actually hit. Sound effects are procedural WebAudio.
 - `src/electron/`: window, save-file IPC and preload bridge.

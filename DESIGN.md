@@ -65,12 +65,15 @@ Each turn is one **sortie cycle**, roughly a few days of in-game time.
    - squadron reports on claims, enemy strength and types, and what was seen, **distorted** by each squadron's bias and trauma;
    - an updated war-theatre estimate (front line, enemy production), also distorted.
 
-   The debrief reads in order: a summary strip (aircraft back, missing, claims,
-   front pressure, confidence) sits on top of every sheet, one button leads to
-   the next sheet (the Missing sheet is skipped when everyone came home), and
-   the last one files the reports.
-6. **High Command.** Filing the reports brings High Command's answer in full
-   screen: the signal on your returns, then new orders and memos. How much you
+   The debrief has two sheets. *The Returns* shows the week in big figures,
+   the damage board (holes stamped onto the type's plot over the faint holes
+   of earlier weeks, beside "no record" ghosts of the aircraft that did not
+   return and their last words) and the telegrams. *Reports & Front* holds
+   the Form 541s, each with the adjutant's note on how its leader reports,
+   and the front gauge swinging from last week's figure.
+6. **High Command.** Filing the reports brings High Command's answer as one
+   full-screen letter: the directives first ("You are to…"), the signal on
+   your returns, then the week's memos, with the change in confidence stamped. How much you
    get depends on **Command Trust**, which is based on the results you
    *reported*, and not on what actually happened.
 7. Repeat until the war ends or you lose.
