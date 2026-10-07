@@ -63,6 +63,10 @@ import {
   ZONES,
   aircraftName,
   CLASSIC,
+  CLASSIC_AI,
+  aiProfile,
+  NATIONS,
+  NATION_IDS,
   researchCost,
   spec,
   storesCap,
@@ -1310,6 +1314,22 @@ describe('turret layouts', () => {
 });
 
 describe('nations', () => {
+  it('the AI plays each nation to its strengths, and a classic war as before', () => {
+    expect(aiProfile({ id: 1 })).toBe(CLASSIC_AI);
+    const s = startCampaign({ seed: 'ai-nations', factions: ['directorate', 'varn'], mode: 'hotseat' });
+    const [dir, varn] = s.sides;
+    for (const x of s.sides) x.resources.supplies = 400;
+    aiPlan(s, 0);
+    aiPlan(s, 1);
+    // Each starts on the development its nation is built around...
+    expect(dir.researching).toBe('gunneryManual');
+    expect(varn.researching).toBe('assembly1');
+    // ...and the elite orders fewer of its dear aircraft than the mass army.
+    expect(dir.factory.queue.length).toBeLessThan(varn.factory.queue.length);
+    // Every development a profile names exists.
+    for (const n of NATION_IDS) for (const id of NATIONS[n].rules.ai.research) expect(RESEARCH.some((r) => r.id === id)).toBe(true);
+  });
+
   it('a classic war keeps the symmetric rules and the old names', () => {
     const s = startCampaign({ seed: 'classic' });
     expect(s.sides.map((x) => x.faction)).toEqual([undefined, undefined]);
