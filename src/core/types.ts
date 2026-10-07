@@ -271,6 +271,29 @@ export interface SideState {
   usedLines?: string[];
   /** Leaders' names already used in this war (lost leaders included). */
   usedNames?: string[];
+  /** High Command's three offers this week; the commander takes one. */
+  allotments?: Allotment[];
+  /** A friend on the Air Council: the next failed directive costs no confidence. */
+  advocate?: boolean;
+}
+
+export type AllotmentRarity = 'common' | 'rare' | 'exceptional';
+
+/** One of High Command's weekly offers. */
+export interface Allotment {
+  id: string;
+  card: string;
+  rarity: AllotmentRarity;
+  title: string;
+  text: string;
+  /** The string attached, if any. */
+  catch?: string;
+  squadronId?: string;
+  otherId?: string;
+  kind?: AircraftKind;
+  siteId?: string;
+  researchId?: string;
+  n?: number;
 }
 
 export interface RaidPlan {

@@ -48,6 +48,7 @@ export function readinessChips(app: App, side: SideState): Chip[] {
       detail: `Our crews believe ${tgt.name} is down to ≈${believed(st, side.id, tgt)}%. Another raid may add little.${better ? ` Click to strike ${better.name} instead${side.orders.some((o) => o.siteId === better.id) ? ' (named in a standing order)' : ''}.` : ''}`,
       act: better ? () => strikeAt(app, side, better) : undefined });
   }
+  if (side.allotments?.length && !st.outcome) chips.push({ label: 'High Command allotment waiting', level: 'warn', tab: 'war', detail: 'High Command has offered three allotments for this week. Click to read the letter and take one; unclaimed offers lapse when the week is fought.', act: () => app.go({ kind: 'letter', side: side.id, mode: 'week' }) });
   if (side.requests.length) chips.push({ label: plural(side.requests.length, 'request'), level: 'warn', tab: 'war', focus: '.intray', detail: 'Squadron leaders are waiting for an answer. Unanswered requests lapse at the end of the week.' });
   const raidIds = plan.raid?.squadronIds ?? [];
   const kindIn = (k: AircraftKind[]) => raidIds.some((id) => k.includes(side.squadrons.find((q) => q.id === id)?.kind ?? 'recon'));

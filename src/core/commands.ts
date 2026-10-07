@@ -28,6 +28,7 @@ import {
   type ActionResult,
 } from './actions';
 import { approveRequest, declineRequest } from './requests';
+import { chooseAllotment } from './allotments';
 import type {
   AircraftKind,
   Doctrine,
@@ -62,7 +63,8 @@ export type Command =
   | { k: 'crews'; n: number }
   | { k: 'merge'; from: string; into: string }
   | { k: 'appoint'; sq: string }
-  | { k: 'restCO'; sq: string };
+  | { k: 'restCO'; sq: string }
+  | { k: 'allot'; id: string };
 
 export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?: TurnPlan): ActionResult {
   const side = state.sides[sideId];
@@ -102,6 +104,7 @@ export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?
     case 'merge': return mergeSquadrons(state, side, c.from, c.into, plan);
     case 'appoint': return appointLeader(state, side, c.sq);
     case 'restCO': return restLeader(state, side, c.sq);
+    case 'allot': return chooseAllotment(state, side, c.id);
   }
 }
 

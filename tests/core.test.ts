@@ -33,6 +33,9 @@ import {
   MAX_WEEK_SWING,
   redactFor as redactView,
   RESEARCH,
+  ALLOTMENT_CARDS,
+  allotmentOdds,
+  drawAllotments,
   startResearch,
   theaterDecision,
   HEAD_START,
@@ -1179,6 +1182,87 @@ describe('scarce stores (playtest feedback: stores no longer limit)', () => {
     endTurnSingle(b, emptyPlan());
     const skill = (st: GameState) => st.sides[0].squadrons.reduce((x, q) => x + q.skill * q.crews, 0) / st.sides[0].squadrons.reduce((x, q) => x + q.crews, 0);
     expect(skill(b)).toBeGreaterThan(skill(a));
+  });
+});
+
+describe('High Command allotments', () => {
+  it('offers three different cards after each week, and the AI takes one', () => {
+    const s = startCampaign({ seed: 'allot' });
+    endTurnSingle(s, playerPlan(s));
+    const offers = s.sides[0].allotments ?? [];
+    expect(offers.length).toBe(3);
+    expect(new Set(offers.map((o) => o.card)).size).toBe(3);
+    expect(s.sides[1].allotments).toEqual([]);
+  });
+
+  it('draws rarer cards when High Command trusts the wing', () => {
+    expect(allotmentOdds(90).exceptional).toBeGreaterThan(allotmentOdds(50).exceptional);
+    expect(allotmentOdds(50).exceptional).toBeGreaterThan(allotmentOdds(20).exceptional);
+    const count = (trust: number) => {
+      const s = startCampaign({ seed: 'odds' });
+      s.sides[0].trust = trust;
+      const rng = Rng.fromSeed(`odds${trust}`);
+      let rare = 0;
+      for (let i = 0; i < 200; i++) rare += drawAllotments(rng, s, s.sides[0]).filter((a) => a.rarity !== 'common').length;
+      return rare;
+    };
+    expect(count(95)).toBeGreaterThan(count(10) * 1.8);
+  });
+
+  it('applies every card, once, through the command list', () => {
+    for (const card of ALLOTMENT_CARDS) {
+      const s = startCampaign({ seed: `card-${card.id}` });
+      endTurnSingle(s, playerPlan(s));
+      const side = s.sides[0];
+      // Make every card eligible: something in the hangars, a tired squadron, research under way.
+      side.squadrons[0].fatigue = 0.6;
+      side.squadrons[0].airframes[0].status = 'repair';
+      side.squadrons[0].airframes[0].repairTurns = 1;
+      side.researching = RESEARCH[0].id;
+      side.resources.stores = 100;
+      const offer = card.make(s, side);
+      expect(offer, card.id).not.toBeNull();
+      side.allotments = [{ ...offer!, id: 'al-test', card: card.id, rarity: card.rarity }];
+      const memos = side.memos.length;
+      expect(applyCommand(s, 0, { k: 'allot', id: 'al-test' }).ok, card.id).toBe(true);
+      expect(side.allotments).toEqual([]);
+      expect(side.memos.length).toBeGreaterThan(memos);
+      expect(applyCommand(s, 0, { k: 'allot', id: 'al-test' }).ok).toBe(false);
+    }
+  });
+
+  it('a LAN client taking an allotment gets what the host replays', () => {
+    for (const card of ALLOTMENT_CARDS) {
+      const host = startCampaign({ seed: `lan-${card.id}`, mode: 'hotseat' });
+      resolveTurn(host, [emptyPlan(), emptyPlan()]);
+      const side = host.sides[1];
+      side.squadrons[0].fatigue = 0.6;
+      side.researching = RESEARCH[0].id;
+      const offer = card.make(host, side);
+      if (!offer) continue;
+      side.allotments = [{ ...offer, id: 'al901', card: card.id, rarity: card.rarity }];
+      const client = redactView(host, 1);
+      expect(applyCommands(client, 1, [{ k: 'allot', id: 'al901' }]).ok).toBe(true);
+      // Meanwhile the host's own commander has used up ids of the shared counter.
+      host.nextId += 37;
+      expect(applyCommands(host, 1, [{ k: 'allot', id: 'al901' }]).ok).toBe(true);
+      const view = (st: GameState) => JSON.stringify({ sq: st.sides[1].squadrons, r: st.sides[1].resources, t: st.sides[1].trust, p: st.sides[1].perceived.sites, res: st.sides[1].research, o: st.sides[1].orders.map((o) => o.text) });
+      expect(view(client), card.id).toBe(view(host));
+    }
+  });
+
+  it('a friend on the Air Council absorbs one failed directive', () => {
+    const s = startCampaign({ seed: 'advocate' });
+    const side = s.sides[0];
+    side.advocate = true;
+    side.orders = [{ id: 'ox', kind: 'kills', amount: 999, deadline: s.turn, text: 'Destroy 999 enemy aircraft.' }];
+    side.trust = 50;
+    const before = side.trust;
+    endTurnSingle(s, playerPlan(s));
+    expect(side.advocate).toBe(false);
+    expect(s.lastDebriefs[0]!.hqResponse.join(' ')).toContain('spoken for you');
+    // The failure itself costs nothing (other movements in confidence still apply).
+    expect(side.trust).toBeGreaterThan(before - 7 - 10);
   });
 });
 
