@@ -522,7 +522,7 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
         generalVerdict(st, side, res),
         roll.length ? h('div', { class: 'roll' },
           h('h3', null, `Roll of the missing (${roll.length})`),
-          h('div', { class: 'tags' }, roll.map((e, i) => h('div', { class: `tag ${e.fate}`, style: `animation-delay:${600 + i * 50}ms`, ...tip({ head: e.name, text: `${e.crew > 1 ? `With ${e.crew - 1} crew. ` : ''}${e.serial}, ${e.squadron}, missing since week ${e.week}.` }) },
+          h('div', { class: 'tags' }, roll.map((e, i) => h('div', { class: `tag ${e.fate}`, style: `animation-delay:${300 + i * 25}ms`, ...tip({ head: e.name, text: `${e.crew > 1 ? `With ${e.crew - 1} crew. ` : ''}${e.serial}, ${e.squadron}, missing since week ${e.week}.` }) },
             h('span', { class: 'tag-name' }, e.name), h('span', { class: 'tag-fate' }, fate[e.fate].toUpperCase()))))) : null),
       h('div', { class: 'tc-new' },
         nextDef ? [

@@ -27,9 +27,10 @@ export function installTextures() {
   root.setProperty('--tex-wood', `url(${tile(128, (g, n) => {
     for (let y = 0; y < 128; y++)
       for (let x = 0; x < 128; x++) {
-        const grain = Math.sin((y + Math.sin(x / 19) * 3 + Math.sin(x / 7) * 0.8) * 0.9) * 0.5 + 0.5;
-        const v = grain * 0.6 + n(x, y) * 0.4;
-        px(g, x, y, v > 0.82 ? '#2d241a' : v > 0.55 ? '#261e16' : v > 0.25 ? '#211a13' : '#1c1610');
+        // Long, gently wandering grain; low contrast so it reads as wood, not scanlines.
+        const grain = Math.sin((y + Math.sin(x / 23) * 5 + Math.sin(x / 9 + y / 31) * 2) * 0.45) * 0.5 + 0.5;
+        const v = grain * 0.45 + n(x, y) * 0.55;
+        px(g, x, y, v > 0.8 ? '#29211a' : v > 0.5 ? '#251e17' : v > 0.22 ? '#221b15' : '#1f1913');
       }
   })})`);
   // Map-table baize: a tight, even weave.
@@ -53,8 +54,8 @@ export function installTextures() {
     for (let y = 0; y < 64; y++)
       for (let x = 0; x < 64; x++) {
         const v = n(x, y);
-        if (v > 0.9) px(g, x, y, 'rgba(90,70,40,0.10)');
-        else if (v < 0.06) px(g, x, y, 'rgba(255,255,255,0.18)');
+        if (v > 0.9) px(g, x, y, 'rgba(40,36,30,0.035)');
+        else if (v < 0.06) px(g, x, y, 'rgba(255,255,255,0.05)');
       }
   })})`);
 }

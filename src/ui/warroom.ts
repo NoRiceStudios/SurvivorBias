@@ -9,7 +9,7 @@ import { flyable } from '../core/sim';
 import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS } from '../core/theaters';
 import type { FighterApproach, Memo, SideId, SideState, Site, Squadron, TargetId } from '../core/types';
 import type { App } from './app';
-import { h, pct, slider } from './dom';
+import { fadeScroll, h, pct, slider } from './dom';
 import { leaderPortrait, letterMemos } from './general';
 import { believed, depthLabel, pressureGauge, theaterMap } from './theaterui';
 import { tip } from './tip';
@@ -249,8 +249,8 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
         h('span', { class: 'sq-face' }, leaderPortrait(sq.leader, side.id, 1)),
         h('span', { class: 'sq-name' }, sqLabel(sq.name)),
         h('span', { class: 'sq-pips' },
-          h('span', tip({ head: `Fatigue ${Math.round(sq.fatigue * 10)}/10`, text: 'Rises each week a squadron flies, falls when it rests. Tired crews shoot and fly worse; above 6/10 their morale slides.' }), pips(sq.fatigue, 6, 0.6)),
-          h('span', tip({ head: `Morale ${Math.round(sq.morale * 10)}/10`, text: 'Falls with losses. If the whole wing stays very low for three weeks, the crews refuse to fly.' }), pips(sq.morale, 6, 0.3, true))),
+          h('span', tip({ head: `Fatigue ${Math.round(sq.fatigue * 10)}/10`, text: 'Rises each week a squadron flies, falls when it rests. Tired crews shoot and fly worse; above 6/10 their morale slides.' }), h('small', null, 'fat '), pips(sq.fatigue, 6, 0.6)),
+          h('span', tip({ head: `Morale ${Math.round(sq.morale * 10)}/10`, text: 'Falls with losses. If the whole wing stays very low for three weeks, the crews refuse to fly.' }), h('small', null, 'mor '), pips(sq.morale, 6, 0.3, true))),
         h('span', { class: 'sq-type' }, aircraftCanvas(sq.kind, { side: side.id, seed: sq.insignia }, 1)),
         h('span', { class: `sq-ready ${ready === 0 ? 'bad' : ''}` }, `${ready}/${sq.airframes.length}`)),
       h('div', { class: 'sq-line2' },
@@ -314,7 +314,12 @@ function inTray(app: App, side: SideState): HTMLElement {
   if (!side.requests.length && !side.orders.length && !fresh.length) return h('section', { class: 'intray empty' }, 'In-tray empty.');
   return h('section', { class: 'intray' },
     h('div', { class: 'tray-tabs' }, tabs.map(([id, label, n]) => h('button', { class: `tray-tab ${tab === id ? 'on' : ''}`, onclick: () => { trayTab = id; app.render(); } }, label, n ? h('span', { class: `badge ${id === 'orders' && !due ? 'quiet' : ''}` }, String(n)) : null))),
-    h('div', { class: 'tray-body', 'data-keep-scroll': 'tray' }, body));
+    (() => {
+      const scroller = h('div', { class: 'tray-body', 'data-keep-scroll': 'tray' }, body);
+      const wrap = h('div', { class: 'tray-scroll' }, scroller, h('button', { class: 'scroll-more quiet-link', onclick: () => scroller.scrollBy({ top: scroller.clientHeight * 0.8, behavior: 'smooth' }) }, 'more ▾'));
+      fadeScroll(scroller, wrap);
+      return wrap;
+    })());
 }
 
 /** A squadron leader's request, with the trade-off and the answer buttons. */

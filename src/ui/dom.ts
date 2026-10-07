@@ -81,18 +81,41 @@ export function setAnim(on: boolean) {
   document.body.classList.toggle('noanim', !on);
 }
 
+/**
+ * A scrolling region inside a sheet says when there is more below: the holder
+ * gets the class "more" (a paper fade and a "more ▾" cue in CSS) until the end
+ * is in view. Content that grows (typed text) is checked again as it grows.
+ */
+export function fadeScroll(scroller: HTMLElement, holder: HTMLElement = scroller): void {
+  const check = () => holder.classList.toggle('more', scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 8);
+  scroller.addEventListener('scroll', check);
+  let waited = 0;
+  const timer = window.setInterval(() => {
+    if (!scroller.isConnected) {
+      if (++waited > 3) window.clearInterval(timer);
+      return;
+    }
+    waited = 0;
+    check();
+  }, 300);
+  setTimeout(check, 0);
+}
+
 /** A figure that counts up from 0 after a delay (at once when animations are off). */
-export function countUp(value: number, delay = 300, cls = ''): HTMLElement {
+export function countUp(value: number, delay = 300, cls = '', duration = 550, onDone?: () => void): HTMLElement {
   const b = h('b', { class: cls }, animOn() ? '0' : String(value));
-  if (!animOn()) return b;
-  const steps = Math.min(20, Math.max(1, value));
-  let k = 0;
-  const tick = () => {
-    if (k > 0 && !b.isConnected) return;
-    k++;
-    b.textContent = String(Math.round((value * k) / steps));
-    if (k < steps) setTimeout(tick, 45);
+  if (!animOn()) {
+    onDone && setTimeout(onDone, 0);
+    return b;
+  }
+  // Driven by the clock, not by counting timer ticks: a busy page shows the right figure on time.
+  const start = performance.now() + delay;
+  const frame = (now: number) => {
+    const f = Math.max(0, Math.min(1, (now - start) / duration));
+    b.textContent = String(Math.round(value * f));
+    if (f < 1) requestAnimationFrame(frame);
+    else onDone?.();
   };
-  setTimeout(tick, delay);
+  requestAnimationFrame(frame);
   return b;
 }

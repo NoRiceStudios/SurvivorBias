@@ -5,7 +5,7 @@ import type { AircraftKind, GameState, Hit, Outcome, SideId } from '../core/type
 import { ZONES } from '../core/types';
 import type { App } from './app';
 import { sfxClick, sfxKey } from './audio';
-import { h, plural } from './dom';
+import { countUp, h, plural } from './dom';
 import { aircraftCanvas } from './sprites';
 
 const OUTCOME_TEXT: Record<Outcome, [string, string]> = {
@@ -167,22 +167,11 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
 
 /** A big figure that counts up after a delay, then gets stamped. */
 function reveal(label: string, value: number, delay: number, cls = ''): HTMLElement {
-  const b = h('b', { class: cls }, '0');
-  const el = h('div', { class: `reveal-item ${cls}` }, b, h('span', null, label));
-  const steps = 12;
-  let k = 0;
-  const tick = () => {
-    if (k > 0 && !el.isConnected) return;
-    k++;
-    b.textContent = String(Math.round((value * Math.min(k, steps)) / steps));
-    if (k < steps) setTimeout(tick, 45);
-    else {
-      el.classList.add('done');
-      // The truth lands: the red pencil goes through what was claimed and reported.
-      if (cls === 'truth') el.parentElement?.querySelectorAll('.reveal-item:not(.truth)').forEach((x, i) => setTimeout(() => { x.classList.add('struck'); sfxKey(); }, 150 + i * 300));
-    }
-  };
-  setTimeout(tick, 200 + delay);
+  const el: HTMLElement = h('div', { class: `reveal-item ${cls}` }, countUp(value, 200 + delay, '', 550, () => {
+    el.classList.add('done');
+    // The truth lands: the red pencil goes through what was claimed and reported.
+    if (cls === 'truth') el.parentElement?.querySelectorAll('.reveal-item:not(.truth)').forEach((x, i) => setTimeout(() => { x.classList.add('struck'); sfxKey(); }, 150 + i * 300));
+  }), h('span', null, label));
   return el;
 }
 
@@ -217,7 +206,7 @@ function ledgerChart(archive: GameState['archive'], side: SideId): HTMLElement {
     const x0 = x(idx[0]) - 6;
     const x1 = x(idx[idx.length - 1]) + 6;
     add('rect', { x: x0, y: 24, width: x1 - x0, height: H - 44, fill: ti % 2 ? 'rgba(95,111,71,0.08)' : 'rgba(42,38,32,0.05)' });
-    add('text', { x: x0 + 4, y: H - 4, fill: '#5e5546', 'font-size': 14 }, THEATERS[ti].name);
+    add('text', { x: (x0 + x1) / 2, y: H - 4, fill: '#5e5546', 'font-size': 14, 'text-anchor': 'middle' }, THEATERS[ti].name);
   }
   // Value ticks.
   for (const v of [0, Math.round(max / 2), max]) {
@@ -228,9 +217,9 @@ function ledgerChart(archive: GameState['archive'], side: SideId): HTMLElement {
   const line = (f: (e: (typeof archive)[number]) => number, color: string, dash = '') =>
     add('polyline', { points: archive.map((e, i) => `${x(i)},${y(f(e))}`).join(' '), fill: 'none', stroke: color, 'stroke-width': 3, 'stroke-dasharray': dash });
   line((e) => e.claimed[side], '#5e5546', '6 4');
-  line((e) => e.reportedToHq[side], '#2f4a7a');
+  line((e) => e.reportedToHq[side], '#2f4a7a', '2 3');
   line((e) => e.trueKills[side], '#a8352a');
-  const key = (cls: string, label: string) => h('span', { class: `lk ${cls}` }, h('i', null), label);
+  const key = (cls: string, label: string) => h('span', { class: `lk lk-${cls}` }, h('i', null), label);
   return h('div', { class: 'ledger-chart-wrap' },
     h('div', { class: 'ledger-key' }, key('claimed', 'claimed by crews'), key('hq', 'reported to HQ'), key('truth', 'actually destroyed'), key('lost', 'week a sector was lost')),
     svg as unknown as HTMLElement);

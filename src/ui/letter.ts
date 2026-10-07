@@ -7,7 +7,7 @@
 import type { SideId } from '../core/types';
 import type { App } from './app';
 import { sfxKey, sfxStamp } from './audio';
-import { h } from './dom';
+import { fadeScroll, h } from './dom';
 import { HIGH_COMMAND, memoDispatch, portraitCanvas, type DispatchLine } from './general';
 import { strikeAt } from './warroom';
 
@@ -103,17 +103,11 @@ export function renderLetter(app: App, sideId: SideId, mode: 'returns' | 'week')
         ? h('div', { class: `stamp big conf ${delta > 0 ? 'notice' : delta < 0 ? 'reprimand' : 'order'}` }, `CONFIDENCE ${side.trust}`, h('small', null, delta ? ` ${delta > 0 ? '▲' : '▼'}${Math.abs(delta)}` : ' ='))
         : null),
     h('div', { class: 'letter-body' }, sections),
-    h('div', { class: 'letter-more' }, 'more ▾'),
+    h('button', { class: 'letter-more quiet-link', onclick: (e: MouseEvent) => { e.stopPropagation(); const b = sheet.querySelector<HTMLElement>('.letter-body'); b?.scrollBy({ top: b.clientHeight * 0.8, behavior: 'smooth' }); } }, 'more ▾'),
     h('div', { class: 'letter-foot' },
       h('span', { class: 'muted small' }, mode === 'returns' ? 'High Command judges you on the returns you send, not on what happened.' : 'Directives are kept under Standing orders in the War Room.'),
       btn));
   // A long letter says so at the foot: a fade and "more", until the end is read.
-  setTimeout(() => {
-    const body = sheet.querySelector<HTMLElement>('.letter-body');
-    if (!body) return;
-    const check = () => sheet.classList.toggle('more', body.scrollHeight - body.scrollTop - body.clientHeight > 8);
-    body.addEventListener('scroll', check);
-    check();
-  }, 50);
+  fadeScroll(sheet.querySelector<HTMLElement>('.letter-body')!, sheet);
   return h('div', { class: 'letter-screen' }, sheet);
 }

@@ -51,7 +51,7 @@ export function topBar(app: App, side: SideState, debriefWeek?: number, what = '
     // The digits that changed roll over, like a tote board.
     const prev = lastText.get(key);
     lastText.set(key, shown);
-    const digits = [...shown].map((ch, i) => h('span', { class: `dg ${delta && prev !== undefined && prev[i - shown.length + prev.length] !== ch ? 'rolling' : ''}` }, ch));
+    const digits = [...shown.replace(/ /g, '\u00a0')].map((ch, i) => h('span', { class: `dg ${delta && prev !== undefined && prev[i - shown.length + prev.length] !== ch ? 'rolling' : ''}` }, ch));
     return h('div', { class: `res ${cls} ${delta ? 'changed' : ''}`, ...tip({ head: label, text: title, effect }) }, icon(name, 18),
       h('div', { class: 'res-v' }, h('b', null, digits), h('small', null, label)),
       delta ? h('span', { class: `res-delta ${delta > 0 ? 'up' : 'down'}` }, `${delta > 0 ? '+' : '−'}${Math.abs(delta)}`) : null);

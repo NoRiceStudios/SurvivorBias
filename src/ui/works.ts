@@ -38,7 +38,6 @@ function factoryCol(app: App, side: SideState): HTMLElement {
   const upCost = COSTS.factoryUpgrade(f.level);
   return h('section', { class: 'paper panel works-col works-factory' },
     banner(worksScene(side)),
-    h('h2', null, 'Aircraft works'),
     h('div', { class: 'kv' },
       h('span', null, 'Level'), h('b', null, `${f.level}/5`),
       h('span', tip({ head: 'Works condition', text: 'Enemy bombing wrecks our works; output falls with it. Emergency repairs are under Intelligence.' }), 'Condition'), meter(side.facilities.industry, 100, 10, side.facilities.industry < 50 ? 'bad' : ''),
@@ -76,7 +75,6 @@ function schoolCol(app: App, side: SideState): HTMLElement {
   ];
   return h('section', { class: 'paper panel works-col works-school' },
     banner(schoolScene(side)),
-    h('h2', null, 'Training school'),
     h('div', { class: 'kv' },
       h('span', null, 'Level'), h('b', null, `${t.level}/5`),
       h('span', null, 'Intake a week'), h('b', null, `${1 + t.level * 2} crews`),

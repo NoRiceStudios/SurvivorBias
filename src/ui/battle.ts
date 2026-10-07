@@ -19,7 +19,7 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
   const d = st.lastDebriefs[sideId]!;
   const side = st.sides[sideId];
   const lines = d.radio;
-  const log = h('div', { class: 'radio-log', 'data-keep-scroll': 'radio' });
+  const log = h('div', { class: 'radio-log', 'data-keep-scroll': 'radio' }, h('div', { class: 'radio-line watch' }, h('span', { class: 'tx' }, '— LISTENING WATCH OPENED T+000 —')));
   const maxT = Math.max(60, ...lines.map((l) => l.t));
   const map = plotMap(app, sideId, maxT, d.reports.map((r) => { const sq = side.squadrons.find((q) => q.id === r.squadronId); return sq ? CALLSIGNS[sideId][sq.insignia % CALLSIGNS[sideId].length] : ''; }).filter(Boolean));
   let shown = 0;
@@ -398,7 +398,7 @@ function dispersal(app: App, d: Debrief, landing: boolean): HTMLElement {
   const order = [...new Set([...d.returned.map((r) => r.squadronId), ...d.missing.map((m) => m.squadronId)])];
   const W = 1100;
   const pans: Pan[] = [];
-  const labels: { x: number; y: number; text: string }[] = [];
+  const labels: { x: number; y: number; w: number; text: string }[] = [];
   let x = 14;
   let row = 0;
   const ROW = 96;
@@ -411,7 +411,8 @@ function dispersal(app: App, d: Debrief, landing: boolean): HTMLElement {
     const pw = (k: AircraftKind) => spriteDef(k).w + 10;
     const groupW = items.reduce((a, p) => a + pw(p.kind), 0);
     if (x > 14 && x + Math.min(groupW, W - 28) > W - 14) { x = 14; row++; }
-    labels.push({ x, y: row * ROW + 16, text: `${sq ? CALLSIGNS[d.side][sq.insignia % CALLSIGNS[d.side].length].toUpperCase() : ''} · ${sq?.name ?? 'Disbanded'}` });
+    // Only the call sign over each group, so neighbouring labels never run into each other.
+    labels.push({ x, y: row * ROW + 16, w: Math.min(groupW, W - 28) - 6, text: sq ? CALLSIGNS[d.side][sq.insignia % CALLSIGNS[d.side].length].toUpperCase() : 'DISBANDED' });
     for (const p of items) {
       if (x + pw(p.kind) > W - 14) { x = 14; row++; }
       p.x = x + pw(p.kind) / 2;
@@ -456,7 +457,12 @@ function dispersal(app: App, d: Debrief, landing: boolean): HTMLElement {
       : aircraftCanvas(p.kind, { side: d.side, style: 'outline', lineColor: '#e8e4d8' }, 1));
   });
   b.font = '9px monospace';
-  for (const l of labels) { b.fillStyle = '#e8e4d8'; b.fillText(l.text, l.x, l.y); }
+  for (const l of labels) {
+    let t = l.text;
+    while (t.length > 2 && b.measureText(t).width > l.w) t = t.slice(0, -1);
+    b.fillStyle = '#e8e4d8';
+    b.fillText(t, l.x, l.y);
+  }
   const start = performance.now();
   const anim = landing && animOn();
   const draw = (now: number) => {
