@@ -495,48 +495,45 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
   const ourPressure = side === 0 ? lastFront : -lastFront;
   const nextDef = st.outcome ? null : THEATERS[st.theater.index];
   const obj = st.outcome ? null : st.theater.objectives.find((o) => o.side === side);
-  return h('div', { class: 'handover' },
-    h('div', { class: 'handover-card paper theater-change' },
-      h('div', { class: 'muted' }, `${res.name} · ${res.weeks} weeks`),
-      h('div', { class: `stamp big ${won ? 'notice' : res.winner === null ? 'order' : 'reprimand'}` }, verdict),
-      generalVerdict(st, side, res),
-      h('p', { class: 'typed big' }, res.winner === null
-        ? ourPressure > 15 ? 'The pressure was ours, but the Army took no ground. High Command records a stalemate.'
-          : ourPressure < -15 ? 'The enemy held the advantage but took no ground. The armies dig in where they stand.'
-          : 'Neither air force could break the other. The armies dig in where they stand.'
-        : won ? (res.decisive ? 'The enemy front has broken. The Army is through.' : 'The season ends with the advantage ours.')
-        : res.decisive ? 'Our front has broken. The Army is falling back.' : 'The season ends with the advantage theirs.'),
-      (() => {
-        const weeks = st.archive.filter((e) => e.theater === res.index);
-        const lost = weeks.reduce((a, e) => a + e.trueLosses[side], 0);
-        const claimed = weeks.reduce((a, e) => a + e.claimed[side], 0);
-        return h('div', { class: 'theater-ledger' },
-          h('div', null, h('span', null, 'Our aircraft lost'), h('b', null, String(lost))),
-          h('div', null, h('span', null, 'Enemy aircraft claimed by our crews'), h('b', null, String(claimed))),
-          h('div', null, h('span', null, 'Sectors taken'), h('b', null, String(Math.max(0, (side === 0 ? 1 : -1) * (res.gain ?? 0))))));
-      })(),
-      (() => {
-        // The roll of those posted missing in this theater, and what has become of them so far.
-        const roll = (st.sides[side].roll ?? []).filter((e) => e.theater === res.index);
-        if (!roll.length) return null;
-        const fate = { missing: 'missing', prisoner: 'prisoner of war', returned: 'returned', killed: 'killed' };
-        return h('div', { class: 'roll' },
-          h('h3', null, 'Roll of the missing'),
-          h('ul', null, roll.slice(-12).map((e) => h('li', null,
+  const weeks = st.archive.filter((e) => e.theater === res.index);
+  const lost = weeks.reduce((a, e) => a + e.trueLosses[side], 0);
+  const claimed = weeks.reduce((a, e) => a + e.claimed[side], 0);
+  const roll = (st.sides[side].roll ?? []).filter((e) => e.theater === res.index);
+  const fate = { missing: 'missing', prisoner: 'prisoner of war', returned: 'returned', killed: 'killed' };
+  const big = (v: string | number, label: string, cls = '') => h('div', { class: `kpi ${cls}` }, h('b', null, String(v)), h('span', null, label));
+  return h('div', { class: 'letter-screen theater-change-screen' },
+    h('div', { class: 'tc paper' },
+      h('div', { class: 'tc-old' },
+        h('div', { class: 'letter-kicker' }, `${res.name} · ${res.weeks} weeks · decided`),
+        h('div', { class: `stamp big drop ${won ? 'notice' : res.winner === null ? 'order' : 'reprimand'}` }, verdict),
+        h('p', { class: 'typed big' }, res.winner === null
+          ? ourPressure > 15 ? 'The pressure was ours, but the Army took no ground. High Command records a stalemate.'
+            : ourPressure < -15 ? 'The enemy held the advantage but took no ground. The armies dig in where they stand.'
+            : 'Neither air force could break the other. The armies dig in where they stand.'
+          : won ? (res.decisive ? 'The enemy front has broken. The Army is through.' : 'The season ends with the advantage ours.')
+          : res.decisive ? 'Our front has broken. The Army is falling back.' : 'The season ends with the advantage theirs.'),
+        h('div', { class: 'tc-kpis' },
+          big(lost, 'our aircraft lost', lost ? 'bad' : ''),
+          big(claimed, 'enemy claimed by our crews'),
+          big(Math.max(0, (side === 0 ? 1 : -1) * (res.gain ?? 0)), 'sectors taken', (res.gain ?? 0) * (side === 0 ? 1 : -1) > 0 ? 'good' : '')),
+        generalVerdict(st, side, res),
+        roll.length ? h('details', { class: 'roll' },
+          h('summary', null, `Roll of the missing (${roll.length})`),
+          h('ul', null, roll.map((e) => h('li', null,
             h('span', null, `${e.name}${e.crew > 1 ? ` and ${e.crew - 1} crew` : ''}`),
             h('span', { class: 'muted' }, ` · ${e.serial}, ${e.squadron}, week ${e.week}`),
-            h('b', { class: `fate ${e.fate}` }, ` ${fate[e.fate]}`)))),
-          roll.length > 12 ? h('p', { class: 'muted small' }, `…and ${roll.length - 12} more.`) : null);
-      })(),
-      nextDef ? h('div', { class: 'next-theater' },
-        h('h2', null, `Redeployment: ${nextDef.name}`),
-        h('div', { class: 'muted' }, `${nextDef.season} · ${nextDef.weeks} weeks`),
-        h('p', null, nextDef.blurb),
-        theaterMap(st, { viewer: side, scale: 2 }),
-        obj ? h('p', { class: 'small' }, `Secondary objective: ${obj.text}`) : null,
-        h('p', { class: 'muted small' }, 'Aircraft in repair have been made serviceable during the move. Squadrons are rested.'),
-      ) : h('p', null, 'This was the last theater of the war.'),
-      h('button', { class: 'btn primary', onclick: () => { sfxStamp(); const go = app.continueAfterTheater; app.continueAfterTheater = null; go?.(); } }, 'Continue ▸'),
+            h('b', { class: `fate ${e.fate}` }, ` ${fate[e.fate]}`))))) : null),
+      h('div', { class: 'tc-new' },
+        nextDef ? [
+          h('div', { class: 'letter-kicker' }, 'Redeployment'),
+          h('h1', null, nextDef.name),
+          h('div', { class: 'muted' }, `${nextDef.season} · ${nextDef.weeks} weeks`),
+          theaterMap(st, { viewer: side, scale: 2 }),
+          h('p', null, nextDef.blurb),
+          obj ? h('p', { class: 'small' }, h('b', null, 'Secondary objective: '), obj.text) : null,
+          h('p', { class: 'muted small' }, 'Aircraft in repair have been made serviceable during the move. Squadrons are rested.'),
+        ] : h('p', { class: 'typed big' }, 'This was the last theater of the war.'),
+        h('div', { class: 'tc-foot' }, h('button', { class: 'btn primary launch', onclick: () => { sfxStamp(); const go = app.continueAfterTheater; app.continueAfterTheater = null; go?.(); } }, nextDef ? `To ${nextDef.name} ▸` : 'Continue ▸'))),
     ),
   );
 }

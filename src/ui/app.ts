@@ -20,6 +20,7 @@ import { renderLanSetup, renderLanWait } from './lanscreens';
 import { renderSealed } from './orders';
 import { storage } from './storage';
 import { renderTutorial } from './tutorial';
+import { manualOverlay } from './manual';
 
 export type Screen =
   | { kind: 'title' }
@@ -147,6 +148,8 @@ export class App {
         break;
     }
     this.root.append(view);
+    const manual = manualOverlay(() => this.render());
+    if (manual) this.root.append(manual);
     for (const [key, top] of scrollers) {
       const el = this.root.querySelector<HTMLElement>(`[data-keep-scroll="${key}"]`);
       if (el) el.scrollTop = top;

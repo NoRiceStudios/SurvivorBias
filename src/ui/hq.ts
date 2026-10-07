@@ -17,6 +17,7 @@ import { readinessBar } from './readiness';
 import { squadronsScreen } from './squadronsui';
 import { believed } from './theaterui';
 import { tip } from './tip';
+import { toggleManual } from './manual';
 import { dedupeMemos, warRoom } from './warroom';
 import { panel } from './widgets';
 import { worksScreen } from './works';
@@ -87,6 +88,7 @@ export function renderHq(app: App, sideId: SideId, tabIn: string): HTMLElement {
       return h('button', { class: `tab ${tab === id ? 'active' : ''}`, 'data-tab': id, ...tip(hint), onclick: () => { sfxClick(); app.go({ kind: 'hq', side: sideId, tab: id }); } }, label, b ? h('span', { class: 'badge' }, b) : null);
     }),
     h('div', { class: 'tabs-spacer' }),
+    h('button', { class: 'tab small', ...tip('Field Manual: what every term means (F1)'), onclick: () => toggleManual(() => app.render()) }, '? Field Manual'),
     app.state!.mode !== 'single' ? h('button', { class: 'tab small', ...tip('Hide the screen (Esc)'), onclick: () => app.toggleCover() }, 'Close folder') : null,
     app.lan?.role === 'client' ? null : h('button', { class: 'tab small', onclick: () => { void app.save(`week${app.state!.turn}`).then(() => app.toast('Campaign saved')); } }, 'Save'),
     h('button', { class: 'tab small', onclick: () => { void app.save().then(() => { app.endLan(); app.go({ kind: 'title' }); }); } }, 'Main Menu'),
