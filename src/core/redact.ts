@@ -39,6 +39,11 @@ function blankSide(s: SideState): SideState {
     arrived: [],
     repaired: undefined,
     intent: undefined,
+    office: undefined,
+    depotBonus: undefined,
+    offers: undefined,
+    modsUnlocked: undefined,
+    freeMods: undefined,
   };
 }
 

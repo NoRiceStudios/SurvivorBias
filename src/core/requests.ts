@@ -4,6 +4,7 @@
  * what his squadron just went through. Approving applies it in one click. The
  * advice is only as good as the leader: some of it is the survivorship trap.
  */
+import { armorBudget } from './mods';
 import { AIRCRAFT, REQUEST_SHORT, ZONE_LABEL } from './data';
 import { remember } from './leaders';
 import { COSTS, setApproach } from './actions';
@@ -85,7 +86,7 @@ export function generateRequests(rng: Rng, state: GameState, side: SideState, d:
       const worst = (Object.entries(holes) as [ZoneId, number][]).sort((a, b) => b[1] - a[1])[0];
       if (worst && worst[1] >= 3 && sq.armor[worst[0]] < 3) {
         const used = ZONES.reduce((a, z) => a + sq.armor[z], 0);
-        const full = used >= AIRCRAFT[sq.kind].armorBudget;
+        const full = used >= armorBudget(sq);
         // If the budget is full, the plate comes off the zone with the fewest holes.
         const from = full ? ZONES.filter((z) => sq.armor[z] > 0 && z !== worst[0]).sort((a, b) => (holes[a] ?? 0) - (holes[b] ?? 0))[0] : undefined;
         if (!full || from) {

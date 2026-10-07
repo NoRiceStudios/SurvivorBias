@@ -13,6 +13,9 @@ import {
   cancelQueued,
   copyArmor,
   emergencyRepair,
+  fitMod,
+  removeMod,
+  upgradeOffice,
   queueAircraft,
   setApproach,
   setArmor,
@@ -26,12 +29,14 @@ import {
   type ActionResult,
 } from './actions';
 import { approveRequest, declineRequest } from './requests';
+import { takeOffer } from './offers';
 import type {
   AircraftKind,
   Doctrine,
   FacilityType,
   FighterApproach,
   GameState,
+  ModId,
   QcPolicy,
   SideId,
   TrainingFocus,
@@ -44,7 +49,9 @@ export type Command =
   | { k: 'armorAll'; sq: string }
   | { k: 'doctrine'; sq: string; d: Partial<Doctrine> }
   | { k: 'approach'; w: Record<FighterApproach, number> }
-  | { k: 'upgrade'; what: 'factory' | 'training' | 'flak' }
+  | { k: 'upgrade'; what: 'factory' | 'training' | 'flak' | 'office' }
+  | { k: 'mod'; sq: string; mod: ModId; on: boolean; all?: boolean }
+  | { k: 'offer'; i: number }
   | { k: 'qc'; v: QcPolicy }
   | { k: 'focus'; v: TrainingFocus }
   | { k: 'build'; kind: AircraftKind }
@@ -79,7 +86,32 @@ export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?
     case 'armorAll': return copyArmor(side, c.sq);
     case 'doctrine': return setDoctrine(side, c.sq, c.d);
     case 'approach': return setApproach(side, c.w);
-    case 'upgrade': return c.what === 'factory' ? upgradeFactory(side) : c.what === 'training' ? upgradeTraining(side) : upgradeFlak(side);
+    case 'upgrade': return c.what === 'factory' ? upgradeFactory(side) : c.what === 'training' ? upgradeTraining(side) : c.what === 'office' ? upgradeOffice(side) : upgradeFlak(side);
+    case 'mod': {
+      if (!c.on) {
+        const r = removeMod(side, c.sq, c.mod);
+        const kind = side.squadrons.find((q) => q.id === c.sq)?.kind;
+        if (r.ok && c.all) for (const q of side.squadrons) if (q.id !== c.sq && q.kind === kind && q.mods?.includes(c.mod)) removeMod(side, q.id, c.mod);
+        return r;
+      }
+      if (!c.all) return fitMod(side, c.sq, c.mod);
+      // Every squadron of the type that hasn't got it and has room, or none of them.
+      const kind = side.squadrons.find((q) => q.id === c.sq)?.kind;
+      const before = JSON.stringify({ r: side.resources, f: side.freeMods, m: side.squadrons.map((q) => q.mods) });
+      for (const q of side.squadrons.filter((x) => x.kind === kind && (x.id === c.sq || !x.mods?.includes(c.mod)))) {
+        if (q.id !== c.sq && (q.mods?.length ?? 0) >= 2) continue;
+        const r = fitMod(side, q.id, c.mod);
+        if (!r.ok) {
+          const b = JSON.parse(before) as { r: typeof side.resources; f?: number; m: (ModId[] | undefined)[] };
+          side.resources = b.r;
+          side.freeMods = b.f;
+          side.squadrons.forEach((x, i) => { x.mods = b.m[i] ?? undefined; if (!x.mods) delete x.mods; });
+          return q.id === c.sq ? r : { ok: false, reason: `${r.reason} (${q.name})` };
+        }
+      }
+      return { ok: true };
+    }
+    case 'offer': return takeOffer(state, side, c.i);
     case 'qc': return setQc(side, c.v);
     case 'focus': return setTrainingFocus(side, c.v);
     case 'build': return queueAircraft(side, c.kind);

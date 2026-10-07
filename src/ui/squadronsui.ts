@@ -6,6 +6,7 @@
  */
 import { armorUsed, COSTS } from '../core/actions';
 import { AIRCRAFT, ARCHETYPE_INFO, MAX_ARMOR_PER_ZONE, TRAIT_INFO, ZONE_LABEL } from '../core/data';
+import { armorBudget, availableMods, MOD_IDS, MOD_SLOTS, MODS } from '../core/mods';
 import { flyable } from '../core/sim';
 import { describeFlightCommander } from '../core/turn';
 import type { Archetype, Hit, SideState, Squadron, ZoneId } from '../core/types';
@@ -15,7 +16,7 @@ import { sfxClick } from './audio';
 import { doctrinePanel } from './doctrine';
 import { h, meter, plural } from './dom';
 import { leaderPortrait } from './general';
-import { aircraftCanvas, spriteDef, zoneAt } from './sprites';
+import { aircraftCanvas, PLATE_FILL, repaintAircraft, spriteDef, zoneAt, zoneCentres } from './sprites';
 import { setTip, tip } from './tip';
 import { pips } from './widgets';
 import { requestCard, sqLabel } from './warroom';
@@ -143,6 +144,7 @@ function dossier(app: App, side: SideState, sq: Squadron): HTMLElement {
       h('section', { class: 'paper panel' }, doctrinePanel(app, side, sq)),
       h('section', { class: 'paper panel' }, armorEditor(app, side, sq)),
     ),
+    h('section', { class: 'paper panel' }, modsPanel(app, side, sq)),
     fleet(side, sq),
     sq.leader.log?.length || sq.notables.length ? h('section', { class: 'paper panel' },
       h('h2', null, 'Squadron record'),
@@ -163,7 +165,7 @@ function survivorHits(app: App, side: SideState, sq: Squadron): Hit[] {
 }
 
 function armorEditor(app: App, side: SideState, sq: Squadron): HTMLElement {
-  const budget = AIRCRAFT[sq.kind].armorBudget;
+  const budget = armorBudget(sq);
   const used = armorUsed(sq);
   const comp = survivorHits(app, side, sq);
   const holes: Record<string, number> = {};
@@ -176,8 +178,27 @@ function armorEditor(app: App, side: SideState, sq: Squadron): HTMLElement {
 
   const def = spriteDef(sq.kind);
   const scale = Math.max(3, Math.min(9, Math.floor(400 / def.w)));
-  const c = aircraftCanvas(sq.kind, { side: side.id, style: 'blueprint', zonePlates: sq.armor, hits: comp, dots: true, bigDots: true }, scale);
+  const opts = { side: side.id, style: 'blueprint' as const, zonePlates: sq.armor, hits: comp, dots: true, bigDots: true };
+  const c = aircraftCanvas(sq.kind, opts, scale);
   c.classList.add('armor-canvas');
+  // A badge on every plated zone with its number of plates: the drawing says where the armor is without hovering.
+  const centres = zoneCentres(sq.kind);
+  const badges = new Map<ZoneId, HTMLElement>();
+  for (const z of ZONES) {
+    const at = centres[z];
+    if (!at) continue;
+    const b = h('span', { class: `plate-badge p${Math.min(3, sq.armor[z])}`, style: `left:${at[0] * scale}px;top:${at[1] * scale}px` }, sq.armor[z] ? String(sq.armor[z]) : '');
+    badges.set(z, b);
+  }
+  let lit: ZoneId | null = null;
+  const highlight = (z: ZoneId | null) => {
+    if (z === lit) return;
+    lit = z;
+    repaintAircraft(c, sq.kind, z ? { ...opts, zoneTint: { [z]: '#4f9fc0' } } : opts);
+    for (const [k, b] of badges) b.classList.toggle('lit', k === z);
+    for (const r of rowsByZone.values()) r.classList.remove('lit');
+    if (z) rowsByZone.get(z)?.classList.add('lit');
+  };
   const zoneUnder = (e: MouseEvent) => {
     const r = c.getBoundingClientRect();
     return zoneAt(sq.kind, ((e.clientX - r.left) / r.width) * def.w, ((e.clientY - r.top) / r.height) * def.h);
@@ -190,33 +211,75 @@ function armorEditor(app: App, side: SideState, sq: Squadron): HTMLElement {
     const z = zoneUnder(e);
     c.style.cursor = z ? 'pointer' : '';
     setTip(c, z ? zoneTip(z) : null);
+    highlight(z);
   });
+  c.addEventListener('mouseleave', () => highlight(null));
   c.addEventListener('click', (e) => { const z = zoneUnder(e); if (z) set(z, sq.armor[z] + 1); });
   c.addEventListener('contextmenu', (e) => { e.preventDefault(); const z = zoneUnder(e); if (z) set(z, sq.armor[z] - 1); });
   const callTotal = calls ? ZONES.reduce((a, z) => a + (calls[z] ?? 0), 0) : 0;
-  const rows = ZONES.map((z) => h('tr', tip(zoneTip(z)),
-    h('td', null, ZONE_LABEL[z]),
-    h('td', { class: 'plates' }, Array.from({ length: MAX_ARMOR_PER_ZONE }, (_, i) => h('i', { class: i < sq.armor[z] ? 'on' : '' }))),
-    h('td', null,
-      h('button', { class: 'btn tiny', disabled: sq.armor[z] === 0, onclick: () => set(z, sq.armor[z] - 1) }, '−'),
-      h('button', { class: 'btn tiny', disabled: sq.armor[z] >= MAX_ARMOR_PER_ZONE || used >= budget, onclick: () => set(z, sq.armor[z] + 1) }, '+')),
-    h('td', { class: 'num' }, comp.length ? h('span', { class: 'holes' }, `${holes[z] ?? 0}`, h('small', null, ` ${Math.round(((holes[z] ?? 0) / total) * 100)}%`)) : '—'),
-    h('td', { class: 'num lastcall' }, calls?.[z] ? `📻 ${calls[z]}` : '')));
+  const rowsByZone = new Map<ZoneId, HTMLElement>();
+  const rows = ZONES.map((z) => {
+    const r = h('tr', { ...tip(zoneTip(z)), class: sq.armor[z] ? 'plated' : '', onmouseenter: () => highlight(z), onmouseleave: () => highlight(null) },
+      h('td', null, h('i', { class: `zone-swatch p${Math.min(3, sq.armor[z])}` }), ZONE_LABEL[z]),
+      h('td', { class: 'plates' }, Array.from({ length: MAX_ARMOR_PER_ZONE }, (_, i) => h('i', { class: i < sq.armor[z] ? 'on' : '' }))),
+      h('td', null,
+        h('button', { class: 'btn tiny', disabled: sq.armor[z] === 0, onclick: () => set(z, sq.armor[z] - 1) }, '−'),
+        h('button', { class: 'btn tiny', disabled: sq.armor[z] >= MAX_ARMOR_PER_ZONE || used >= budget, onclick: () => set(z, sq.armor[z] + 1) }, '+')),
+      h('td', { class: 'num' }, comp.length ? h('span', { class: 'holes' }, `${holes[z] ?? 0}`, h('small', null, ` ${Math.round(((holes[z] ?? 0) / total) * 100)}%`)) : '—'),
+      h('td', { class: 'num lastcall' }, calls?.[z] ? `📻 ${calls[z]}` : ''));
+    rowsByZone.set(z, r);
+    return r;
+  });
+  const legend = h('div', { class: 'armor-legend' },
+    h('span', null, h('i', { class: 'zone-swatch p0' }), 'no plate'),
+    [1, 2, 3].map((n) => h('span', null, h('i', { class: `zone-swatch p${n}`, style: `background:${PLATE_FILL[n]}` }), plural(n, 'plate'))),
+    h('span', null, h('i', { class: 'hole-swatch' }), 'hole on a returning aircraft'));
   return h('div', { class: 'armor-editor' },
     h('h3', null, `Armor · ${AIRCRAFT[sq.kind].name[side.id]}`),
     sameType.length ? h('div', { class: 'seg mini scope' },
       h('button', { class: `seg-btn ${all ? 'on' : ''}`, ...tip(`Every change is made on ${[sq, ...sameType].map((q) => q.name).join(', ')} at once.`), onclick: () => { armorWholeType = true; app.render(); } }, `All ${sameType.length + 1} ${AIRCRAFT[sq.kind].name[side.id]} squadrons`),
       h('button', { class: `seg-btn ${!all ? 'on' : ''}`, onclick: () => { armorWholeType = false; app.render(); } }, 'This squadron only')) : null,
-    h('div', { class: 'blueprint-wrap' }, c),
-    h('p', { class: 'handwritten fitter' }, comp.length > 30 ? 'Orange crosses: holes on aircraft that came back. White hatching: plate. The holes show where an aircraft can be hit and still come home.' : 'Too few returns yet to see a pattern. Orange marks are holes on aircraft that came back; white hatching is plate.'),
+    h('div', { class: 'blueprint-wrap' }, h('div', { class: 'blueprint-stage' }, c, [...badges.values()])),
+    legend,
+    h('p', { class: 'handwritten fitter' }, comp.length > 30 ? 'Steel grey is plate, lighter for more; the number is how many plates. Orange crosses are holes on aircraft that came back: they show where an aircraft can be hit and still come home.' : 'Too few returns yet to see a pattern. Steel grey is plate (the number counts the plates); orange marks are holes on aircraft that came back.'),
     h('div', { class: 'weight', ...tip({ head: 'Weight', text: 'Each plate adds weight: a slower aircraft is caught more often and an armored fighter is less nimble.' }) },
       h('span', null, `Plates ${used}/${budget}`),
-      h('span', { class: `weight-bar ${used > budget / 2 ? 'heavy' : ''}` }, h('i', { style: `width:${(used / budget) * 100}%` })),
+      h('span', { class: `weight-bar ${used > AIRCRAFT[sq.kind].armorBudget / 2 ? 'heavy' : ''}` }, h('i', { style: `width:${Math.min(100, (used / budget) * 100)}%` })),
       h('span', { class: 'small muted' }, `${COSTS.armorChange} supplies a plate${all ? ' per squadron' : ''}; removing is free`)),
     h('table', { class: 'armor-table' },
       h('thead', null, h('tr', null, h('th', null, 'Zone'), h('th', null, 'Plates'), h('th', null, ''), h('th', null, 'Holes seen'), h('th', null, callTotal ? 'Last calls' : ''))),
       h('tbody', null, rows)),
     callTotal ? h('p', { class: 'small muted' }, `Last calls: what ${plural(callTotal, 'crew')} who did not come back said over the radio as they went down.`) : null,
+  );
+}
+
+/* ---------------- Field modifications ---------------- */
+
+function modsPanel(app: App, side: SideState, sq: Squadron): HTMLElement {
+  const fitted = sq.mods ?? [];
+  const sameType = side.squadrons.filter((q) => q !== sq && q.kind === sq.kind);
+  const all = armorWholeType && sameType.length > 0;
+  const free = side.freeMods ?? 0;
+  const open = availableMods(side, sq);
+  const locked = MOD_IDS.map((id) => MODS[id]).filter((m) => m.rare && m.kinds.includes(sq.kind) && !open.includes(m));
+  const full = fitted.length >= MOD_SLOTS;
+  return h('div', { class: 'mods' },
+    h('h2', null, 'Field modifications'),
+    h('p', { class: 'small muted' }, `Kits fitted by the squadron's own fitters. Room for ${MOD_SLOTS}; taking one off refunds nothing.${all ? ` Changes are made on every ${AIRCRAFT[sq.kind].name[side.id]} squadron (see Armor).` : ''}${free ? ` ${plural(free, 'kit')} from High Command: the next ${free === 1 ? 'fitting costs' : `${free} fittings cost`} nothing.` : ''}`),
+    h('div', { class: 'mod-slots' }, Array.from({ length: MOD_SLOTS }, (_, i) => {
+      const m = fitted[i] ? MODS[fitted[i]] : null;
+      return h('div', { class: `mod-slot ${m ? 'on' : ''}` }, m
+        ? [h('b', null, m.name), h('button', { class: 'btn tiny', ...tip('Take it off (nothing refunded)'), onclick: () => app.cmd(side.id, { k: 'mod', sq: sq.id, mod: m.id, on: false, all }) }, '✕')]
+        : h('span', { class: 'muted' }, 'empty slot'));
+    })),
+    h('div', { class: 'mod-list' },
+      open.filter((m) => !fitted.includes(m.id)).map((m) => h('div', { class: `mod-card ${m.rare ? 'rare' : ''}` },
+        h('div', { class: 'mod-name' }, m.name, m.rare ? h('span', { class: 'mod-rare' }, ' PROTOTYPE') : null),
+        h('div', { class: 'small' }, m.desc),
+        h('button', { class: 'btn small', disabled: full || (!free && side.resources.supplies < m.cost), ...tip(full ? 'Both slots are taken: take a modification off first.' : 'Fit to this squadron\'s aircraft.'), onclick: () => app.cmd(side.id, { k: 'mod', sq: sq.id, mod: m.id, on: true, all }) }, free ? 'Fit (free)' : `Fit (${m.cost})`))),
+      locked.map((m) => h('div', { class: 'mod-card locked', ...tip({ head: m.name, text: m.desc }) },
+        h('div', { class: 'mod-name' }, m.name),
+        h('div', { class: 'small muted' }, 'A prototype. Released only by High Command, as a rare offer.')))),
   );
 }
 

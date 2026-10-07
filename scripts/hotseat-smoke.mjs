@@ -21,10 +21,13 @@ const check = (cond, msg) => { if (!cond) { errs.push('CHECK FAILED: ' + msg); }
 await p.click('text=Hotseat: two commanders');
 await p.fill('.name-input >> nth=0', 'Cdre Ashworth');
 await p.fill('.name-input >> nth=1', 'Oberst Voigt');
+await p.selectOption('.faction-select >> nth=0', 'arsenal');
+await p.selectOption('.faction-select >> nth=1', 'cadre');
 await shot('h0-setup');
 await p.click('text=Begin the war');
 await shot('h1-handover');
 check(await p.isVisible('text=Cdre Ashworth'), 'handover names the first commander');
+check(await p.evaluate(() => window.sb.state.sides.map((x) => x.faction).join()) === 'arsenal,cadre', 'each commander leads the air force chosen');
 await p.click('text=Open the folder');
 
 // Commander 1 plans a feint with a spare fighter squadron.

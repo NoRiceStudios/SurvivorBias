@@ -15,6 +15,7 @@ import { believed, depthLabel, pressureGauge, theaterMap } from './theaterui';
 import { tip } from './tip';
 import { countPlanes, pips, seg } from './widgets';
 import { aircraftCanvas } from './sprites';
+import { offerText, offerTitle, TIER_LABEL, tierWeights } from '../core/offers';
 
 type Role = 'raid' | 'defense' | 'rest' | 'recon' | 'feint';
 
@@ -279,7 +280,7 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
 
 /* ---------------- In-tray ---------------- */
 
-let trayTab: 'requests' | 'orders' | 'mail' | null = null;
+let trayTab: 'offers' | 'requests' | 'orders' | 'mail' | null = null;
 
 function inTray(app: App, side: SideState): HTMLElement {
   const st = app.state!;
@@ -289,10 +290,24 @@ function inTray(app: App, side: SideState): HTMLElement {
   const fresh = dedupeMemos(side.memos.filter((m) => m.turn >= st.turn && m.kind !== 'supply' && !read.has(m)));
   const supply = side.memos.find((m) => m.kind === 'supply' && m.turn >= st.turn);
   const due = side.orders.filter((o) => o.deadline <= st.turn).length;
-  const tab = trayTab ?? (side.requests.length ? 'requests' : due ? 'orders' : 'mail');
-  const tabs: [typeof tab, string, number][] = [['requests', 'Requests', side.requests.length], ['orders', 'Orders', side.orders.length], ['mail', 'Mail', fresh.length]];
+  const offers = side.offers?.week === st.turn ? side.offers : undefined;
+  const offerOpen = !!offers && offers.taken === undefined && offers.cards.length > 0;
+  const tab = trayTab ?? (offerOpen ? 'offers' : side.requests.length ? 'requests' : due ? 'orders' : 'mail');
+  const tabs: [typeof tab, string, number][] = [['offers', 'High Command', offerOpen ? offers!.cards.length : 0], ['requests', 'Requests', side.requests.length], ['orders', 'Orders', side.orders.length], ['mail', 'Mail', fresh.length]];
   let body: HTMLElement[];
-  if (tab === 'requests') {
+  if (tab === 'offers') {
+    const w = tierWeights(side);
+    const sum = w[0] + w[1] + w[2];
+    body = offers ? [
+      h('p', { class: 'small muted offer-intro', ...tip({ head: 'Odds of each offer', text: `With confidence at ${side.trust}: routine ${Math.round((w[0] / sum) * 100)}%, uncommon ${Math.round((w[1] / sum) * 100)}%, rare ${Math.round((w[2] / sum) * 100)}%. The more High Command trusts you, the better its offers.` }) },
+        offers.taken === undefined ? 'Accept one; the rest are withdrawn when the week is fought. Better odds the more High Command trusts you.' : 'Accepted. New proposals come with next week\'s mail.'),
+      h('div', { class: 'offer-row' }, offers.cards.map((c, i) => h('div', { class: `offer-card tier${c.tier} ${offers.taken === i ? 'taken' : offers.taken !== undefined ? 'gone' : ''}`, ...tip({ head: `${TIER_LABEL[c.tier]}: ${offerTitle(side, c)}`, text: offerText(st, side, c) }) },
+        h('div', { class: 'offer-head' }, h('span', { class: 'offer-tier' }, TIER_LABEL[c.tier]),
+          offers.taken === undefined ? h('button', { class: 'btn tiny', onclick: () => app.cmd(side.id, { k: 'offer', i }) }, 'Accept') : offers.taken === i ? h('span', { class: 'offer-ok' }, '✓ accepted') : null),
+        h('div', { class: 'offer-title' }, offerTitle(side, c)),
+        h('div', { class: 'offer-text' }, offerText(st, side, c))))),
+    ] : [h('p', { class: 'small muted' }, 'No proposals from High Command this week.')];
+  } else if (tab === 'requests') {
     body = side.requests.length ? side.requests.map((r) => requestCard(app, side, r)) : [h('p', { class: 'small muted' }, 'No requests this week.')];
   } else if (tab === 'orders') {
     body = side.orders.length ? side.orders.map((o) => {
@@ -311,7 +326,7 @@ function inTray(app: App, side: SideState): HTMLElement {
         h('div', { class: 'memo-body' }, m.body))) : [h('p', { class: 'small muted' }, 'Nothing new. Older correspondence is filed under Intelligence.')]),
     ] as (HTMLElement | null)[]).filter((x): x is HTMLElement => !!x);
   }
-  if (!side.requests.length && !side.orders.length && !fresh.length) return h('section', { class: 'intray empty' }, 'In-tray empty.');
+  if (!offers && !side.requests.length && !side.orders.length && !fresh.length) return h('section', { class: 'intray empty' }, 'In-tray empty.');
   return h('section', { class: 'intray' },
     h('div', { class: 'tray-tabs' }, tabs.map(([id, label, n]) => h('button', { class: `tray-tab ${tab === id ? 'on' : ''}`, onclick: () => { trayTab = id; app.render(); } }, label, n ? h('span', { class: `badge ${id === 'orders' && !due ? 'quiet' : ''}` }, String(n)) : null))),
     (() => {

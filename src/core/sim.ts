@@ -9,6 +9,7 @@ import {
 } from './data';
 import { facilityEffects } from './effects';
 import { tech } from './tech';
+import { modFx } from './mods';
 import { ABORT_MECH, BANDITS, BOMBS_GONE, BREAK_OFF, CHATTER, CONTACT, ESCORT_HOME, ESCORT_KILL, FEINT_OUT, FORM_UP, GROUND_SITE, GROUND_SUPPORT, GUNNER_KILL, MANY, NO_FIGHTERS, rt, RUN_IN, SEEN_GO, SEEN_WHAT, SUPPORT_IN, TOWER, WE_ARE_HIT, WEATHER_OUT, WOUNDED } from './radio';
 import { DEFAULT_LETHALITY, type LethalityTable } from './lethality';
 import type { Rng } from './rng';
@@ -88,7 +89,8 @@ export function emptyApproach(): Record<FighterApproach, number> {
 
 export function armorLoad(sq: Squadron, side?: SideState): number {
   const total = ZONES.reduce((a, z) => a + sq.armor[z], 0);
-  return (total / Math.max(1, AIRCRAFT[sq.kind].armorBudget)) * (1 - (side ? tech(side, 'plateWeight') : 0));
+  // Weight is measured against the type's standard load of plate; modifications add or take some off.
+  return Math.max(-0.25, (total / Math.max(1, AIRCRAFT[sq.kind].armorBudget)) * (1 - (side ? tech(side, 'plateWeight') : 0)) + modFx(sq, 'weight'));
 }
 
 export function hitLethality(zone: ZoneId, f: Flier, armor = f.sq.armor[zone]): number {
@@ -97,6 +99,8 @@ export function hitLethality(zone: ZoneId, f: Flier, armor = f.sq.armor[zone]): 
   let p = f.leth[zone] * Math.pow(factor, armor);
   if (zone === 'fuel' && res.includes('selfSealing')) p *= 0.45;
   if (zone === 'fuel' || zone === 'engines') p *= 1 - tech(f.side, 'fireproof');
+  if (zone === 'cockpit' || zone === 'nose') p *= 1 - modFx(f.sq, 'cockpit');
+  if (zone === 'fuel') p *= 1 - modFx(f.sq, 'fuel');
   // Small, fast airframes take less punishment per hole but have less to lose.
   if (f.af.kind === 'fighter' || f.af.kind === 'recon') p *= 1.25;
   if (f.af.kind === 'heavy') p *= 0.8;
@@ -183,7 +187,7 @@ function say(ctx: RaidContext, side: SideId, callsign: string, text: string, hea
 function skillMult(f: Flier): number {
   const s = f.sq.skill;
   const ace = f.sq.leader.trait === 'ace' ? 1.1 : 1;
-  return (0.6 + 0.8 * s) * (1 + tech(f.side, 'hits')) * ace * (1 - f.sq.fatigue * 0.3);
+  return (0.6 + 0.8 * s) * (1 + tech(f.side, 'hits')) * (1 + modFx(f.sq, 'hits')) * ace * (1 - f.sq.fatigue * 0.3);
 }
 
 function makeFlier(sq: Squadron, af: Airframe, side: SideState, role: PlaneRecord['role'], index: number, lethality: LethalityTable = DEFAULT_LETHALITY): Flier {
@@ -284,7 +288,7 @@ function bomberPass(ctx: RaidContext, fighter: Flier, bomber: Flier, bombers: Fl
   const formation = bomber.sq.doctrine.formation;
   const guns = AIRCRAFT[bomber.af.kind].guns;
   const coverage = approach === 'tail' ? 1.25 : approach === 'beam' ? 0.95 : 0.4;
-  const defLambda = 0.3 * (guns / 4) * skillMult(bomber) * (0.6 + formation * 0.9) * coverage * (1 + tech(bomber.side, 'turrets'));
+  const defLambda = 0.3 * (guns / 4) * skillMult(bomber) * (0.6 + formation * 0.9) * coverage * (1 + tech(bomber.side, 'turrets')) * Math.max(0.2, 1 + modFx(bomber.sq, 'turrets'));
   const defHits = rng.poisson(defLambda);
   for (let i = 0; i < defHits; i++) {
     if (applyHit(rng, fighter, approach === 'headOn' ? 'headOn' : 'tail')) {
@@ -430,6 +434,14 @@ export function resolveRaid(
       ctx.t += 3;
       const single = f.af.kind === 'fighter' || f.af.kind === 'recon';
       say(ctx, attacker.id, f.callsign, rng.pick(single ? ABORT_MECH.single : ABORT_MECH.multi));
+    } else if (modFx(f.sq, 'strain') > 0 && rng.chance(modFx(f.sq, 'strain') * (1 - tech(attacker, 'reliability')))) {
+      // Boosted engines run close to the limit.
+      f.out = true;
+      f.home = true;
+      f.rec.fate = 'aborted';
+      f.rec.mechanical = true;
+      ctx.t += 3;
+      say(ctx, attacker.id, f.callsign, rng.pick(f.af.kind === 'fighter' || f.af.kind === 'recon' ? ABORT_MECH.single : ABORT_MECH.multi));
     }
   }
 
@@ -441,7 +453,7 @@ export function resolveRaid(
   const detectFor = (d: Flier): number => {
     const c = cover[d.sq.id];
     let p = c === undefined ? 0.55 + radar : c === sector ? 0.95 : Math.abs(c - sector) === 1 ? 0.3 + radar * 0.5 : 0.05;
-    p = (p + mods.detection + tech(defender, 'detection') + (0.5 - avgAlt) * 0.2) * wx.detection;
+    p = (p + mods.detection + tech(defender, 'detection') + modFx(d.sq, 'detection') + (0.5 - avgAlt) * 0.2) * wx.detection;
     return Math.max(0, Math.min(0.97, p));
   };
   const interceptors = [
@@ -576,7 +588,7 @@ export function resolveRaid(
     for (const b of bombers.filter((x) => x.alive && !x.out)) {
       const alt = support ? 0.15 : b.sq.doctrine.altitude;
       const acc = 0.3 + 0.35 * b.sq.skill + 0.25 * (1 - alt) + 0.1 * b.sq.doctrine.aggression;
-      damage += AIRCRAFT[b.af.kind].payload * acc * rng.range(0.5, 1.5);
+      damage += AIRCRAFT[b.af.kind].payload * (1 + modFx(b.sq, 'payload')) * acc * rng.range(0.5, 1.5);
     }
     // Bombsights, bigger bombs and target markers.
     const blind = wx.accuracy + (1 - wx.accuracy) * tech(attacker, 'blindBombing');

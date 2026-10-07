@@ -7,7 +7,9 @@ import { REPAIR_COST } from '../core/actions';
 import { APPROACH_LABEL } from '../core/data';
 import { CRIPPLED, facilityEffects } from '../core/effects';
 import { countedSites, facilityCondition, SECTOR_PRESSURE, SECTORS, THEATERS, WEATHER_LABEL } from '../core/theaters';
-import { STORES_CAP } from '../core/turn';
+import { storesCap } from '../core/actions';
+import { FACTIONS } from '../core/factions';
+import { weeklyIncome } from '../core/turn';
 import type { FighterApproach, Memo, SideId, SideState } from '../core/types';
 import type { App } from './app';
 import { sfxClick } from './audio';
@@ -64,14 +66,14 @@ export function topBar(app: App, side: SideState, debriefWeek?: number, what = '
         : `LAN · ${lan.connected ? (lan.opponentSealed ? 'host sealed' : 'host planning') : 'disconnected'}`)
     : null;
   return h('header', { class: 'topbar' },
-    h('div', { class: `crest side${side.id}` }, h('div', { class: 'crest-name' }, side.id === 0 ? 'No. 7 Composite Wing' : 'Kampfgeschwader Nord'), h('div', { class: 'crest-sub' }, side.name)),
+    h('div', { class: `crest side${side.id}` }, h('div', { class: 'crest-name' }, side.id === 0 ? 'No. 7 Composite Wing' : 'Kampfgeschwader Nord'), h('div', { class: 'crest-sub' }, side.name, side.faction ? h('span', { class: 'crest-faction', ...tip({ head: FACTIONS[side.faction].name, text: `${FACTIONS[side.faction].blurb} Strengths: ${FACTIONS[side.faction].strengths.join('; ')}. Weaknesses: ${FACTIONS[side.faction].weaknesses.join('; ')}.` }) }, ` · ${FACTIONS[side.faction].name}`) : null)),
     h('div', { class: 'slate' },
       h('b', null, debriefWeek !== undefined ? `Week ${debriefWeek} ${what}` : `Week ${st.turn}`),
       debriefWeek !== undefined ? h('span', null, THEATERS[st.theater.index].name) : h('span', tip({ head: 'Forecast', text: 'Meteorological Office forecast for the coming operation. Usually right. Storms spoil bombing and interceptions; cloud hides results.' }), `${THEATERS[st.theater.index].name} · ${WEATHER_LABEL[st.forecast[side.id]]}`)),
     lanChip,
     h('div', { class: 'resources' },
-      res('supplies', r.supplies, String(r.supplies), 'supplies', 'Pay for armor, aircraft, training, research and repairs. Delivered every week; more when High Command trusts you.'),
-      res('fuel', r.stores, String(r.stores), 'stores', `Fuel, bombs and ammunition. Every aircraft that flies uses them. Depots hold at most ${STORES_CAP}; wrecked fuel depots cut deliveries.`),
+      res('supplies', r.supplies, String(r.supplies), 'supplies', 'Pay for armor, modifications, aircraft, training, research and repairs. Delivered every week: more when High Command trusts you, and more again from the Supply Office and captured works (Works).', `about +${weeklyIncome(st, side).supplies} a week`),
+      res('fuel', r.stores, String(r.stores), 'stores', `Fuel, bombs and ammunition. Every aircraft that flies uses them, and they are rationed: a full effort every week burns far more than arrives. Depots hold at most ${storesCap(side)}; wrecked fuel depots cut deliveries.`, `about +${weeklyIncome(st, side).stores} a week`),
       res('crew', r.replacements, String(r.replacements), 'recruits', 'Replacement aircrew waiting for a place at the training school.'),
       res('trust', side.trust, String(side.trust), 'confidence', 'High Command\'s confidence in you (0-100). It rises with the results you report, not the results you get. Deliveries grow with it; at 0 you are relieved of command.', undefined, side.trust < 25 ? 'bad' : ''),
       res('front', front, `${held}/${SECTORS} ${front >= 0 ? '▲' : '▼'}${Math.abs(front)}`, 'sectors · pressure', `Sectors we hold of ${SECTORS}, and the pressure on the front as the Army reports it. A sector usually falls at about ±${SECTOR_PRESSURE}.`, undefined, front >= 0 ? 'good' : 'bad'),

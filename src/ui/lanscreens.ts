@@ -1,5 +1,7 @@
 /** LAN setup (host or join) and the "waiting for the other commander" screen. */
 import { startCampaign } from '../core/game';
+import type { FactionId } from '../core/types';
+import { factionSelect } from './title';
 import { defaultPlan } from '../core/plans';
 import type { SideId } from '../core/types';
 import type { App } from './app';
@@ -21,6 +23,7 @@ export function renderLanSetup(app: App): HTMLElement {
       back));
   }
   const hostName = h('input', { class: 'name-input', maxlength: '40', placeholder: 'Air Commodore …' }) as HTMLInputElement;
+  const hostFaction = factionSelect();
   const hostPort = h('input', { class: 'name-input port', value: String(DEFAULT_PORT), inputmode: 'numeric' }) as HTMLInputElement;
   const joinName = h('input', { class: 'name-input', maxlength: '40', placeholder: 'Oberst …' }) as HTMLInputElement;
   const joinAddr = h('input', { class: 'name-input', placeholder: '192.168.1.20', value: '' }) as HTMLInputElement;
@@ -32,7 +35,7 @@ export function renderLanSetup(app: App): HTMLElement {
     const session = new LanSession(app, 'host', api, Number(hostPort.value) || DEFAULT_PORT);
     if (!(await session.host())) return;
     app.lan = session;
-    app.state = startCampaign({ mode: 'lan', seed: `${Date.now()}`, commanders: [hostName.value || 'Air Commodore', 'Oberst'] });
+    app.state = startCampaign({ mode: 'lan', seed: `${Date.now()}`, commanders: [hostName.value || 'Air Commodore', 'Oberst'], factions: [hostFaction.value as FactionId | 'random', 'random'] });
     app.plans = [defaultPlan(app.state, 0), defaultPlan(app.state, 1)];
     app.pendingCommands = [[], []];
     await app.save();
@@ -68,7 +71,7 @@ export function renderLanSetup(app: App): HTMLElement {
         : h('div', { class: 'grid2 lan-forms' },
           h('div', { class: 'col' },
             h('h2', null, 'Host a game'),
-            h('label', { class: 'small' }, 'Your name (Aldmere)'), hostName,
+            h('label', { class: 'small' }, 'Your name (Aldmere)'), hostName, hostFaction,
             h('label', { class: 'small' }, 'Port'), hostPort,
             h('button', { class: 'btn primary', onclick: () => void doHost() }, 'Host'),
             h('p', { class: 'muted small' }, 'The other player needs your address and port. Both are shown at the top of your screen once the game starts. Over the internet the port must be forwarded on your router.'),

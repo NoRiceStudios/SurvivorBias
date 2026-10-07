@@ -38,7 +38,7 @@ game never points this out. Whether you notice is up to you.
 | Campaign | Three war theaters fought in sequence, each with sector-by-sector progression; several endings; about 3–5 hours; save/load between sessions |
 | Multiplayer | Single player vs AI, **plus** PvP by hotseat (hidden screens) and LAN/direct IP; simultaneous planning, then the battle resolves |
 | Crew model | Squadron-level abstraction; notable individuals (aces, problem cases, squadron leaders) surface by name |
-| Economy | Three resources: **Supplies**, **Stores** (fuel and munitions), **Replacements** |
+| Economy | Three resources: **Supplies**, **Stores** (fuel and munitions), **Replacements**; a weekly pick-one-of-three offer from High Command; three asymmetric air forces |
 | Aircraft | Per-zone armor placement, modular loadouts, several aircraft types, factory R&D tree |
 | Enemy | Adaptive and escalating, but imperfect: it reacts to *its own* unreliable intel |
 | Information distortion | Crew personality biases, trauma/memory distortion, verification tools, unreliable High Command |
@@ -145,8 +145,26 @@ no plate about 20. The hangar shows, next to the holes on returned aircraft,
 how many last calls of crews who didn't come back named each zone: the only
 word from the aircraft nobody sees.
 
-**Loadouts:** engine variant, guns, turret configuration, fuel tanks
-(self-sealing option), bomb load.
+**Field modifications** *(implemented, `mods.ts`)*: each squadron has room for
+two kits, fitted for supplies (nothing refunded when taken off), on one
+squadron or the whole type at once. Almost every kit trades something away:
+
+| Kit | Types | Effect | Price paid |
+|---|---|---|---|
+| Extra guns | armed | fighters +12% hits, gunners +20% | weight (+0.15 of a full plate load) |
+| Stripped airframe | all | weight −0.35: plate slows the aircraft much less | gunners −20% |
+| Boost injection | fighters | +8% hits, defenders find raids 6% more often | 4% of sorties abort with a strained engine |
+| Enlarged bomb bay | bombers | bombs +25% | defensive fire −25% |
+| Extra plate mounts | all | +2 armor plates | (the plates' own weight) |
+| Lean-mixture carburettors | all | −25% stores per sortie | −5% hits |
+| *Airborne radar* (prototype) | fighters | defenders +15% interception, +5% hits | — |
+| *Armoured windscreen and seat* (prototype) | all | cockpit and nose hits 45% less often fatal | — |
+| *Inerted fuel tanks* (prototype) | all | fuel tank hits half as often fatal | — |
+
+Prototypes are released only by High Command, as rare offers (§6.5). The armor
+blueprint draws plated zones in solid steel (lighter for more plates), with a
+badge giving the number of plates on each, so the layout reads at a glance
+under the holes; hovering a zone or a table row highlights it in both.
 
 **Per-airframe history:** sorties flown, repairs, accumulated fatigue (hidden
 structural wear), and the factory batch it came from.
@@ -206,8 +224,8 @@ The crew is modelled at squadron level:
 
 | Resource | Used for | Comes from |
 |---|---|---|
-| **Supplies** | Upgrades, R&D, repairs, armor (4 per plate fitted; removal free) | High Command deliveries (scaled by trust and our works) |
-| **Stores** (fuel and munitions, merged after playtest round 2) | Each sortie: fighter 3, medium 5, heavy 8, recon 2; flak batteries 20 | Rationed. Deliveries are about 80% of a full effort, so the wing must stand squadrons down from time to time. Depots hold at most 240. Bombing our fuel depots cuts deliveries. A "Fit to stores" button trims a plan that is too big. |
+| **Supplies** | Upgrades, R&D, repairs, armor (4 per plate fitted; removal free), field modifications, convoys | High Command deliveries (scaled by trust and our works); the **Supply Office** (+12 a week per level, 4 levels, 60/100/140/180 to build); **captured works** (+6 a week for every enemy site the Army has taken in the theater); High Command's offers; the air force's own bonus or levy. Works lists the week's income line by line. |
+| **Stores** (fuel and munitions, merged after playtest round 2) | Each sortie: fighter 3, medium 5, heavy 8, recon 2 (−25% with lean-mixture carburettors); flak batteries 20 | Scarce since playtest round 9: 20 + 20 × (0.4 + trust/100) a week (40 at confidence 60), under half a full effort, so squadrons must rest in turn and stores, not supplies, set the tempo. The war starts with 160; depots hold 200 (+40 from a rare offer). Bombing our fuel depots cuts deliveries. A convoy turns 60 supplies into 30 stores once a week. A "Fit to stores" button trims a plan that is too big. The AI's stores scale with its difficulty but never below 80% of a player's, and it plans a week without bombing (which its intent, and so the Y-Service, reflects) when it cannot afford a raid. |
 | **Replacements** | New airmen into training. Trained aircrew can also be asked of the Ministry for supplies (dearer the less it trusts you), but only for aircraft without crews. A squadron down to one or two aircraft can be merged into another of its type. | Posted, and taken into the school, only for aircraft the wing has or has on order. Crews follow aircraft, so none sit idle. |
 
 **What bombing does** (one rule set, `effects.ts`, for both sides):
@@ -227,6 +245,49 @@ below a confidence of 30. Our own losses can't be talked down: more than two
 aircraft lost in a week costs confidence. Difficulty scales the
 AI's resources (Green ×0.51, Seasoned ×0.74, Wald ×1.08), and the AI gets 15%
 more with each theater.
+
+**High Command's offers** *(implemented, `offers.ts`)*: a roguelike draft. Each
+week three proposals arrive in the War Room in-tray, all different and each of
+use now; the commander may accept one, and the rest are withdrawn when the week
+is fought. Each card is routine, uncommon or rare, drawn with weights 1 :
+0.25 + 0.5t : 0.03 + 0.3t² where t is confidence/100, so a trusted commander
+sees rare cards several times as often.
+
+- *Routine:* a Treasury grant (+50 supplies), an extra fuel train (+35 stores),
+  two crews from Training Command, a labour battalion (+15% to every site we
+  hold), a leave roster (fatigue −25%), machine tools on loan (+6 build points).
+- *Uncommon:* two aircraft of a type we fly, with crews; two weeks' progress on
+  the current project; a requisitioned stockpile (+110 supplies, −4
+  confidence); instructors from the front (+skill everywhere); Ministry
+  photographs of every enemy site; two free modification kits.
+- *Rare:* a prototype modification; a development project finished outright;
+  a special vote of the War Cabinet (+200 supplies); a fighter squadron from
+  overseas; an ace to command a squadron; a new fuel depot (+40 capacity, +60
+  stores).
+
+What an offer is about (the aircraft type, the project, the squadron) is fixed
+when it is drawn, so a LAN client and the host replay the same command to the
+same result. The AI accepts an offer some weeks (more often the higher its
+difficulty), taking the rarest. A readiness chip reminds the commander while
+the week's offer is open.
+
+### 6.5.1 Air forces *(implemented, `factions.ts`)*
+
+Each commander leads one of three air forces, chosen at the start (single
+player: before the enemy's difficulty; hotseat: one each; LAN: the host
+chooses, the joining side's is drawn by lot; the AI's is drawn by lot). The
+tutorial and old saves have none.
+
+| Air force | Strengths | Weaknesses |
+|---|---|---|
+| **The Arsenal** — *Factories first.* | works +30% output, aircraft 15% cheaper, +10 supplies a week | stores deliveries −15%, crews start 0.05 and graduate 0.05 less skilled |
+| **The Old Cadre** — *Few, but the best.* | crews start +0.15 skill, graduates +0.08, lost crews home 10% more often, Ministry crews 25% cheaper | squadrons start two aircraft short, aircraft 15% dearer, works −15% output |
+| **Friends at Court** — *The Air Council's favourite.* | four offers a week, drawn as if confidence were 20 higher; weekly confidence gains +50% | weekly confidence losses +25%, 10 supplies less a week |
+
+The Arsenal wins by replacing losses, the Cadre by not taking them, and
+Friends at Court by the luck of the draft and a good press, at the risk of a
+quick fall. `npm run balance -- 20 --faction=cadre` plays the scripted player
+with an air force.
 
 ### 6.6 War theaters
 

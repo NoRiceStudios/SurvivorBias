@@ -4,6 +4,7 @@ import { Rng } from './rng';
 import { newGame, SAVE_VERSION, type NewGameOptions } from './setup';
 import { DEFAULT_LETHALITY } from './lethality';
 import { depthFor } from './theaters';
+import { rollOffers } from './offers';
 import { resolveTurn, STORES_CAP } from './turn';
 import type { GameState, SideId, TurnPlan } from './types';
 
@@ -49,6 +50,7 @@ export function startCampaign(opts: NewGameOptions & { commanders?: [string, str
       },
     );
   }
+  for (const side of state.sides) side.offers = rollOffers(rng.fork(`offers-${side.id}-0`), state, side, 1);
   state.rng = rng.state;
   return state;
 }
@@ -88,6 +90,9 @@ export function deserialize(json: string): GameState {
     }
     s.version = 5;
   }
+  // Version 5 saves predate air forces, the Supply Office, field modifications and High Command's offers:
+  // nothing to add, they start with none of them.
+  if (s.version === 5) s.version = 6;
   if (s.version !== SAVE_VERSION) throw new Error(`Save version ${s.version} is not supported (expected ${SAVE_VERSION})`);
   for (const p of s.sealed) if (p) p.feint ??= null;
   for (const side of s.sides) {

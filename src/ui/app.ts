@@ -1,6 +1,7 @@
 import { aiPlan } from '../core/ai';
 import { emptyPlan, validatePlan } from '../core/actions';
 import { deserialize, serialize, startCampaign } from '../core/game';
+import type { NewGameOptions } from '../core/setup';
 import { resolveTurn } from '../core/turn';
 import { applyCommand, type Command } from '../core/commands';
 import { carryPlan, defaultPlan, fitPlanToStores } from '../core/plans';
@@ -229,8 +230,8 @@ export class App {
     this.handover(side, { kind: 'hq', side, tab: 'war' }, `Week ${st.turn} — Planning`, side === 1 && st.sealed[0] ? `${other.commander} has sealed their orders.` : undefined);
   }
 
-  newGame(mode: 'single' | 'hotseat', insight = 0.4, commanders?: [string, string]) {
-    this.state = startCampaign({ mode, aiInsight: insight, seed: `${Date.now()}`, commanders });
+  newGame(mode: 'single' | 'hotseat', insight = 0.4, commanders?: [string, string], factions?: NewGameOptions['factions']) {
+    this.state = startCampaign({ mode, aiInsight: insight, seed: `${Date.now()}`, commanders, factions });
     this.plans = [defaultPlan(this.state, 0), defaultPlan(this.state, 1)];
     this.selected = null;
     this.announced.clear();

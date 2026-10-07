@@ -281,6 +281,9 @@ export interface RenderOpts {
 
 /** The blueprint palette: Wald's diagram, drawn by a draughtsman. */
 export const BLUE = { fill: '#24426a', shade: '#2b4d78', zone: '#6f8fb4', line: '#e3ebf2', plate: '#e3ebf2', faint: '#7f9cc0', hole: '#ff6a3c' };
+/** Plated zones on the blueprint: solid steel, lighter with every plate, so armor reads at a glance. */
+export const PLATE_FILL = ['', '#7d8a96', '#a9b4bd', '#dde3e7'];
+const PLATE_RIVET = ['', '#5f6b76', '#87929c', '#b6c0c8'];
 
 /** Render an aircraft into an ImageData-compatible RGBA buffer. */
 export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: number; h: number; data: Uint8ClampedArray<ArrayBuffer> } {
@@ -323,7 +326,11 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
         const tint = zi >= 0 ? opts.zoneTint?.[ZONES[zi]] : undefined;
         const plates = zi >= 0 ? opts.zonePlates?.[ZONES[zi]] ?? 0 : 0;
         let c = tint ?? (m === MAT_ID.glass || m === MAT_ID.engine || m === MAT_ID.prop ? BLUE.shade : BLUE.fill);
-        if (plates > 0 && (x + y) % (5 - plates) === 0) c = BLUE.plate;
+        if (plates > 0 && !tint) {
+          const k = Math.min(3, plates);
+          // Steel plate, with a rivet pattern so it reads as metal rather than paint.
+          c = (x % 3 === 0 && y % 3 === 0) ? PLATE_RIVET[k] : PLATE_FILL[k];
+        }
         // Zone boundaries as fine lines.
         const zr = def.zone[i + 1];
         const zd = def.zone[i + w];
@@ -435,4 +442,36 @@ export function zoneAt(kind: AircraftKind, x: number, y: number): ZoneId | null 
   if (x < 0 || y < 0 || x >= def.w || y >= def.h) return null;
   const zi = def.zone[Math.floor(y) * def.w + Math.floor(x)];
   return zi >= 0 ? ZONES[zi] : null;
+}
+
+/** A point inside each zone of a type's sprite (sprite pixels), for labelling it. Wings and other paired zones use the left one. */
+export function zoneCentres(kind: AircraftKind): Partial<Record<ZoneId, [number, number]>> {
+  const def = spriteDef(kind);
+  const out: Partial<Record<ZoneId, [number, number]>> = {};
+  for (const z of ZONES) {
+    const px = def.zonePixels[z];
+    if (!px?.length) continue;
+    const at = (list: number[]): [number, number] => {
+      const cx = list.reduce((a, i) => a + (i % def.w), 0) / list.length;
+      const cy = list.reduce((a, i) => a + Math.floor(i / def.w), 0) / list.length;
+      // The zone pixel nearest the centroid, so the label sits on the zone itself.
+      let best = list[0];
+      let bd = Infinity;
+      for (const i of list) {
+        const d = (i % def.w - cx) ** 2 + (Math.floor(i / def.w) - cy) ** 2;
+        if (d < bd) { bd = d; best = i; }
+      }
+      return [best % def.w + 0.5, Math.floor(best / def.w) + 0.5];
+    };
+    const left = px.filter((i) => i % def.w < def.w / 2 - 1);
+    const split = left.length > 0 && left.length < px.length * 0.6 && px.some((i) => i % def.w > def.w / 2 + 1);
+    out[z] = at(split ? left : px);
+  }
+  return out;
+}
+
+/** Redraw an aircraft into an existing canvas (same type, so the size is unchanged). */
+export function repaintAircraft(c: HTMLCanvasElement, kind: AircraftKind, opts: RenderOpts) {
+  const img = renderAircraft(kind, opts);
+  c.getContext('2d')!.putImageData(new ImageData(img.data, img.w, img.h), 0, 0);
 }

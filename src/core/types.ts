@@ -124,6 +124,60 @@ export interface Squadron {
   deputy?: Leader;
   /** Commanding officers this squadron has lost in the war. */
   cosLost?: number;
+  /** Field modifications fitted to the squadron's aircraft (at most MOD_SLOTS). */
+  mods?: ModId[];
+}
+
+/** Field modifications a squadron's aircraft can be fitted with. */
+export type ModId =
+  | 'extraGuns'
+  | 'stripped'
+  | 'boost'
+  | 'bombBay'
+  | 'plateMounts'
+  | 'leanMix'
+  | 'aiRadar'
+  | 'armouredGlass'
+  | 'inertTanks';
+
+/** The air force a commander leads: each has its own strengths and weaknesses. */
+export type FactionId = 'arsenal' | 'cadre' | 'patronage';
+
+export type OfferTier = 0 | 1 | 2;
+export type OfferKind =
+  | 'grant'
+  | 'fuelTrain'
+  | 'crews'
+  | 'labour'
+  | 'leave'
+  | 'tools'
+  | 'ferry'
+  | 'priority'
+  | 'stockpile'
+  | 'instructors'
+  | 'photos'
+  | 'kits'
+  | 'prototype'
+  | 'secret'
+  | 'cabinet'
+  | 'dominion'
+  | 'ace'
+  | 'newDepot';
+
+/** One of the proposals High Command sends each week. */
+export interface OfferCard {
+  kind: OfferKind;
+  tier: OfferTier;
+  /** What the offer is about, fixed when it is made (an aircraft type, a project, a modification, a squadron). */
+  param?: string;
+}
+
+/** This week's proposals from High Command: the commander may accept one. */
+export interface Offers {
+  week: number;
+  cards: OfferCard[];
+  /** Index of the card accepted, once one is. */
+  taken?: number;
 }
 
 export interface Resources {
@@ -246,6 +300,18 @@ export interface SideState {
   requests: LeaderRequest[];
   /** Week a stores convoy was last bought. */
   convoyWeek?: number;
+  /** The air force this commander leads (absent: no special strengths or weaknesses). */
+  faction?: FactionId;
+  /** Supply Office level: each level brings more supplies every week. */
+  office?: number;
+  /** Extra depot capacity for stores, beyond the standard. */
+  depotBonus?: number;
+  /** High Command's proposals for this week. */
+  offers?: Offers;
+  /** Rare field modifications released to this wing. */
+  modsUnlocked?: ModId[];
+  /** Modification kits delivered free: the next fittings cost nothing. */
+  freeMods?: number;
   /** Facility types given emergency repairs this week (one each per week). */
   repaired?: FacilityType[];
   /** The AI's chosen next operation, fixed a week ahead so enemy intelligence can get wind of it. */

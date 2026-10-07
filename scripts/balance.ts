@@ -1,11 +1,15 @@
 /**
  * Headless balance runner: plays many campaigns with a scripted player against
- * the AI and prints outcome statistics.  Usage: npm run balance -- [games]
+ * the AI and prints outcome statistics.  Usage: npm run balance -- [games] [--mirror] [--faction=cadre]
  */
-import { aiPlan, endTurnSingle, reachableSites, startCampaign, validatePlan, type GameState, type TurnPlan } from '../src/core';
+import { aiPlan, aiTakeOffer, buyConvoy, endTurnSingle, reachableSites, startCampaign, validatePlan, type FactionId, type GameState, type TurnPlan } from '../src/core';
 
 function scriptedPlan(state: GameState): TurnPlan {
   const side = state.sides[0];
+  // A player reads High Command's offers like anyone else.
+  aiTakeOffer(state, side);
+  // ...and buys fuel with the supplies it has no other use for.
+  if (side.resources.stores < 100) buyConvoy(state, side);
   const fighters = side.squadrons.filter((s) => s.kind === 'fighter');
   const bombers = side.squadrons.filter((s) => s.kind === 'medium' || s.kind === 'heavy');
   const sites = reachableSites(state, 0, 'medium');
@@ -32,6 +36,8 @@ function scriptedPlan(state: GameState): TurnPlan {
 const games = Number(process.argv[2] ?? 40);
 // --mirror: the AI commands both sides (tests the symmetric rules).
 const mirror = process.argv.includes('--mirror');
+// --faction=arsenal|cadre|patronage: the player's air force (the enemy has none).
+const faction = process.argv.find((a) => a.startsWith('--faction='))?.slice(10) as FactionId | undefined;
 const outcomes: Record<string, number> = {};
 const theaterStats: Record<string, number> = {};
 const weeks: number[] = [];
@@ -39,7 +45,7 @@ const count: number[] = [];
 let turns = 0;
 const verbose = games === 1;
 for (let g = 0; g < games; g++) {
-  const s = startCampaign({ seed: `bal${g}` });
+  const s = startCampaign({ seed: `bal${g}`, factions: [faction ?? null, null] });
   while (!s.outcome) {
     endTurnSingle(s, mirror ? aiPlan(s, 0) : scriptedPlan(s));
     if (verbose) {

@@ -3,7 +3,9 @@ import { remember } from './leaders';
 import { stationLife } from './vignettes';
 import { plural } from './text';
 import { aiIntent } from './ai';
-import { planCost, researchTurns } from './actions';
+import { OFFICE_SUPPLIES, planCost, researchTurns, storesCap } from './actions';
+import { factionFx } from './factions';
+import { rollOffers } from './offers';
 import { AIRCRAFT, ARCHETYPE_INFO, RANKS, REQUEST_SHORT, RESEARCH, SQUADRON_NAMES, TARGETS, TRAIT_INFO } from './data';
 import { buildDebrief, updatePerceived } from './reports';
 import { CRIPPLED, facilityEffects } from './effects';
@@ -58,8 +60,43 @@ function memo(side: SideState, turn: number, kind: Memo['kind'], subject: string
   if (side.memos.length > 40) side.memos.length = 40;
 }
 
-/** Depots hold at most this much fuel and munitions. */
-export const STORES_CAP = 240;
+export { STORES_CAP } from './actions';
+
+/** Supplies a captured enemy site yields every week. */
+export const CAPTURED_SUPPLIES = 6;
+
+/** Sites a side holds in the current theater that the enemy held when it began. */
+export function capturedSites(state: GameState, side: SideId) {
+  const t = state.theater;
+  return t.sites.filter((x) => x.owner === side && (x.sector < t.start0 ? 0 : 1) !== side);
+}
+
+export interface Income {
+  /** From the Ministry, scaled by High Command's confidence and the state of our works. */
+  ministry: number;
+  /** The Supply Office's salvage and requisitions. */
+  office: number;
+  /** Works and depots taken from the enemy. */
+  captured: number;
+  /** What this air force brings, or costs, every week. */
+  faction: number;
+  supplies: number;
+  stores: number;
+}
+
+/** What arrives at the end of a week: one rule for the economy and the commander's screens. */
+export function weeklyIncome(state: GameState, side: SideState): Income {
+  const trustF = 0.4 + side.trust / 100;
+  const bonus = side.isAI ? aiBonus(state, side) : 1;
+  const ministry = Math.round((45 + 45 * trustF) * (0.55 + 0.45 * Math.min(1.2, side.facilities.industry / 100)) * bonus);
+  const office = (side.office ?? 0) * OFFICE_SUPPLIES;
+  const captured = capturedSites(state, side.id).length * CAPTURED_SUPPLIES;
+  const faction = factionFx(side, 'supplies');
+  // Stores are rationed: a full effort every week burns far more than arrives, and wrecked fuel depots cut deliveries.
+  // The AI's difficulty discount stops short of grounding it for want of fuel.
+  const stores = Math.round((20 + 20 * trustF) * facilityEffects(side.facilities).stores * (1 + factionFx(side, 'stores')) * (side.isAI ? Math.max(0.8, bonus) : 1));
+  return { ministry, office, captured, faction, supplies: Math.max(0, ministry + office + captured + faction), stores };
+}
 
 /** Production points per week. */
 export function factoryRate(side: SideState): number {
@@ -445,13 +482,13 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   const r = side.resources;
   const trustF = 0.4 + side.trust / 100;
   const bonus = side.isAI ? aiBonus(state, side) : 1;
-  const sup = Math.round((45 + 45 * trustF) * (0.55 + 0.45 * Math.min(1.2, side.facilities.industry / 100)) * bonus);
-  // Stores are rationed: a full effort every week burns more than arrives, and wrecked fuel depots cut deliveries.
-  const stores = Math.round((26 + 28 * trustF) * facilityEffects(side.facilities).stores * bonus);
+  const income = weeklyIncome(state, side);
+  const sup = income.supplies;
+  const stores = income.stores;
   // Aircrew are posted only for aircraft the wing has or has on order.
   const rep = Math.min(Math.max(0, crewShortfall(side) - r.replacements), Math.round((2 + 3 * trustF) * bonus));
   r.supplies += sup;
-  r.stores = Math.min(STORES_CAP, r.stores + stores);
+  r.stores = Math.min(storesCap(side), r.stores + stores);
   r.replacements += rep;
   side.repaired = [];
   side.memos.unshift({
@@ -459,8 +496,9 @@ function economy(rng: Rng, state: GameState, side: SideState) {
     from: 'Supply Command',
     kind: 'supply',
     subject: 'Deliveries',
-    body: `Delivered this week: ${sup} supplies, ${stores} stores (fuel and munitions), ${rep} replacement aircrew.`,
+    body: `Delivered this week: ${sup} supplies${income.office || income.captured ? ` (${[income.office ? `${income.office} found by the Supply Office` : '', income.captured ? `${income.captured} from captured works` : ''].filter(Boolean).join(', ')})` : ''}, ${stores} stores (fuel and munitions), ${rep} replacement aircrew.`,
   });
+
 
   // Factory production.
   const f = side.factory;
@@ -1235,6 +1273,15 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     }
   }
   for (const id of [0, 1] as SideId[]) debriefs[id].theaterNews.push(...news[id]);
+  for (const id of [0, 1] as SideId[]) {
+    const side = state.sides[id];
+    // Some air forces' standing with the Air Council swings further, both ways.
+    const delta = side.trust - trustBefore[id];
+    const k = delta > 0 ? factionFx(side, 'trustGain') : factionFx(side, 'trustLoss');
+    if (delta && k) side.trust = Math.max(side.isAI ? 20 : 0, Math.min(100, Math.round(trustBefore[id] + delta * (1 + k))));
+    // High Command's proposals for the coming week.
+    if (!state.outcome) side.offers = rollOffers(rng.fork(`offers-${id}-${state.turn}`), state, side, state.turn + 1);
+  }
   for (const id of [0, 1] as SideId[]) {
     const d = debriefs[id];
     if (d) {

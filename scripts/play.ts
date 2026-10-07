@@ -71,6 +71,14 @@ import {
   type TurnPlan,
   type ZoneId,
   fitPlanToStores,
+  applyCommand,
+  offerText,
+  offerTitle,
+  TIER_LABEL,
+  MODS,
+  armorBudget,
+  type ModId,
+  type FactionId,
   BRANCHES,
   TRAIT_INFO,
   facilityEffects,
@@ -254,7 +262,8 @@ function hangar(code: string) {
   const comp = st.archive.slice(-10).flatMap((e) => e.survivorHits[0]).filter((h) => (h.kind ?? 'medium') === sq.kind);
   const counts: Record<string, number> = {};
   for (const h of comp) counts[h.zone] = (counts[h.zone] ?? 0) + 1;
-  say(`Hangar — ${sq.name} (${AIRCRAFT[sq.kind].name[0]}). Plates ${armorUsed(sq)}/${AIRCRAFT[sq.kind].armorBudget} (max ${MAX_ARMOR_PER_ZONE} per zone; fitting a plate costs ${COSTS.armorChange} supplies, removing is free; plates add weight, slower aircraft are caught more often).`);
+  say(`Hangar — ${sq.name} (${AIRCRAFT[sq.kind].name[0]}). Plates ${armorUsed(sq)}/${armorBudget(sq)} (max ${MAX_ARMOR_PER_ZONE} per zone; fitting a plate costs ${COSTS.armorChange} supplies, removing is free; plates add weight, slower aircraft are caught more often).`);
+  say(`Modifications (room for 2): ${sq.mods?.length ? sq.mods.map((m) => MODS[m].name).join(', ') : 'none'}.`);
   say(`Damage survey of returned ${AIRCRAFT[sq.kind].name[0]}s (last 10 weeks; each type is built differently): ${comp.length} holes plotted.`);
   const calls = me().perceived.lastCalls?.[sq.kind];
   for (const z of ZONES) say(`   ${ZONE_LABEL[z].padEnd(12)} armor ${'■'.repeat(sq.armor[z])}${'□'.repeat(MAX_ARMOR_PER_ZONE - sq.armor[z])}   holes seen: ${counts[z] ?? 0}${comp.length ? ` (${Math.round(((counts[z] ?? 0) / comp.length) * 100)}%)` : ''}${calls?.[z] ? ` · last calls of the missing: ${calls[z]}` : ''}`);
@@ -482,17 +491,20 @@ function run(cmd: string) {
       'appoint S# — after a change of command or a merge, make the other flight commander CO (that week only)',
       'rest-co S# — the medical officer rests a shaken CO for two weeks (once per man; costs a little morale and confidence)',
       `convoy — buy a stores convoy (${CONVOY.supplies} supplies for ${CONVOY.stores} stores, once a week)`,
+      'offers — High Command\'s proposals this week · offer N — accept one (one a week)',
+      `mod S# <kit> on|off — field modifications (${Object.keys(MODS).join(' ')}); two a squadron`,
+      'upgrade office — the Supply Office: more supplies every week',
       'repair airfield|fuel|industry — emergency repairs to our own works (40 supplies, once a week per type)',
       'fit — trim this week\'s plan to the stores we hold (drops the feint, then recon, then bomber squadrons each with a matching escort, then patrols)',
       'Turn: launch (fly this week\'s operation and read the debrief)',
       'UI: screenshot <screen> <out.png> [S#] — screens: title briefing operations squadrons hangar factory training research intel radio debrief-aircraft debrief-reports debrief-missing debrief-home end-summary end-archive end-ledger',
-      'Start: new green|seasoned|wald [seed]. Chain commands with ";".',
+      'Start: new green|seasoned|wald [seed] [arsenal|cadre|patronage]. Chain commands with ";".',
     );
     return;
   }
   if (verb === 'new') {
     const insight = { green: 0.15, seasoned: 0.45, wald: 0.9 }[a[0] as 'green'] ?? 0.45;
-    state = startCampaign({ mode: 'single', aiInsight: insight, seed: a[1] ?? String(Date.now()) });
+    state = startCampaign({ mode: 'single', aiInsight: insight, seed: a[1] ?? String(Date.now()), factions: [(a[2] as FactionId) ?? null, 'random'] });
     plan = defaultPlan(state, 0);
     say(`New campaign started (${a[0] ?? 'seasoned'}).`);
     brief();
@@ -566,7 +578,14 @@ function run(cmd: string) {
     }
     case 'build': check(queueAircraft(side, a[0] as AircraftKind)); return factory();
     case 'cancel': check(cancelQueued(side, Number(a[0]) - 1)); return factory();
-    case 'upgrade': check(a[0] === 'factory' ? upgradeFactory(side) : a[0] === 'training' ? upgradeTraining(side) : upgradeFlak(side)); say(`Upgraded ${a[0]}.`); return;
+    case 'upgrade': check(a[0] === 'office' ? applyCommand(state, 0, { k: 'upgrade', what: 'office' }) : a[0] === 'factory' ? upgradeFactory(side) : a[0] === 'training' ? upgradeTraining(side) : upgradeFlak(side)); say(`Upgraded ${a[0]}.`); return;
+    case 'offers': {
+      const o = side.offers;
+      if (!o || o.week !== state.turn) return say('No offers this week.');
+      return say(...o.cards.map((c, i) => `${i + 1}. [${TIER_LABEL[c.tier]}] ${offerTitle(side, c)}${o.taken === i ? ' (ACCEPTED)' : ''}: ${offerText(state!, side, c)}`));
+    }
+    case 'offer': check(applyCommand(state, 0, { k: 'offer', i: Number(a[0]) - 1 })); say('Offer accepted.'); return;
+    case 'mod': check(applyCommand(state, 0, { k: 'mod', sq: findSq(a[0]).id, mod: a[1] as ModId, on: a[2] !== 'off' })); return hangar(a[0]);
     case 'qc': check(setQc(side, a[0] as QcPolicy)); return factory();
     case 'focus': check(setTrainingFocus(side, a[0] as TrainingFocus)); return training();
     case 'launch':

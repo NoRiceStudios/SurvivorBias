@@ -1,5 +1,7 @@
 import { tech } from './tech';
 import { AIRCRAFT, MAX_ARMOR_PER_ZONE, RESEARCH } from './data';
+import { factionFx } from './factions';
+import { armorBudget, availableMods, MOD_SLOTS, MODS, modFx } from './mods';
 import { flyable } from './sim';
 import { bomberRange, depthFor, frontSector, syncFacilities } from './theaters';
 import type {
@@ -8,6 +10,7 @@ import type {
   FacilityType,
   FighterApproach,
   GameState,
+  ModId,
   QcPolicy,
   SideState,
   Squadron,
@@ -26,8 +29,18 @@ export const COSTS = {
   factoryUpgrade: (level: number) => 70 + 50 * level,
   trainingUpgrade: (level: number) => 50 + 40 * level,
   flakUpgrade: (flak: number) => Math.round(60 + 80 * flak),
+  officeUpgrade: (level: number) => 60 + 40 * level,
   rest: 0,
 };
+
+/** Supply Office: each level brings this many supplies a week. */
+export const OFFICE_SUPPLIES = 12;
+export const OFFICE_MAX = 4;
+
+/** What an aircraft of a type costs this side. */
+export function aircraftCost(side: Pick<SideState, 'faction'>, kind: AircraftKind): number {
+  return Math.round(AIRCRAFT[kind].cost * (1 + factionFx(side, 'aircraftCost')));
+}
 
 export function armorUsed(sq: Squadron): number {
   return ZONES.reduce((a, z) => a + sq.armor[z], 0);
@@ -41,7 +54,7 @@ export function setArmor(side: SideState, sqId: string, zone: ZoneId, value: num
   const v = Math.max(0, Math.min(MAX_ARMOR_PER_ZONE, Math.round(value)));
   const delta = v - sq.armor[zone];
   if (delta === 0) return ok;
-  const budget = AIRCRAFT[sq.kind].armorBudget;
+  const budget = armorBudget(sq);
   if (armorUsed(sq) + delta > budget) return fail('Armor budget exceeded: remove plate elsewhere first');
   // Fitting plate costs supplies; taking it off is free.
   const cost = Math.max(0, delta) * COSTS.armorChange;
@@ -105,6 +118,49 @@ export function upgradeFactory(side: SideState): ActionResult {
   return ok;
 }
 
+/** The Supply Office finds supplies the Ministry doesn't send: salvage, requisitions, local contracts. */
+export function upgradeOffice(side: SideState): ActionResult {
+  const level = side.office ?? 0;
+  const c = COSTS.officeUpgrade(level);
+  if (level >= OFFICE_MAX) return fail('The Supply Office is fully expanded');
+  if (side.resources.supplies < c) return fail('Not enough supplies');
+  side.resources.supplies -= c;
+  side.office = level + 1;
+  return ok;
+}
+
+/** Fit a field modification to a squadron's aircraft. */
+export function fitMod(side: SideState, sqId: string, mod: ModId): ActionResult {
+  const sq = side.squadrons.find((s) => s.id === sqId);
+  if (!sq) return fail('No such squadron');
+  const spec = MODS[mod];
+  if (!spec) return fail('No such modification');
+  if (!spec.kinds.includes(sq.kind)) return fail(`${spec.name} cannot be fitted to the ${AIRCRAFT[sq.kind].name[side.id]}`);
+  if (!availableMods(side, sq).includes(spec)) return fail(`${spec.name} has not been released to the wing`);
+  const mods = sq.mods ?? [];
+  if (mods.includes(mod)) return fail('Already fitted');
+  if (mods.length >= MOD_SLOTS) return fail(`Room for ${MOD_SLOTS} modifications: take one off first`);
+  const free = (side.freeMods ?? 0) > 0;
+  if (!free && side.resources.supplies < spec.cost) return fail('Not enough supplies');
+  if (free) side.freeMods = (side.freeMods ?? 1) - 1;
+  else side.resources.supplies -= spec.cost;
+  sq.mods = [...mods, mod];
+  return ok;
+}
+
+/** Take a modification off (nothing is refunded). Plate the frames can no longer carry comes off with it. */
+export function removeMod(side: SideState, sqId: string, mod: ModId): ActionResult {
+  const sq = side.squadrons.find((s) => s.id === sqId);
+  if (!sq) return fail('No such squadron');
+  if (!sq.mods?.includes(mod)) return fail('Not fitted');
+  sq.mods = sq.mods.filter((m) => m !== mod);
+  while (armorUsed(sq) > armorBudget(sq)) {
+    const z = [...ZONES].sort((a, b) => sq.armor[b] - sq.armor[a])[0];
+    sq.armor[z]--;
+  }
+  return ok;
+}
+
 export function upgradeTraining(side: SideState): ActionResult {
   const c = COSTS.trainingUpgrade(side.training.level);
   if (side.training.level >= 5) return fail('Training school fully expanded');
@@ -141,7 +197,7 @@ export function canBuild(side: SideState, kind: AircraftKind): boolean {
 
 export function queueAircraft(side: SideState, kind: AircraftKind): ActionResult {
   if (!canBuild(side, kind)) return fail('Not yet developed');
-  const cost = AIRCRAFT[kind].cost;
+  const cost = aircraftCost(side, kind);
   if (side.resources.supplies < cost) return fail('Not enough supplies');
   side.resources.supplies -= cost;
   side.factory.queue.push(kind);
@@ -152,7 +208,7 @@ export function cancelQueued(side: SideState, index: number): ActionResult {
   const kind = side.factory.queue[index];
   if (!kind) return fail('Nothing queued there');
   side.factory.queue.splice(index, 1);
-  side.resources.supplies += Math.round(AIRCRAFT[kind].cost * 0.8);
+  side.resources.supplies += Math.round(aircraftCost(side, kind) * 0.8);
   return ok;
 }
 
@@ -183,20 +239,26 @@ export function emergencyRepair(state: GameState, side: SideState, type: Facilit
   return ok;
 }
 
+/** Depots hold at most this much fuel and munitions. */
+export const STORES_CAP = 200;
+export function storesCap(side: Pick<SideState, 'depotBonus'>): number {
+  return STORES_CAP + (side.depotBonus ?? 0);
+}
+
 /** A stores convoy: supplies bought into fuel and munitions, once a week, at a poor rate. */
-export const CONVOY = { supplies: 60, stores: 35 };
+export const CONVOY = { supplies: 60, stores: 30 };
 export function buyConvoy(state: GameState, side: SideState): ActionResult {
   if (side.convoyWeek === state.turn) return fail('One convoy a week is all the railways can manage');
   if (side.resources.supplies < CONVOY.supplies) return fail('Not enough supplies');
   side.resources.supplies -= CONVOY.supplies;
-  side.resources.stores += CONVOY.stores;
+  side.resources.stores = Math.min(storesCap(side), side.resources.stores + CONVOY.stores);
   side.convoyWeek = state.turn;
   return ok;
 }
 
 /** Supplies per aircrew asked of the Ministry: dearer the less it trusts the commander. */
 export function crewPrice(side: SideState): number {
-  return Math.round(15 + (100 - side.trust) * 0.35);
+  return Math.round((15 + (100 - side.trust) * 0.35) * (1 + factionFx(side, 'crewPrice')));
 }
 
 /** Aircraft (built or on order) without a trained crew or one at the school. Raw recruits don't count. */
@@ -309,7 +371,7 @@ export function planCost(side: SideState, plan: TurnPlan): { stores: number } {
     const sq = side.squadrons.find((s) => s.id === id);
     if (!sq) continue;
     const n = flyable(sq).length;
-    stores += n * AIRCRAFT[sq.kind].storesCost;
+    stores += n * AIRCRAFT[sq.kind].storesCost * (1 - modFx(sq, 'economy'));
   }
   if (plan.recon) stores += AIRCRAFT.recon.storesCost;
   return { stores: Math.round(stores * (1 - tech(side, 'economy'))) };

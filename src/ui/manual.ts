@@ -3,7 +3,10 @@
  * so nothing has to be explained in paragraphs on the screens themselves.
  */
 import { SECTOR_PRESSURE, DECISIVE_GAIN } from '../core/theaters';
-import { STORES_CAP } from '../core/turn';
+import { OFFICE_SUPPLIES, STORES_CAP } from '../core/actions';
+import { FACTION_IDS, FACTIONS } from '../core/factions';
+import { MOD_SLOTS } from '../core/mods';
+import { CAPTURED_SUPPLIES } from '../core/turn';
 import type { Hit, ZoneId } from '../core/types';
 import { h } from './dom';
 import { icon } from './icons';
@@ -27,6 +30,7 @@ const ART: Record<string, () => HTMLElement> = {
     h('figure', null, plot(holes(['engines', 'cockpit', 'engines', 'fuel', 'cockpit']), undefined, '#ff3b30'), h('figcaption', null, 'What brought them down'))),
   Supplies: () => icon('supplies', 64),
   Stores: () => icon('fuel', 64),
+  'High Command\'s offers': () => h('div', { class: 'art-row' }, ...['Routine', 'Uncommon', 'Rare'].map((x, i) => h('div', { class: `offer-card tier${i}` }, h('span', { class: 'offer-tier' }, x)))),
   Confidence: () => h('span', { class: 'stamp big notice' }, 'CONFIDENCE 62 ▲3'),
   'Pressure and sectors': () => pressureGauge(10, { label: 'Pressure' }),
   Strike: () => aircraftCanvas('medium', { side: 0, seed: 3 }, 3),
@@ -47,8 +51,10 @@ const ART: Record<string, () => HTMLElement> = {
 const PAGES: [string, string, string][] = [
   ['The turn', 'How a week goes', 'Plan in the War Room (mission, tasks, doctrine, armor, factory, research), launch, listen to the radio, read the debrief, file your reports. High Command answers, and the next week begins. You never see the battle itself, only what the crews who come back say about it.'],
   ['Survivorship bias', 'The point of the game', 'The holes on the aircraft that come back show where an aircraft can be hit and still come home. The aircraft that were hit somewhere else did not come back, so their damage is never recorded. Last calls on the radio are the only clue to what brings an aircraft down.'],
-  ['Supplies', 'Resource', 'Pay for armor, aircraft, training, research and repairs. Delivered every week; more when High Command trusts you.'],
-  ['Stores', 'Resource', `Fuel, bombs and ammunition. Every aircraft that flies uses them. Depots hold at most ${STORES_CAP}; wrecked fuel depots cut deliveries. A convoy buys more once a week.`],
+  ['Supplies', 'Resource', `Pay for armor, modifications, aircraft, training, research and repairs. Delivered every week: more when High Command trusts you, ${OFFICE_SUPPLIES} more for every level of the Supply Office (Works), and ${CAPTURED_SUPPLIES} more for every enemy works, depot or airfield the Army has taken. Works shows where this week's come from.`],
+  ['Stores', 'Resource', `Fuel, bombs and ammunition. Every aircraft that flies uses them, and they are rationed: a full effort every week burns far more than arrives, so squadrons must rest in turn. Depots hold at most ${STORES_CAP}; wrecked fuel depots cut deliveries. A convoy buys more once a week; lean-mixture carburettors save some.`],
+  ['High Command\'s offers', 'High Command', 'Every week High Command puts three proposals in the in-tray (War Room): supplies, stores, aircraft, crews, a development project finished, a prototype modification. Accept one; the rest are withdrawn when the week is fought. Most are routine, some uncommon, a few rare; the more High Command trusts you, the better the odds.'],
+  ['Air forces', 'Your command', `Each commander leads one of three air forces, chosen at the start of the war. ${FACTION_IDS.map((id) => `${FACTIONS[id].name} (${FACTIONS[id].motto.replace(/\.$/, '')}): ${FACTIONS[id].strengths.join(', ')}; but ${FACTIONS[id].weaknesses.join(', ').toLowerCase()}.`).join(' ')}`],
   ['Confidence', 'High Command', 'How far High Command trusts you (0-100). It moves with the results you report, not the results you get. Deliveries grow with it; at 0 you are relieved. Optimistic returns raise it until photographs or the observers catch you out.'],
   ['Pressure and sectors', 'The front', `The Army liaison's estimate of who is winning on the ground. When it reaches about ±${SECTOR_PRESSURE} a sector changes hands, at most one a week. Take ${DECISIVE_GAIN} sectors to win a theater outright. Losses inflicted, close support and damage to enemy works push it your way.`],
   ['Strike', 'Mission', 'Bomb a named enemy airfield, aircraft works or fuel depot. Damage cuts the enemy\'s output and adds pressure week after week. Only sites within your bombers\' range can be struck; escorts may not reach as far.'],
@@ -59,6 +65,7 @@ const PAGES: [string, string, string][] = [
   ['Fatigue and morale', 'Squadrons', 'Fatigue rises each week a squadron flies and falls by about a third when it rests; tired crews shoot and fly worse, and above 6/10 morale slides. Morale falls with losses; if the wing\'s average stays very low for three weeks, the crews refuse to fly.'],
   ['Doctrine', 'Squadrons', 'Formation (tight box: more return fire, fewer stragglers picked off, claims run high), altitude (higher: less flak and harder to find, but bombs scatter), aggression (press home: more hits, more exposure) and when to break off. The Squadrons tab shows each effect as a change against standard.'],
   ['Armor', 'Squadrons', 'Each type carries only a few plates; each adds weight, and a slow aircraft is caught more often. Plates fitted where the fatal hits land save aircraft. Where is that? The holes on the survivors will not tell you directly.'],
+  ['Field modifications', 'Squadrons', `Kits fitted to a squadron's aircraft: extra guns, a stripped airframe, boost injection, an enlarged bomb bay, extra plate mounts, lean-mixture carburettors. Room for ${MOD_SLOTS} a squadron; almost all of them cost something in return. Prototypes (airborne radar, armoured windscreens, inerted tanks) are released only by High Command, as rare offers.`],
   ['Leaders and reports', 'Squadrons', 'Every report is coloured by the leader who writes it: showmen claim high, gloomy ones see more fighters than there were, by-the-book leaders report only what they are sure of. Shaken crews see double. After about five operations a leader earns a reputation.'],
   ['Believed condition', 'Intelligence', 'How much of an enemy site still works, as far as we know: from crews\' bombing reports (often optimistic) or, better, from photographs. The ≈ sign marks an estimate.'],
   ['Crippled works', 'Intelligence', 'Below 50% a type of works is crippled and the effect jumps: crippled airfields halve fighter cover, crippled depots and works cut deliveries and production further. Only works within two sectors of the front count.'],

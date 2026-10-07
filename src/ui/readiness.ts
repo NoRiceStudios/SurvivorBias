@@ -4,10 +4,10 @@
  * button that seals the orders. A blocking problem disables the button and says why.
  */
 import { AIRCRAFT } from '../core/data';
-import { CONVOY, planCost, validatePlan } from '../core/actions';
+import { CONVOY, planCost, storesCap, validatePlan } from '../core/actions';
 import { flyable } from '../core/sim';
 import { frontSector, THEATERS } from '../core/theaters';
-import { STORES_CAP } from '../core/turn';
+
 import type { AircraftKind, SideId, SideState, Squadron } from '../core/types';
 import type { App } from './app';
 import { h, plural } from './dom';
@@ -48,6 +48,7 @@ export function readinessChips(app: App, side: SideState): Chip[] {
       detail: `Our crews believe ${tgt.name} is down to ≈${believed(st, side.id, tgt)}%. Another raid may add little.${better ? ` Click to strike ${better.name} instead${side.orders.some((o) => o.siteId === better.id) ? ' (named in a standing order)' : ''}.` : ''}`,
       act: better ? () => strikeAt(app, side, better) : undefined });
   }
+  if (side.offers?.week === st.turn && side.offers.taken === undefined && side.offers.cards.length) chips.push({ label: 'High Command\'s offer', level: 'warn', tab: 'war', focus: '.intray', detail: `High Command offers ${plural(side.offers.cards.length, 'proposal')} this week (War Room, in-tray). Accept one before the week is fought, or they are withdrawn.` });
   if (side.requests.length) chips.push({ label: plural(side.requests.length, 'request'), level: 'warn', tab: 'war', focus: '.intray', detail: 'Squadron leaders are waiting for an answer. Unanswered requests lapse at the end of the week.' });
   const raidIds = plan.raid?.squadronIds ?? [];
   const kindIn = (k: AircraftKind[]) => raidIds.some((id) => k.includes(side.squadrons.find((q) => q.id === id)?.kind ?? 'recon'));
@@ -71,7 +72,7 @@ export function readinessChips(app: App, side: SideState): Chip[] {
   if (!side.researching && side.resources.supplies >= 70) chips.push({ label: 'Engineers idle', level: 'info', tab: 'works', focus: '.works-research', detail: 'No development project is funded. One at a time; each takes a few weeks.' });
   if (side.facilities.industry < 50) chips.push({ label: `Works damaged: ${side.facilities.industry}%`, level: 'warn', tab: 'intel', detail: 'Enemy bombing has cut our aircraft production. Emergency repairs are under Intelligence, Effect of the bombing.' });
   if (side.factory.queue.length === 0 && side.resources.supplies >= 60) chips.push({ label: 'Factory idle', level: 'info', tab: 'works', focus: '.works-factory', detail: 'Nothing is on order at the aircraft works.' });
-  if (c.stores <= side.resources.stores && side.resources.stores >= STORES_CAP - 5) chips.push({ label: 'Depots full', level: 'info', tab: 'war', detail: `Deliveries beyond ${STORES_CAP} stores are lost: we can afford a bigger effort.` });
+  if (c.stores <= side.resources.stores && side.resources.stores >= storesCap(side) - 5) chips.push({ label: 'Depots full', level: 'info', tab: 'war', detail: `Deliveries beyond ${storesCap(side)} stores are lost: we can afford a bigger effort.` });
   return chips;
 }
 

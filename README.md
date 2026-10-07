@@ -31,10 +31,13 @@ The war is fought across three theaters: the Narrow Sea, the Kessel Basin and th
 | `node scripts/hotseat-smoke.mjs` | Play a two-commander hotseat campaign through the real UI: names, feints, Esc cover, sealed orders across save/load, theater changes, end diaries |
 | `xvfb-run -a node scripts/lan-smoke.mjs` | Two desktop instances play over TCP: redaction, command replay, several weeks, disconnect and rejoin |
 | `npm run balance -- 40 --mirror` | AI against AI with symmetric rules: theater results and length |
+| `npm run balance -- 20 --faction=arsenal` | The scripted player leading one of the air forces |
 
 ### Layout
 
-The HQ has four tabs: **War Room** (map, orders, in-tray), **Squadrons** (roster and dossiers: doctrine, armor over the evidence, aircraft), **Works** (factory, school, development) and **Intelligence**. A readiness bar at the foot lists what still needs attention; F1 opens the Field Manual.
+The HQ has four tabs: **War Room** (map, orders, in-tray with High Command's weekly offers), **Squadrons** (roster and dossiers: doctrine, armor over the evidence, field modifications, aircraft), **Works** (factory, school, Supply Office and stores, development, one above the other) and **Intelligence**.
+
+Each commander leads one of three air forces (The Arsenal, The Old Cadre, Friends at Court), each with its own strengths and weaknesses. Every week High Command offers three proposals, routine, uncommon or rare, and the commander may accept one; the more High Command trusts you, the rarer the offers. See [DESIGN.md](DESIGN.md) §6.1, §6.5 and §6.5.1. A readiness bar at the foot lists what still needs attention; F1 opens the Field Manual.
 
 
 - `src/core/`: pure, deterministic game logic with no DOM. Covers the seeded battle sim, the distortion pipeline that turns truth into reports, the economy, High Command, the AI commander and save/load.

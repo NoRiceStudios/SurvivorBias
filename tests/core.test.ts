@@ -407,7 +407,7 @@ describe('hotseat missions', () => {
       side.resources.munitions = 90;
     }
     const loaded = deserialize(JSON.stringify(old));
-    expect(loaded.version).toBe(5);
+    expect(loaded.version).toBe(6);
     expect(loaded.sides[0].resources.stores).toBe(173);
     expect('fuel' in loaded.sides[0].resources).toBe(false);
     expect(loaded.lethality.medium.cockpit).toBeGreaterThan(0);
@@ -891,6 +891,8 @@ describe('designer decisions after round 2', () => {
         warned++;
         const ai = aiPlan(s, 1);
         if (ai.raid && ai.raid.target !== 'sweep' && ai.raid.target === intent.target && ai.raid.siteId === intent.siteId) right++;
+        // A week planned to save stores: no bombing, as the Y-Service said.
+        else if (intent.target === 'sweep' && (!ai.raid || ai.raid.target === 'sweep')) right++;
       }
     }
     expect(warned).toBeGreaterThan(20);

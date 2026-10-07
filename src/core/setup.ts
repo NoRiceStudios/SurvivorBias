@@ -1,12 +1,14 @@
 import { AIRCRAFT, CREW_FIRST, CREW_LAST, FIRST_NAMES, LAST_NAMES, RANKS, SIDE_NAMES, SQUADRON_NAMES } from './data';
 import { Rng } from './rng';
 import { rollLethality } from './lethality';
+import { FACTION_IDS, factionFx } from './factions';
 import { enterTheater } from './theaters';
 import type {
   AircraftKind,
   Airframe,
   Archetype,
   Doctrine,
+  FactionId,
   GameState,
   Leader,
   Perceived,
@@ -17,7 +19,7 @@ import type {
 } from './types';
 import { ZONES } from './types';
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export function zoneMap<T>(fn: (z: (typeof ZONES)[number]) => T): ZoneMap<T> {
   return Object.fromEntries(ZONES.map((z) => [z, fn(z)])) as ZoneMap<T>;
@@ -154,14 +156,18 @@ export function emptyPerceived(): Perceived {
   };
 }
 
-function makeSide(state: GameState, rng: Rng, id: SideId, isAI: boolean): SideState {
+function makeSide(state: GameState, rng: Rng, id: SideId, isAI: boolean, faction?: FactionId): SideState {
   const archetypes: Archetype[] = rng.shuffle(['braggart', 'pessimist', 'gloryHunter', 'byTheBook', 'timid']);
   const order = rng.shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
   const squadrons: Squadron[] = [];
+  const f = { faction };
+  const extra = factionFx(f, 'startSize');
   const kinds: [AircraftKind, number][] = [['fighter', 8], ['fighter', 8], ['medium', 6], ['medium', 6]];
   kinds.forEach(([kind, size], i) =>
-    squadrons.push(makeSquadron(state, rng, id, kind, size, order[i], archetypes[i], squadrons.map((q) => q.leader.name))),
+    squadrons.push(makeSquadron(state, rng, id, kind, Math.max(2, size + extra), order[i], archetypes[i], squadrons.map((q) => q.leader.name))),
   );
+  const skill = factionFx(f, 'startSkill');
+  if (skill) for (const q of squadrons) q.skill = Math.max(0.2, Math.min(0.9, q.skill + skill));
   // Keep fighter names for fighters on the Directorate side where names imply role.
   return {
     id,
@@ -170,7 +176,8 @@ function makeSide(state: GameState, rng: Rng, id: SideId, isAI: boolean): SideSt
     short: SIDE_NAMES[id].short,
     isAI,
     insight: 0.35,
-    resources: { supplies: 160, stores: 220, replacements: 6 },
+    resources: { supplies: 160, stores: 160, replacements: 6 },
+    ...(faction ? { faction } : {}),
     squadrons,
     factory: { level: 1, qc: 'standard', queue: [], progress: 0 },
     training: { level: 1, focus: 'balanced', inTraining: 0 },
@@ -197,6 +204,8 @@ export interface NewGameOptions {
   maxTurns?: number;
   /** AI difficulty: 0 (naive) .. 1 (understands survivorship bias). */
   aiInsight?: number;
+  /** Each side's air force; null for none, 'random' or absent for one drawn by the seed. */
+  factions?: [FactionId | 'random' | null, FactionId | 'random' | null];
 }
 
 export function newGame(opts: NewGameOptions = {}): GameState {
@@ -223,7 +232,10 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     nextId: 1,
   };
   const single = state.mode === 'single';
-  state.sides = [makeSide(state, rng, 0, false), makeSide(state, rng, 1, single)];
+  const pickFaction = (f: FactionId | 'random' | null | undefined, k: number): FactionId | undefined =>
+    f === null ? undefined : f && f !== 'random' ? f : FACTION_IDS[Rng.fromSeed(`${seed}|faction|${k}`).int(0, FACTION_IDS.length - 1)];
+  const factions = opts.factions ?? [null, null];
+  state.sides = [makeSide(state, rng, 0, false, pickFaction(factions[0], 0)), makeSide(state, rng, 1, single, pickFaction(factions[1], 1))];
   if (single) state.sides[1].insight = opts.aiInsight ?? 0.4;
   state.lethality = rollLethality(rng.fork('lethality'));
   enterTheater(state, 0, rng, null);

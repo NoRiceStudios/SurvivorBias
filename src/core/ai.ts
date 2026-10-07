@@ -1,4 +1,6 @@
-import { buyConvoy, CONVOY, requestCrews, emergencyRepair, emptyPlan, queueAircraft, REPAIR_COST, setApproach, startResearch, upgradeFactory, upgradeFlak, upgradeTraining, validatePlan } from './actions';
+import { armorBudget, availableMods, MOD_SLOTS } from './mods';
+import { aiTakeOffer } from './offers';
+import { buyConvoy, CONVOY, fitMod, OFFICE_MAX, upgradeOffice, requestCrews, emergencyRepair, emptyPlan, queueAircraft, REPAIR_COST, setApproach, startResearch, upgradeFactory, upgradeFlak, upgradeTraining, validatePlan } from './actions';
 import { AIRCRAFT, APPROACH_ZONES, MAX_ARMOR_PER_ZONE, RESEARCH, ZONE_AREA } from './data';
 import { Rng } from './rng';
 import { flyable } from './sim';
@@ -17,7 +19,7 @@ export function chooseArmor(side: SideState, sq: Squadron): Record<ZoneId, numbe
   const own = side.perceived.survivorHitsByKind?.[sq.kind];
   const seen = own && ZONES.reduce((a, z) => a + own[z], 0) > 10 ? own : side.perceived.survivorHits;
   const totalSeen = ZONES.reduce((a, z) => a + seen[z], 0);
-  const budget = AIRCRAFT[sq.kind].armorBudget;
+  const budget = armorBudget(sq);
   const weights = {} as Record<ZoneId, number>;
   // Expected exposure if every hit were equally survivable.
   const exp = {} as Record<ZoneId, number>;
@@ -66,6 +68,10 @@ export function aiIntent(state: GameState, id: SideId): NonNullable<SideState['i
   const targets = reachableSites(state, id, bombers.some((q) => q.kind === 'medium') ? 'medium' : 'heavy').filter((x) => depthFor(t.held0, id, x.sector) <= minRange);
   // No bomber squadron fit to fly: nothing to plan but fighter operations.
   if (bombers.length === 0) return { target: 'sweep' };
+  // Not enough stores for a bomber squadron and a patrol: the bombers stand down and the wing saves up.
+  const cost = (q: Squadron) => ready(q) * AIRCRAFT[q.kind].storesCost;
+  const guard = Math.max(0, ...side.squadrons.filter((q) => q.kind === 'fighter').map(cost));
+  if (side.resources.stores < Math.min(...bombers.map(cost)) + guard) return { target: 'sweep' };
   const pressured = side.perceived.front < -12 || theaterMods(state).support > 1;
   // A strategist (more so the higher the difficulty) answers an enemy pushing with worn-out squadrons
   // with a counter-offensive of its own over the front.
@@ -117,6 +123,10 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   const a = act(state);
 
   // --- Spending ---
+  // High Command's offer first: it may change what the wing can afford. A green staff often lets it lapse.
+  if (!side.isAI || rng.chance(0.2 + 0.5 * side.insight)) aiTakeOffer(state, side);
+  // A Supply Office pays for itself in a few weeks.
+  if ((side.office ?? 0) < Math.min(OFFICE_MAX, 1 + a) && side.resources.supplies > 200) upgradeOffice(side);
   const bomberSqs = side.squadrons.filter((s) => s.kind === 'medium' || s.kind === 'heavy');
   for (const sq of side.squadrons) {
     if (sq.kind === 'recon') continue;
@@ -128,6 +138,17 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
         side.resources.supplies -= cost;
         sq.armor = target;
       }
+    }
+  }
+  // Field modifications, when there are supplies to spare: a seasoned staff fits what its type needs.
+  if (side.resources.supplies > 180 || (side.freeMods ?? 0) > 0) {
+    const prefs: Record<string, string[]> = { fighter: ['aiRadar', 'extraGuns', 'armouredGlass', 'boost'], medium: ['inertTanks', 'armouredGlass', 'extraGuns', 'plateMounts'], heavy: ['inertTanks', 'armouredGlass', 'extraGuns', 'bombBay'], recon: ['stripped'] };
+    for (const sq of side.squadrons) {
+      if ((sq.mods?.length ?? 0) >= MOD_SLOTS || rng.chance(0.6)) continue;
+      const open = availableMods(side, sq).map((m) => m.id);
+      const pick = prefs[sq.kind].find((m) => open.includes(m as never) && !sq.mods?.includes(m as never));
+      if (pick) fitMod(side, sq.id, pick as never);
+      if (side.resources.supplies < 160 && !(side.freeMods ?? 0)) break;
     }
   }
   // Aircraft waiting for crews and supplies to spare: ask the Ministry.
@@ -195,7 +216,11 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   const minRange = Math.min(...readyBombers.map((q) => bomberRange(q.kind)), 3);
   // A target fixed a week ago is kept to (so the other side's intelligence may have got wind of it).
   const fixed = readyBombers.length > 0 ? validIntent(state, id, side.intent, minRange) : undefined;
-  if (!fixed && alert && escorts.length && rng.chance(0.35)) {
+  // A week the staff planned to save stores: no bombing, perhaps a sweep.
+  const saving = readyBombers.length > 0 && side.intent?.target === 'sweep';
+  if (saving) {
+    if (escorts.length && rng.chance(0.4)) plan.raid = { target: 'sweep', squadronIds: [escorts[0].id] };
+  } else if (!fixed && alert && escorts.length && rng.chance(0.35)) {
     plan.raid = { target: 'sweep', squadronIds: escorts.map((q) => q.id) };
   } else if (readyBombers.length > 0 && (fixed || rng.chance(0.85))) {
     const intent = fixed ?? aiIntent(state, id);
@@ -237,6 +262,8 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   while (!validatePlan(side, plan, state).ok && guard++ < 10) {
     if (plan.recon) plan.recon = null;
     else if (plan.feint) plan.feint = null;
+    // Patrols are thinned before the operation itself.
+    else if (plan.defense.length > 1) { const id = plan.defense.pop()!; delete plan.cover[id]; }
     else if (plan.raid && plan.raid.squadronIds.length > 1) plan.raid.squadronIds.pop();
     else if (plan.raid) plan.raid = null;
     else if (plan.defense.length) plan.defense.pop();
