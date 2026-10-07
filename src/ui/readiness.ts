@@ -36,7 +36,7 @@ export function readinessChips(app: App, side: SideState): Chip[] {
   const plan = app.plans[side.id];
   const chips: Chip[] = [];
   const v = validatePlan(side, plan, st);
-  if (!v.ok) chips.push({ label: v.reason.split(/[.:]/)[0], level: 'block', tab: 'war', focus: '.orders-col', detail: v.reason });
+  if (!v.ok && !/stores/i.test(v.reason)) chips.push({ label: v.reason.split(/[.:]/)[0], level: 'block', tab: 'war', focus: '.orders-col', detail: v.reason });
   const c = planCost(side, plan);
   if (c.stores > side.resources.stores) chips.push({ label: `Stores short by ${c.stores - side.resources.stores}`, level: 'block', tab: 'war', focus: '.orders-col', detail: `This plan needs ${c.stores} stores and we hold ${side.resources.stores}. Stand a squadron down, fly a smaller operation, use "Fit to stores" or buy a convoy (${CONVOY.supplies} supplies for ${CONVOY.stores} stores).` });
   // Striking a site our own crews believe is already wrecked.
