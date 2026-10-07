@@ -1,13 +1,14 @@
 import type { App } from './app';
 import { AUTOSAVE } from './app';
-import { isMuted, setMuted, sfxClick } from './audio';
+import { sfxClick } from './audio';
+import { soundPanel } from './soundui';
 import { animOn, h, setAnim } from './dom';
 import { titleScene } from './scene';
 import { storage } from './storage';
 import { chosen, chosenFactions, nationPicker, nationToggle } from './nation';
 import { NATIONS } from '../core/factions';
 
-let menu: 'main' | 'new' | 'load' | 'hotseat' = 'main';
+let menu: 'main' | 'new' | 'load' | 'hotseat' | 'sound' = 'main';
 let saves: { slot: string; modified: number }[] = [];
 /** Names typed for hotseat, kept while the nations are changed. */
 const names: [string, string] = ['', ''];
@@ -55,6 +56,13 @@ export function renderTitle(app: App): HTMLElement {
         btn('Back', () => { menu = 'main'; refresh(); }, 'small'),
       ];
     }
+    if (menu === 'sound') {
+      return [
+        h('div', { class: 'menu-head' }, 'Sound & music'),
+        soundPanel(),
+        btn('Back', () => { menu = 'main'; refresh(); }, 'small'),
+      ];
+    }
     if (menu === 'load') {
       const items: HTMLElement[] = [h('div', { class: 'menu-head' }, 'Saved campaigns')];
       if (saves.length === 0) items.push(h('div', { class: 'menu-note' }, 'No saved campaigns.'));
@@ -73,7 +81,7 @@ export function renderTitle(app: App): HTMLElement {
     ];
     if (hasSave) items.unshift(btn('Continue', () => void app.loadSlot(AUTOSAVE), 'primary'));
     items.push(btn('Load Campaign', () => { menu = 'load'; refresh(); }));
-    items.push(btn(isMuted() ? 'Sound: Off' : 'Sound: On', () => { setMuted(!isMuted()); refresh(); }, 'small'));
+    items.push(btn('Sound & music', () => { menu = 'sound'; refresh(); }, 'small'));
     items.push(btn(animOn() ? 'Animations: On' : 'Animations: Off', () => { setAnim(!animOn()); refresh(); }, 'small'));
     if (window.sbNative) items.push(btn('Quit to Desktop', () => window.sbNative!.quit(), 'small'));
     return items;
