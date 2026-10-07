@@ -6,7 +6,8 @@ import { resolveTurn } from '../core/turn';
 import { applyCommand, type Command } from '../core/commands';
 import { carryPlan, defaultPlan, fitPlanToStores } from '../core/plans';
 import type { GameState, NationId, SideId, TurnPlan } from '../core/types';
-import { sfxClick, sfxPaper, sfxStamp, sfxStatic, stopDrone } from './audio';
+import { radioOff, sfxClick, sfxPaper, sfxStamp, sfxStatic, stopDrone } from './audio';
+import { moodFor, setMood } from './music';
 import { animOn, clear, h } from './dom';
 import { clearDispatches, memoDispatch, showDispatch, type Dispatch } from './general';
 import { renderEnd } from './end';
@@ -66,7 +67,7 @@ export class App {
     if (screen.kind === 'debrief' && DEBRIEF_ALIAS[screen.tab]) screen = { ...screen, tab: DEBRIEF_ALIAS[screen.tab] };
     document.getElementById('toast')?.classList.remove('show', 'bad');
     const prev = this.screen;
-    if (prev.kind === 'radio' && screen.kind !== 'radio') stopDrone();
+    if (prev.kind === 'radio' && screen.kind !== 'radio') { stopDrone(); radioOff(); }
     if (this.covered) this.toggleCover();
     // Dispatches belong to the commander who opened them: a handover clears every card,
     // any other change of screen only the cards not marked persistent.
@@ -154,6 +155,7 @@ export class App {
         break;
     }
     this.root.append(view);
+    setMood(moodFor(s.kind));
     // A new sheet is laid on the desk: it rises into place with the sound of paper.
     if (this.entering) {
       view.classList.add('entering');

@@ -18,6 +18,7 @@ import { readinessBar } from './readiness';
 import { squadronsScreen } from './squadronsui';
 import { believed } from './theaterui';
 import { tip } from './tip';
+import { soundButton } from './soundui';
 import { toggleManual } from './manual';
 import { dedupeMemos, warRoom } from './warroom';
 import { panel } from './widgets';
@@ -77,6 +78,7 @@ export function topBar(app: App, side: SideState, debriefWeek?: number, what = '
       res('trust', side.trust, String(side.trust), 'confidence', 'High Command\'s confidence in you (0-100). It rises with the results you report, not the results you get. Deliveries grow with it; at 0 you are relieved of command.', undefined, side.trust < 25 ? 'bad' : ''),
       res('front', front, `${held}/${SECTORS} ${front >= 0 ? '▲' : '▼'}${Math.abs(front)}`, 'sectors · pressure', `Sectors we hold of ${SECTORS}, and the pressure on the front as the Army reports it. A sector usually falls at about ±${SECTOR_PRESSURE}.`, undefined, front >= 0 ? 'good' : 'bad'),
     ),
+    soundButton(),
   );
 }
 

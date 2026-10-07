@@ -7,7 +7,7 @@ import { sqLabel } from './warroom';
 import { pressureGauge, theaterMap } from './theaterui';
 import { setTip, tip } from './tip';
 import type { App } from './app';
-import { sfxClick, sfxKey, sfxPaper, sfxRing, sfxStamp, sfxStatic, startDrone, stopDrone } from './audio';
+import { radioCut, radioOff, radioOn, sfxClick, sfxKey, sfxPaper, sfxRing, sfxStamp, startDrone, stopDrone } from './audio';
 import { animOn, h, meter, plural } from './dom';
 import { topBar } from './hq';
 import { aircraftCanvas, spriteDef } from './sprites';
@@ -79,21 +79,26 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
       tx.textContent = l.text;
       return Promise.resolve();
     }
-    sfxStatic(0.18);
+    // The crew keys their set: the channel stays open while they speak.
+    radioOn(trouble);
     return new Promise<void>((res) => {
       let k = 0;
       const step = () => {
         if (done) {
           tx.textContent = l.text;
+          radioOff();
           res();
           return;
         }
         k += 2 * speed;
         tx.textContent = l.text.slice(0, k);
-        if (k % 6 === 0) sfxKey();
         log.scrollTop = log.scrollHeight;
         if (k < l.text.length) setTimeout(step, 22);
-        else res();
+        else {
+          // A crew going down is cut off; the others release the switch.
+          if (!trouble) radioOff();
+          res();
+        }
       };
       setTimeout(step, 250 / speed);
     });
@@ -122,7 +127,7 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
       await addLine(shown++, false);
       // A crew going down: a burst of static, the plot flickers, then silence before the next call.
       if (lastTrouble) {
-        sfxStatic(0.12);
+        radioCut();
         map.el.classList.add('hit');
         setTimeout(() => map.el.classList.remove('hit'), 160);
         await new Promise((r) => setTimeout(r, 400));
