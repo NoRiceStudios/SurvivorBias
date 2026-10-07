@@ -4,7 +4,7 @@ import { stationLife } from './vignettes';
 import { plural } from './text';
 import { aiIntent } from './ai';
 import { planCost, researchTurns } from './actions';
-import { AIRCRAFT, ARCHETYPE_INFO, RANKS, REQUEST_SHORT, RESEARCH, SQUADRON_NAMES, TARGETS, TRAIT_INFO } from './data';
+import { AIRCRAFT, ARCHETYPE_INFO, RANKS, REQUEST_SHORT, RESEARCH, SALVAGE, SQUADRON_NAMES, TARGETS, TRAIT_INFO } from './data';
 import { buildDebrief, updatePerceived } from './reports';
 import { CRIPPLED, facilityEffects } from './effects';
 import { generateRequests } from './requests';
@@ -106,6 +106,8 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
     if (!bySq.has(r.squadronId)) bySq.set(r.squadronId, []);
     bySq.get(r.squadronId)!.push(r);
   }
+  let salvage = 0;
+  let wrecks = 0;
   for (const sq of side.squadrons) {
     const mine = bySq.get(sq.id);
     if (!mine) {
@@ -146,9 +148,17 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
           side.roll = [...(side.roll ?? []), { week: state.turn, theater: state.theater.index, name: r.captain ?? captainName(side.id, r.serial, state.seed), serial: r.serial, squadron: sq.name, crew: AIRCRAFT[r.kind].crew, fate: 'missing' }];
         }
         sq.airframes = sq.airframes.filter((a) => a.id !== r.airframeId);
+        // Defenders come down over our own country, where the wreck can be recovered.
+        if (r.role === 'defense') {
+          salvage += Math.round(AIRCRAFT[r.kind].cost * SALVAGE);
+          wrecks++;
+        }
       } else if (r.fate === 'crashed') {
         if (rng.chance(0.25)) sq.crews--;
         sq.airframes = sq.airframes.filter((a) => a.id !== r.airframeId);
+        // The wreck is on our own field: engines, guns and instruments go back into the depots.
+        salvage += Math.round(AIRCRAFT[r.kind].cost * SALVAGE);
+        wrecks++;
       } else if (af) {
         af.sorties++;
         af.hits = r.hits;
@@ -205,6 +215,10 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
       memo(side, state.turn + 1, 'notice', `${sq.name}: change of command`, `${line} ${describeFlightCommander(sq.leader, 'He is the senior flight commander')} The other flight commander, ${describeFlightCommander(other, `${other.rank} ${other.name}`)} You may appoint him instead this week (Squadrons).`, 'Group HQ');
     }
     sq.notables = [...new Set(sq.notables)].slice(0, 5);
+  }
+  if (salvage > 0) {
+    side.resources.supplies += salvage;
+    news.push(`Salvage parties stripped ${wrecks === 1 ? 'one wreck' : `${wrecks} wrecks`} on our side of the line: ${salvage} supplies recovered.`);
   }
 }
 
@@ -447,11 +461,13 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   const trustF = 0.4 + side.trust / 100;
   const bonus = side.isAI ? aiBonus(state, side) : 1;
   const sup = Math.round((45 + 45 * trustF) * (0.55 + 0.45 * Math.min(1.2, side.facilities.industry / 100)) * bonus);
+  // Our own requisition officers add a fixed amount, whatever the Air Council thinks of us.
+  const supTotal = sup + tech(side, 'supply');
   // Stores are rationed: a full effort every week burns more than arrives, and wrecked fuel depots cut deliveries.
   const stores = Math.round((26 + 28 * trustF) * facilityEffects(side.facilities).stores * bonus);
   // Aircrew are posted only for aircraft the wing has or has on order.
   const rep = Math.min(Math.max(0, crewShortfall(side) - r.replacements), Math.round((2 + 3 * trustF) * bonus));
-  r.supplies += sup;
+  r.supplies += supTotal;
   r.stores = Math.min(STORES_CAP, r.stores + stores);
   r.replacements += rep;
   side.repaired = [];
@@ -460,7 +476,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
     from: 'Supply Command',
     kind: 'supply',
     subject: 'Deliveries',
-    body: `Delivered this week: ${sup} supplies, ${stores} stores (fuel and munitions), ${rep} replacement aircrew.`,
+    body: `Delivered this week: ${supTotal} supplies, ${stores} stores (fuel and munitions), ${rep} replacement aircrew.`,
   });
 
   // Factory production.

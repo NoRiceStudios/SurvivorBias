@@ -215,7 +215,7 @@ The crew is modelled at squadron level:
 
 | Resource | Used for | Comes from |
 |---|---|---|
-| **Supplies** | Upgrades, R&D, repairs, armor (4 per plate fitted; removal free) | High Command deliveries (scaled by trust and our works) |
+| **Supplies** | Upgrades, R&D, repairs, armor (4 per plate fitted; removal free) | High Command deliveries (scaled by trust and our works), plus a flat +15 each from the Requisition Office and War Economy Board developments; wrecks on our side of the line (written off on landing, or defenders shot down over our country) return 35% of their build cost as salvage |
 | **Stores** (fuel and munitions, merged after playtest round 2) | Each sortie: fighter 3, medium 5, heavy 8, recon 2; flak batteries 20 | Rationed. Deliveries are about 80% of a full effort, so the wing must stand squadrons down from time to time. Depots hold at most 240. Bombing our fuel depots cuts deliveries. A "Fit to stores" button trims a plan that is too big. |
 | **Replacements** | New airmen into training. Trained aircrew can also be asked of the Ministry for supplies (dearer the less it trusts you), but only for aircraft without crews. A squadron down to one or two aircraft can be merged into another of its type. | Posted, and taken into the school, only for aircraft the wing has or has on order. Crews follow aircraft, so none sit idle. |
 
