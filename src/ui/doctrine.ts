@@ -68,30 +68,34 @@ function effectsTable(sq: Squadron, now: Doctrine, preview: Doctrine, active: Do
   const a = doctrineEffects(sq.kind, now, sq.skill);
   const b = doctrineEffects(sq.kind, preview, sq.skill);
   const changed = a.some((e, i) => e.value !== b[i].value);
-  // Each effect as a bar either side of the standard setting: green where it helps us, red where it hurts.
-  const span = (i: number) => Math.max(8, ...[a[i], b[i], mid[i]].map((e) => Math.abs(e.raw - mid[i].raw))) * 1.15;
-  const bar = (e: DoctrineEffect, i: number, ghost?: DoctrineEffect) => {
-    const s = span(i);
-    const pos = (x: number) => 50 + ((x - mid[i].raw) / s) * 50;
-    const helps = (x: number) => (e.good === 0 ? 0 : (x - mid[i].raw) * e.good);
-    const seg = (x: number, cls: string) => {
-      const p = Math.max(0, Math.min(100, pos(x)));
-      const h2 = helps(x);
-      return h('i', { class: `${cls} ${h2 > 0.01 ? 'good' : h2 < -0.01 ? 'bad' : 'neutral'}`, style: `left:${Math.min(50, p)}%;width:${Math.abs(p - 50)}%` });
-    };
-    return h('span', { class: 'div-bar' }, h('span', { class: 'div-mid' }), ghost ? seg(ghost.raw, 'ghost') : null, seg(e.raw, 'val'));
+  // Every effect as a change against the standard setting: green where it helps us, red where it hurts, grey when neutral.
+  const delta = (e: DoctrineEffect, i: number) => e.raw - (e.unit === '%' ? 0 : mid[i].raw);
+  const fmt = (e: DoctrineEffect, i: number) => {
+    if (e.good === 0) return e.value;
+    const d = Math.round(delta(e, i));
+    return `${d > 0 ? '+' : d < 0 ? '−' : '±'}${Math.abs(d)}${e.unit === '%' ? '%' : ' pts'}`;
+  };
+  const tone = (e: DoctrineEffect, i: number) => {
+    const d = delta(e, i) * e.good;
+    return e.good === 0 || Math.abs(delta(e, i)) < 0.5 ? 'neutral' : d > 0 ? 'good' : 'bad';
+  };
+  const span = (i: number) => Math.max(8, ...[a[i], b[i]].map((e) => Math.abs(delta(e, i)))) * 1.15;
+  const seg = (e: DoctrineEffect, i: number, cls: string) => {
+    const d = e.good === 0 ? 0 : delta(e, i);
+    const w = Math.min(50, (Math.abs(d) / span(i)) * 50);
+    return h('i', { class: `${cls} ${tone(e, i)}`, style: `left:${d < 0 ? 50 - w : 50}%;width:${w}%` });
   };
   return h('table', { class: 'doc-table' },
-    h('thead', null, h('tr', null, h('th', null, ''), h('th', { class: 'num' }, 'vs. standard'), h('th', null, ''), changed ? h('th', { class: 'num' }, 'after change') : null)),
+    h('thead', null, h('tr', null, h('th', null, ''), h('th', { class: 'num', colspan: '2' }, 'vs. standard'), changed ? h('th', { class: 'num' }, 'after change') : null)),
     h('tbody', null, a.map((e, i) => {
       const f = b[i];
       const better = e.good !== 0 && f.raw !== e.raw && (f.raw > e.raw) === (e.good > 0);
       const worse = e.good !== 0 && f.raw !== e.raw && !better;
-      return h('tr', { class: active && e.keys.includes(active) ? 'hot' : '', ...tip({ head: e.label, text: e.why }) },
+      return h('tr', { class: active && e.keys.includes(active) ? 'hot' : '', ...tip({ head: e.label, text: `${e.why} Now: ${e.value}${e.unit === 'pts' && e.good !== 0 ? '' : ' against standard'}.` }) },
         h('td', null, e.label),
-        h('td', { class: 'barcell' }, changed ? bar(f, i, e) : bar(e, i)),
-        h('td', { class: 'num' }, e.value),
-        changed ? h('td', { class: `num ${better ? 'good' : worse ? 'bad' : ''}` }, f.value === e.value ? '—' : `${better ? '▲' : worse ? '▼' : '•'} ${f.value}`) : null);
+        h('td', { class: 'barcell' }, h('span', { class: 'div-bar' }, h('span', { class: 'div-mid' }), changed ? seg(e, i, 'ghost') : null, seg(changed ? f : e, i, 'val'))),
+        h('td', { class: `num ${tone(e, i)}` }, fmt(e, i)),
+        changed ? h('td', { class: `num ${better ? 'good' : worse ? 'bad' : ''}` }, f.value === e.value ? '—' : `${better ? '▲' : worse ? '▼' : '•'} ${fmt(f, i)}`) : null);
     })));
 }
 

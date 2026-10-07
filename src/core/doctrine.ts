@@ -13,8 +13,9 @@ export interface DoctrineEffect {
   label: string;
   /** Displayed value for these settings. */
   value: string;
-  /** Raw number, for comparing two settings. */
+  /** Raw number, for comparing two settings: a % change against standard (unit '%') or an absolute % (unit 'pts'). */
   raw: number;
+  unit: '%' | 'pts';
   /** +1 if a higher raw value is good for us, -1 if bad, 0 if neither. */
   good: 1 | -1 | 0;
   /** One line on why. */
@@ -47,30 +48,30 @@ export function doctrineEffects(kind: AircraftKind, d: Doctrine, skill = 0.5): D
     // bomberPass: defensive fire ∝ (0.6 + 0.9 f); target choice weight ∝ (1.4 − 0.6 f); gunner claims 0.18 + 0.25 f.
     const fire = vsMid((f) => 0.6 + 0.9 * f, d.formation);
     const picked = vsMid((f) => 1.4 - 0.6 * f, d.formation);
-    out.push({ keys: ['formation'], label: 'Return fire from the gunners', value: sign(fire), raw: fire, good: 1, why: 'A tight box puts many guns on every attacker.' });
-    out.push({ keys: ['formation'], label: 'Singled out by fighters', value: sign(picked), raw: picked, good: -1, why: 'Fighters pick on loose formations and stragglers.' });
+    out.push({ keys: ['formation'], label: 'Return fire from the gunners', value: sign(fire), raw: fire, unit: '%', good: 1, why: 'A tight box puts many guns on every attacker.' });
+    out.push({ keys: ['formation'], label: 'Singled out by fighters', value: sign(picked), raw: picked, unit: '%', good: -1, why: 'Fighters pick on loose formations and stragglers.' });
     const claims = 18 + 25 * d.formation;
-    out.push({ keys: ['formation'], label: 'Gunners claiming the same kill', value: `${Math.round(claims)}%`, raw: claims, good: -1, why: 'In a tight box every gunner who fired believes the kill was his: claims run high.' });
+    out.push({ keys: ['formation'], label: 'Gunners claiming the same kill', value: `${Math.round(claims)}%`, raw: claims, unit: 'pts', good: -1, why: 'In a tight box every gunner who fired believes the kill was his: claims run high.' });
   }
   // Over the target: flak ∝ (1.55 − a); accuracy 0.3 + 0.35 skill + 0.25 (1 − a) + 0.1 g. Close support always goes in low.
   const flak = vsMid((a) => 1.55 - a, d.altitude);
-  out.push({ keys: ['altitude'], label: 'Flak hits over the target', value: sign(flak), raw: flak, good: -1, why: bomber ? 'The higher, the less the guns can reach. Close support always goes in low.' : 'Only matters for fighters escorting a raid over the target.' });
+  out.push({ keys: ['altitude'], label: 'Flak hits over the target', value: sign(flak), raw: flak, unit: '%', good: -1, why: bomber ? 'The higher, the less the guns can reach. Close support always goes in low.' : 'Only matters for fighters escorting a raid over the target.' });
   // Detection: (0.5 − average altitude of the raid) × 0.2 on the enemy's chance to find it.
   const detect = (0.5 - d.altitude) * 20;
-  out.push({ keys: ['altitude'], label: 'Chance enemy fighters find the raid', value: `${detect >= 0 ? '+' : '−'}${Math.abs(Math.round(detect))} pts`, raw: detect, good: -1, why: 'High raids are harder to spot and reach. The whole raid\'s average height counts.' });
+  out.push({ keys: ['altitude'], label: 'Chance enemy fighters find the raid', value: `${detect >= 0 ? '+' : '−'}${Math.abs(Math.round(detect))} pts`, raw: detect, unit: 'pts', good: -1, why: 'High raids are harder to spot and reach. The whole raid\'s average height counts.' });
   if (bomber) {
     const acc = (a: number, g: number) => 0.3 + 0.35 * skill + 0.25 * (1 - a) + 0.1 * g;
     const accuracy = (acc(d.altitude, d.aggression) / acc(0.5, 0.5) - 1) * 100;
-    out.push({ keys: ['altitude', 'aggression'], label: 'Bombing accuracy', value: sign(accuracy), raw: accuracy, good: 1, why: 'Bombs dropped from low level fall closer, and crews who press the run home hold it steady.' });
+    out.push({ keys: ['altitude', 'aggression'], label: 'Bombing accuracy', value: sign(accuracy), raw: accuracy, unit: '%', good: 1, why: 'Bombs dropped from low level fall closer, and crews who press the run home hold it steady.' });
   } else {
     // dogfight ∝ (0.6 + 0.8 g); bomberPass ∝ (0.65 + 0.7 g); escort engages 0.55 + 0.35 g; second pass chance g.
     const guns = vsMid((g) => 0.65 + 0.7 * g, d.aggression);
-    out.push({ keys: ['aggression'], label: 'Firepower in each attack', value: sign(guns), raw: guns, good: 1, why: 'Pilots who close right in hit harder, on bombers and fighters alike.' });
-    out.push({ keys: ['aggression'], label: 'Second attack on a bomber', value: `${Math.round(d.aggression * 100)}%`, raw: d.aggression, good: 1, why: 'Chance an interceptor comes round again. Every pass also exposes him to the gunners.' });
-    out.push({ keys: ['aggression'], label: 'Escorts engaging interceptors', value: `${Math.round((0.55 + 0.35 * d.aggression) * 100)}%`, raw: d.aggression, good: 1, why: 'Escorts that turn into the enemy tie them up before they reach the bombers.' });
+    out.push({ keys: ['aggression'], label: 'Firepower in each attack', value: sign(guns), raw: guns, unit: '%', good: 1, why: 'Pilots who close right in hit harder, on bombers and fighters alike.' });
+    out.push({ keys: ['aggression'], label: 'Second attack on a bomber', value: `${Math.round(d.aggression * 100)}%`, raw: d.aggression * 100, unit: 'pts', good: 1, why: 'Chance an interceptor comes round again. Every pass also exposes him to the gunners.' });
+    out.push({ keys: ['aggression'], label: 'Escorts engaging interceptors', value: `${Math.round((0.55 + 0.35 * d.aggression) * 100)}%`, raw: (0.55 + 0.35 * d.aggression) * 100, unit: 'pts', good: 1, why: 'Escorts that turn into the enemy tie them up before they reach the bombers.' });
   }
   const off = Math.round(d.breakOff * 100);
-  out.push({ keys: ['breakOff'], label: 'Squadron turns back after losing', value: d.breakOff >= 0.99 ? 'never' : `${off}%`, raw: -d.breakOff, good: 0, why: 'Breaking off early saves crews but leaves the job undone; never breaking off finishes it at any price.' });
+  out.push({ keys: ['breakOff'], label: 'Squadron turns back after losing', value: d.breakOff >= 0.99 ? 'never' : `${off}%`, raw: -d.breakOff * 100, unit: 'pts', good: 0, why: 'Breaking off early saves crews but leaves the job undone; never breaking off finishes it at any price.' });
   return out;
 }
 

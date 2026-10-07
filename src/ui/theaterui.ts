@@ -59,6 +59,8 @@ export interface MapOpts {
   feint?: number;
   /** The viewer's operation, drawn as a route from home to the target. */
   raid?: { target: TargetId; siteId?: string };
+  /** Sites named in standing orders: flagged on the map. */
+  ordered?: string[];
   /** Enemy sites our bombers can reach; the others are drawn faded. */
   inRange?: (site: Site) => boolean;
   /** Dashed lines across the map: how far a type can reach past the front (in sectors). */
@@ -325,10 +327,12 @@ export function theaterMap(state: GameState, opts: MapOpts): HTMLCanvasElement {
     dashed(home.x, home.y, tx, H * 0.2, '#b0302a', 2);
     label(g, 'FEINT', tx, H * 0.2 - 8, '#b0302a');
   }
-  if (opts.raid) {
-    const target = placed.find((p) => p.site.id === opts.raid!.siteId);
+  {
+    // The route out and back: drawn for an operation, and kept on the canvas for the radio room's plot.
+    const target = opts.raid ? placed.find((p) => p.site.id === opts.raid!.siteId) : undefined;
     const [tx, ty] = target ? [target.x, target.y + 3] : [X(depthToX(t.held0, v)), H * 0.58];
-    dashed(home.x, home.y, tx, ty, '#2a2620');
+    if (opts.raid) dashed(home.x, home.y, tx, ty, '#2a2620');
+    c.dataset.route = JSON.stringify([home.x, home.y, tx, ty, W, H]);
   }
 
   // Front line with its teeth pointing at the enemy, displaced by the reported pressure.
@@ -365,6 +369,19 @@ export function theaterMap(state: GameState, opts: MapOpts): HTMLCanvasElement {
     for (let k = 0; k < 5; k++) {
       g.fillStyle = k < Math.round(cond / 20) ? col : 'rgba(42,38,32,0.2)';
       g.fillRect(x + k + 1 + (k > 0 ? k : 0) - 1, y + 9, 1, 2);
+    }
+    // Probably wrecked already: hatch the plate.
+    if (p.site.owner !== v && cond <= 20) {
+      g.fillStyle = 'rgba(176,48,42,0.6)';
+      for (let j = 0; j < 9; j++) { g.fillRect(x - 1 + j, y - 1 + j, 1, 1); g.fillRect(x - 1 + j, y + 3 + j, 1, 1); }
+    }
+    // A standing order names this site: a red pennant.
+    if (opts.ordered?.includes(p.site.id)) {
+      g.fillStyle = '#16171a';
+      g.fillRect(x + 8, y - 9, 1, 8);
+      g.fillStyle = '#b0302a';
+      for (let j = 0; j < 4; j++) g.fillRect(x + 9, y - 9 + j, 5 - j, 1);
+      for (let j = 0; j < 3; j++) g.fillRect(x + 9, y - 5 + j, 2 + j, 1);
     }
     if (p.site.id === opts.selected) label(g, p.site.name, p.x, p.y + 20, '#b0302a');
   }

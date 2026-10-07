@@ -113,27 +113,21 @@ function strategicPanel(app: App, side: SideState): HTMLElement {
   const eo = facilityEffects(ours);
   const et = facilityEffects(theirs);
   const pc = (x: number) => `${Math.round(x * 100)}%`;
-  const repairBtn = (type: 'airfield' | 'fuel' | 'industry') => ours[type] < 100
-    ? h('button', { class: 'btn tiny', disabled: !!side.repaired?.includes(type) || side.resources.supplies < REPAIR_COST, title: 'Work gangs patch up every site of this type we hold: +20% each. Once a week per type.', onclick: () => app.cmd(side.id, { k: 'repair', what: type }) }, side.repaired?.includes(type) ? 'Repaired this week' : `Emergency repairs (${REPAIR_COST} supplies)`)
-    : null;
-  const badge = (on: boolean) => (on ? h('span', { class: 'stamp reprimand crippled' }, 'CRIPPLED') : null);
-  const row = (label: string, type: 'airfield' | 'fuel' | 'industry', a: number, b: number, effA: string, effB: string) =>
-    h('tr', null, h('td', null, label),
-      h('td', null, `${a}% `, badge(eo.crippled[type]), h('div', { class: 'small muted' }, effA), repairBtn(type)),
-      h('td', null, `~${b}% `, badge(et.crippled[type]), h('div', { class: 'small muted' }, effB)));
+  const bar = (v: number, crippled: boolean, est: boolean) => h('span', { class: `fx-bar ${crippled ? 'crippled' : ''} ${est ? 'est' : ''}` },
+    h('i', { style: `width:${v}%` }), h('span', { class: 'fx-tick', style: `left:${CRIPPLED}%` }), h('em', null, `${est ? '≈' : ''}${v}%`));
+  const row = (label: string, type: 'airfield' | 'fuel' | 'industry', effA: string, effB: string) =>
+    h('div', { class: 'fx-row' },
+      h('div', { class: 'fx-label' }, label),
+      h('div', { class: 'fx-side' }, bar(ours[type], eo.crippled[type], false), h('div', { class: 'small muted' }, effA),
+        ours[type] < 100 ? h('button', { class: 'btn tiny', disabled: !!side.repaired?.includes(type) || side.resources.supplies < REPAIR_COST, ...tip({ text: 'Work gangs patch up every site of this type we hold. Once a week per type.', effect: `+20% for ${REPAIR_COST} supplies` }), onclick: () => app.cmd(side.id, { k: 'repair', what: type }) }, side.repaired?.includes(type) ? 'Repaired' : `Repair (${REPAIR_COST})`) : null),
+      h('div', { class: 'fx-side' }, bar(theirs[type], et.crippled[type], true), h('div', { class: 'small muted' }, effB)));
   return panel('Effect of the bombing',
-    h('table', { class: 'ledger effects' },
-      h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'Ours (known)'), h('th', null, 'Theirs (our estimate)'))),
-      h('tbody', null,
-        row('Airfields', 'airfield', ours.airfield, theirs.airfield,
-          (eo.grounded > 0 ? `${pc(eo.grounded)} of each operation stays on the ground` : 'all aircraft can take off') + (eo.crippled.airfield ? '; only about half our fighters can scramble' : ''),
-          (et.grounded > 0 ? `~${pc(et.grounded)} of their operations grounded` : 'no effect yet') + (et.crippled.airfield ? '; their fighter cover roughly halved' : '')),
-        row('Fuel depots', 'fuel', ours.fuel, theirs.fuel, `stores deliveries at ${pc(eo.stores)}`, `their stores deliveries ~${pc(et.stores)}`),
-        row('Aircraft works', 'industry', ours.industry, theirs.industry, `production at ${pc(eo.production)}`, `their production ~${pc(et.production)}`),
-      ),
-    ),
-    h('p', { class: 'muted small' }, `Their works that count (within two sectors of the front): ${(['airfield', 'fuel', 'industry'] as const).map((k) => countedSites(t, enemy, k).map((x) => x.name).join(', ')).filter(Boolean).join('; ') || 'none'}. A side with no works of a type left counts as 40%.`),
-    h('p', { class: 'muted small' }, `Below ${CRIPPLED}% a type of works is crippled and the effect jumps: crippled airfields halve fighter cover, crippled depots and works cut deliveries and production by a further 30%. Damage also tells at the front, week after week. The enemy figures are only as good as our crews\' bombing reports and photographs.`),
+    h('div', { class: 'fx-head' }, h('span', null, ''), h('span', null, 'Ours (known)'), h('span', { ...tip({ text: 'Built from our crews\' bombing reports and photographs.', source: 'crew reports, photographs' }) }, 'Theirs (our estimate)')),
+    row('Airfields', 'airfield', eo.grounded > 0 ? `${pc(eo.grounded)} of each operation grounded` : 'all aircraft can take off', et.grounded > 0 ? `≈${pc(et.grounded)} of theirs grounded` : 'no effect yet'),
+    row('Fuel depots', 'fuel', `stores deliveries ${pc(eo.stores)}`, `their stores ≈${pc(et.stores)}`),
+    row('Aircraft works', 'industry', `production ${pc(eo.production)}`, `their production ≈${pc(et.production)}`),
+    h('p', { class: 'small muted' }, `The tick marks ${CRIPPLED}%: below it a type of works is crippled and the effect jumps. Only works within two sectors of the front count.`, ' ',
+      h('span', { class: 'dotted', ...tip(`Their works that count: ${(['airfield', 'fuel', 'industry'] as const).map((k) => countedSites(t, enemy, k).map((x) => x.name).join(', ')).filter(Boolean).join('; ') || 'none'}. A side with no works of a type left counts as 40%.`) }, 'Which works count?')),
   );
 }
 
@@ -146,32 +140,27 @@ function intel(app: App, side: SideState): HTMLElement {
   const maxC = Math.max(1, ...claims);
   return h('div', { class: 'grid2' },
     h('div', { class: 'col' },
-      panel('Enemy Order of Battle (our estimate)',
-        h('div', { class: 'stats' },
-          h('div', null, h('span', null, 'Enemy fighters'), h('b', null, officer ? `${Math.max(0, p.enemyFighters - p.enemyFightersSd)}–${p.enemyFighters + p.enemyFightersSd}` : `~${p.enemyFighters}`)),
-          h('div', null, h('span', null, 'Enemy aircraft claimed destroyed'), h('b', null, `${p.claimedKillsTotal}`)),
-        ),
-        officer ? h('p', { class: 'muted small' }, 'Intelligence Section: ranges reflect disagreement between squadron reports.') : h('p', { class: 'muted small' }, 'Fund an Intelligence Section to see how uncertain these figures are.'),
-      ),
-      panel('How enemy fighters attack (as reported by returning crews)',
+      panel('Enemy order of battle (our estimate)',
+        h('div', { class: 'kv' },
+          h('span', tip({ text: 'Fighters the enemy can put up, as our crews and the Y-Service count them.', source: officer ? 'Intelligence Section cross-check' : 'crew reports' }), 'Enemy fighters'), h('b', null, officer ? `${Math.max(0, p.enemyFighters - p.enemyFightersSd)}–${p.enemyFighters + p.enemyFightersSd}` : `≈${p.enemyFighters}`),
+          h('span', null, 'Claimed destroyed so far'), h('b', null, `${p.claimedKillsTotal}`)),
+        officer ? null : h('p', { class: 'small muted' }, 'An Intelligence Section (Works › Development) shows how uncertain these figures are.')),
+      panel('How enemy fighters attack',
         (Object.keys(APPROACH_LABEL) as FighterApproach[]).map((k) => h('div', { class: 'bar-row' }, h('span', null, APPROACH_LABEL[k]), h('span', { class: 'bar' }, h('i', { style: `width:${Math.round(app2[k] * 100)}%` })), h('span', null, pct(app2[k])))),
-        h('p', { class: 'muted small' }, 'Only crews who survive an attack can describe it.'),
-      ),
+        h('p', { class: 'small muted' }, 'As reported by returning crews. Only crews who survive an attack can describe it.')),
+      panel('Our crews\' claims per week',
+        claims.length ? h('div', { class: 'chart' }, claims.map((c, i) => h('div', { class: 'col-bar', ...tip(`Week ${i + 1}: ${c} claimed`) }, h('em', null, String(c)), h('i', { style: `height:${Math.round((c / maxC) * 80)}%` }), h('span', null, `w${i + 1}`)))) : h('p', { class: 'muted' }, 'No operations flown yet.'),
+        claims.length ? h('p', { class: 'small muted' }, 'Unverified. The truth is in the archives, after the war.') : null),
     ),
     h('div', { class: 'col' },
+      strategicPanel(app, side),
       panel('Enemy sites (our estimate)',
         st.theater.sites.filter((x) => x.owner !== side.id).map((x) => {
           const b = believed(st, side.id, x);
           return h('div', { class: 'bar-row wide' }, h('span', null, x.name), h('span', { class: 'bar' }, h('i', { style: `width:${b}%` })), h('span', null, `${b}%${p.photographed.includes(x.id) ? ' 📷' : ''}`));
         }),
-        h('p', { class: 'muted small' }, 'Estimates are built from crews\' bombing reports; a camera symbol marks figures from photographs.'),
-      ),
-      strategicPanel(app, side),
+        h('p', { class: 'small muted' }, 'From crews\' bombing reports; 📷 marks figures from photographs.')),
       correspondence(app, side),
-      panel('Claims per week',
-        claims.length ? h('div', { class: 'chart' }, claims.map((c, i) => h('div', { class: 'col-bar', title: `Week ${i + 1}: ${c} claimed` }, h('em', null, String(c)), h('i', { style: `height:${Math.round((c / maxC) * 80)}%` }), h('span', null, `w${i + 1}`)))) : h('p', { class: 'muted' }, 'No operations flown yet.'),
-        claims.length ? h('p', { class: 'muted small' }, 'Enemy aircraft claimed destroyed by our crews, by week (number above each bar).') : null,
-      ),
     ),
   );
 }

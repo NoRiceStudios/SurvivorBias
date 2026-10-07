@@ -62,3 +62,21 @@ export function slider(value: number, onChange: (v: number) => void, left: strin
 export function plural(n: number, word: string, many = `${word}s`): string {
   return `${n} ${n === 1 ? word : many}`;
 }
+
+/** The player's choice to skip animations (kept in this browser only). */
+export function animOn(): boolean {
+  try {
+    return localStorage.getItem('sb-anim') !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export function setAnim(on: boolean) {
+  try {
+    localStorage.setItem('sb-anim', on ? 'on' : 'off');
+  } catch {
+    /* private window: the choice lasts for this session only */
+  }
+  document.body.classList.toggle('noanim', !on);
+}

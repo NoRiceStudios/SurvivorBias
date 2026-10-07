@@ -1,5 +1,6 @@
 import { App } from './app';
 import { bindTips } from './tip';
+import { animOn } from './dom';
 
 const root = document.getElementById('app')!;
 const app = new App(root);
@@ -14,3 +15,4 @@ window.addEventListener('keydown', (e) => {
   }
 });
 bindTips();
+document.body.classList.toggle('noanim', !animOn());

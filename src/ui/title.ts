@@ -1,7 +1,7 @@
 import type { App } from './app';
 import { AUTOSAVE } from './app';
 import { isMuted, setMuted, sfxClick } from './audio';
-import { h } from './dom';
+import { animOn, h, setAnim } from './dom';
 import { titleScene } from './scene';
 import { storage } from './storage';
 
@@ -61,6 +61,7 @@ export function renderTitle(app: App): HTMLElement {
     if (hasSave) items.unshift(btn('Continue', () => void app.loadSlot(AUTOSAVE), 'primary'));
     items.push(btn('Load Campaign', () => { menu = 'load'; refresh(); }));
     items.push(btn(isMuted() ? 'Sound: Off' : 'Sound: On', () => { setMuted(!isMuted()); refresh(); }, 'small'));
+    items.push(btn(animOn() ? 'Animations: On' : 'Animations: Off', () => { setAnim(!animOn()); refresh(); }, 'small'));
     if (window.sbNative) items.push(btn('Quit to Desktop', () => window.sbNative!.quit(), 'small'));
     return items;
   };

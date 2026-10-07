@@ -753,8 +753,9 @@ a.jump { color: var(--amber); cursor: pointer; text-decoration: underline dotted
 .content.tab-works { padding: 10px 14px; }
 .works { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
 .works .panel { margin: 4px; }
-.banner { height: 72px; overflow: hidden; margin: -14px -18px 10px; box-shadow: inset 0 -2px 0 var(--ink); }
-.banner canvas, .banner svg, .banner img { width: 100% !important; height: 72px !important; object-fit: cover; display: block; }
+.banner { margin: -14px -18px 10px; }
+.banner .bscene-view { height: 90px; box-shadow: none; }
+.banner .bscene-label { padding: 0 18px; flex-wrap: wrap; gap: 2px 10px; }
 .kv { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; margin-bottom: 6px; }
 .kv b { font-weight: normal; font-size: 21px; text-align: right; }
 .works .build { grid-template-columns: 60px 1fr auto; padding: 4px; }
@@ -860,3 +861,91 @@ td.glyph { width: 1%; font-size: 22px; }
 .reveal-item span { font-family: 'Silkscreen'; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: #5e5546; }
 .reveal-item.truth.done b { animation: stamp-drop .35s steps(4) both; }
 .ledger-chart { width: 100%; height: auto; margin: 6px 0 14px; font-family: 'VT323'; }
+.doc-table td.num.neutral { color: #5e5546; }
+.doc-table td.num.good { color: #3f6a2a; }
+.doc-table td.num.bad { color: var(--stamp); }
+
+/* Intelligence: effect of the bombing */
+.fx-head, .fx-row { display: grid; grid-template-columns: 120px 1fr 1fr; gap: 12px; align-items: start; }
+.fx-head span { font-family: 'Silkscreen'; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: #5e5546; }
+.fx-row { padding: 6px 0; border-bottom: 1px dotted var(--paper-3); }
+.fx-bar { position: relative; display: block; height: 14px; background: rgba(0,0,0,0.1); box-shadow: 0 0 0 1px var(--ink-2); }
+.fx-bar i { display: block; height: 100%; background: var(--olive); }
+.fx-bar.est i { background: repeating-linear-gradient(90deg, #8a5a1a 0 4px, #a87a3a 4px 6px); }
+.fx-bar.crippled i { background: #a8443a; }
+.fx-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--stamp); }
+.fx-bar em { position: absolute; right: 4px; top: -3px; font-style: normal; font-size: 16px; }
+
+/* The player turned animations off */
+body.noanim *, body.noanim *::before, body.noanim *::after { animation: none !important; transition: none !important; }
+
+/* Debrief, round 2 */
+.kpi small { font-size: 16px; }
+.kpi small.up { color: #a8d080; } .kpi small.down { color: #e07a6a; }
+.kpi-news.paper { color: var(--ink); padding: 6px 12px; font-size: 19px; transform: rotate(-0.4deg); }
+.kpi-news .stamp { float: right; margin-left: 8px; }
+.hero-row { display: flex; gap: 16px; align-items: flex-start; }
+.zone-tally { list-style: none; margin: 0; padding: 0; min-width: 140px; }
+.zone-tally li { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px dotted var(--paper-3); font-size: 19px; }
+.zone-tally b { color: var(--stamp); font-weight: normal; }
+.no-record { position: absolute; right: -6px; top: -8px; font-size: 9px; padding: 1px 4px 0; background: rgba(233,223,196,0.9); }
+.status-updates p { margin: 4px 0; }
+.airframe.taxi { animation: taxi-in .45s steps(5) both; }
+@keyframes taxi-in { from { transform: translateX(-60px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Radio: the plotting table on the theater map */
+.plot { position: relative; }
+.plot .theater-map.night { filter: brightness(0.5) saturate(0.35) sepia(0.3) hue-rotate(60deg); max-width: none !important; width: 100%; box-shadow: 0 0 0 3px #16171a, 0 0 0 5px #3a4430; margin: 0; }
+.plot-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.radio-tally { flex-direction: column; gap: 4px; }
+.rt-sum { display: flex; gap: 22px; }
+.rt-row { display: grid; grid-template-columns: 110px 220px 1fr 90px; gap: 8px; align-items: center; font-size: 19px; }
+.rt-row b { color: var(--amber); font-size: 20px; }
+.rt-planes { display: flex; gap: 3px; }
+.rt-planes i { width: 10px; height: 10px; background: #a8d080; }
+.rt-planes i.down { background: #ff5a44; }
+.issued { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(13,15,12,0.85); pointer-events: none; animation: issued 1.4s steps(6) forwards; }
+.issued .stamp { background: var(--paper); font-size: 40px; animation: stamp-drop .3s steps(3) both; }
+@keyframes issued { 0%, 55% { opacity: 1; } 100% { opacity: 0; visibility: hidden; } }
+
+/* Sealed: the stamp has its own slot */
+.sealed-title { display: grid; grid-template-columns: 300px 1fr; align-items: center; padding-left: 8px; }
+.sealed-title .stamp { justify-self: center; transform-origin: center; }
+
+/* War Room, round 2: one screen */
+.content.tab-war { overflow-y: auto; }
+.wr-right { position: sticky; top: 0; }
+.intray { height: max(200px, calc(100vh - 760px)); display: flex; flex-direction: column; padding: 8px 12px; }
+.tray-tabs { display: flex; gap: 2px; border-bottom: 2px solid var(--ink-2); margin-bottom: 6px; }
+.tray-tab { font-family: 'Silkscreen'; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; border: none; background: transparent; color: #5e5546; padding: 5px 10px 4px; cursor: pointer; }
+.tray-tab.on { background: var(--ink-2); color: var(--paper); }
+.badge.quiet { background: #8a7d60; }
+.tray-body { flex: 1; overflow-y: auto; min-height: 0; padding-right: 4px; }
+.order-item { flex-wrap: wrap; align-items: center; }
+.request-who { display: flex; align-items: center; gap: 6px; font-size: 19px; }
+.req-face canvas { width: 24px !important; height: auto !important; }
+.sqn small { font-size: 0.75em; color: #5e5546; margin-right: 1px; }
+.roster-row:not(.on) .sqn small { color: var(--paper-3); }
+.mh-title { font-size: 20px; }
+.mh-title b { font-family: 'Silkscreen'; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; font-weight: 400; }
+.warning-line { display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: rgba(47,74,122,0.08); }
+.wl-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 19px; }
+.mf-obj { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.site-chip { display: flex; flex-direction: column; align-items: flex-start; padding: 2px 6px; min-width: 120px; }
+.site-chip.wrecked { opacity: 0.7; background: repeating-linear-gradient(45deg, rgba(168,53,42,0.12) 0 4px, transparent 4px 8px), var(--paper-2); }
+.sc-name { font-size: 18px; white-space: nowrap; }
+.sc-ord { color: var(--stamp); font-family: 'Silkscreen'; font-size: 8px; letter-spacing: 1px; }
+.sc-sub { display: flex; align-items: center; gap: 4px; font-size: 15px; color: #5e5546; }
+.sc-bar { display: inline-block; width: 40px; height: 5px; background: rgba(0,0,0,0.12); }
+.sc-bar i { display: block; height: 100%; background: #8a5a1a; }
+.sq-row .small { line-height: 1.1; }
+
+/* Squadrons, round 2 */
+.bubble { margin-top: 8px; padding: 6px 10px; background: #f6efdc; box-shadow: 0 0 0 2px var(--ink-2); position: relative; }
+.bubble::before { content: ''; position: absolute; left: 24px; top: -8px; border: 8px solid transparent; border-top: 0; border-bottom-color: var(--ink-2); }
+.bubble .request { border: none; padding: 0; }
+.wing-summary { margin-top: 10px; padding: 8px 10px; }
+.wing-summary h3 { margin-top: 0; }
+.ws-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; border-bottom: 1px dotted var(--paper-3); padding: 2px 0; font-size: 19px; }
+.ws-row span:first-child { flex: 1; }
+.ws-row b { font-weight: normal; font-size: 22px; }

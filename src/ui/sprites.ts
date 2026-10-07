@@ -269,6 +269,10 @@ export interface RenderOpts {
   /** draw hits as red dots (composite map) */
   dots?: boolean;
   dotColor?: string;
+  /** Draw each dot as a small cross, so it can be counted on a big plot. */
+  bigDots?: boolean;
+  /** Earlier holes, drawn faint underneath the dots. */
+  faintHits?: Hit[];
 }
 
 /** Render an aircraft into an ImageData-compatible RGBA buffer. */
@@ -366,6 +370,12 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
     }
   }
 
+  // Earlier holes, faint.
+  for (const hit of opts.faintHits ?? []) {
+    const px = def.zonePixels[hit.zone];
+    if (!px || px.length === 0) continue;
+    put(px[Math.floor(hit.u * px.length) % px.length], '#7d7360');
+  }
   // Damage
   for (const hit of opts.hits ?? []) {
     const px = def.zonePixels[hit.zone];
@@ -374,7 +384,9 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
     const x = idx % w;
     const y = Math.floor(idx / w);
     if (opts.dots) {
-      put(idx, opts.dotColor ?? PAL.red);
+      if (opts.bigDots) {
+        for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) if (filled(x + dx, y + dy)) put((y + dy) * w + x + dx, opts.dotColor ?? PAL.red);
+      } else put(idx, opts.dotColor ?? PAL.red);
       continue;
     }
     if (hit.approach === 'flak') {

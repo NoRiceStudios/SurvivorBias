@@ -10,7 +10,7 @@ import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontS
 import type { FighterApproach, Memo, SideId, SideState, Site, Squadron, TargetId } from '../core/types';
 import type { App } from './app';
 import { h, pct, slider } from './dom';
-import { leaderPortrait } from './general';
+import { leaderPortrait, letterMemos } from './general';
 import { believed, depthLabel, pressureGauge, theaterMap } from './theaterui';
 import { tip } from './tip';
 import { countPlanes, pips, seg } from './widgets';
@@ -36,6 +36,32 @@ export function warRoom(app: App, side: SideState): HTMLElement {
     h('div', { class: 'wr-left' }, mapCard(app, side), inTray(app, side)),
     h('div', { class: 'wr-right' }, ordersColumn(app, side)),
   );
+}
+
+/** "No. 9" small, the nickname big: the same everywhere a squadron is named. */
+export function sqLabel(name: string): HTMLElement {
+  const m = name.match(/^(No\. \d+|Staffel)\s+(.*)$/);
+  return h('span', { class: 'sqn' }, m ? [h('small', null, `${m[1]} `), m[2]] : name);
+}
+
+/** Site name without its sector ("Aerodrome", "Oil Terminal"). */
+export function siteKind(app: App, site: Site): string {
+  const sector = THEATERS[app.state!.theater.index].sectors[site.sector];
+  return site.name.startsWith(sector) ? site.name.slice(sector.length).trim() : site.name;
+}
+
+/** Put a defending fighter squadron on patrol over a sector (from a Y-Service warning). */
+export function patrolSector(app: App, side: SideState, sector: number) {
+  const plan = app.plans[side.id];
+  const fighters = side.squadrons.filter((q) => q.kind === 'fighter' && flyable(q).length > 0);
+  const sq = fighters.find((q) => plan.defense.includes(q.id) && plan.cover[q.id] === undefined)
+    ?? fighters.find((q) => plan.defense.includes(q.id))
+    ?? fighters.find((q) => !plan.raid?.squadronIds.includes(q.id) && !plan.feint?.squadronIds.includes(q.id));
+  if (!sq) return app.toast('No fighter squadron free to patrol', true);
+  if (!plan.defense.includes(sq.id)) plan.defense.push(sq.id);
+  plan.cover[sq.id] = sector;
+  app.pulse = `[data-sq="${sq.id}"]`;
+  app.act(() => undefined);
 }
 
 /* ---------------- Planning helpers ---------------- */
@@ -85,6 +111,18 @@ function planner(app: App, side: SideState) {
   return { st, t, plan, longest, enemySites, inRange, pick, assign, roleOf, mainSector, feintSectors };
 }
 
+/** The best strike target: an ordered site in range first, then the healthiest site in range. */
+export function bestTarget(app: App, side: SideState): Site | undefined {
+  const { enemySites, inRange } = planner(app, side);
+  const st = app.state!;
+  const ordered = side.orders.filter((o) => o.siteId && !o.done).map((o) => enemySites.find((x) => x.id === o.siteId)).find((x) => x && inRange(x));
+  return ordered ?? enemySites.filter(inRange).sort((a, b) => believed(st, side.id, b) - believed(st, side.id, a))[0];
+}
+
+export function strikeAt(app: App, side: SideState, site: Site) {
+  planner(app, side).pick(site.type, site.id);
+}
+
 /* ---------------- Map card ---------------- */
 
 function mapCard(app: App, side: SideState): HTMLElement {
@@ -97,17 +135,23 @@ function mapCard(app: App, side: SideState): HTMLElement {
   const reach = escortRange(side);
   const flags = Array.from({ length: DECISIVE_GAIN }, (_, i) => h('i', { class: `flag ${i < gain ? 'on' : ''}` }));
   const warn = side.perceived.warning;
+  const ordered = side.orders.filter((o) => o.siteId && !o.done).map((o) => o.siteId!);
   return h('section', { class: 'paper panel map-card' },
     h('div', { class: 'map-head' },
-      h('div', null,
-        h('h2', null, `${def.name} · week ${t.week + 1} of ${def.weeks}`),
-        h('div', { class: 'small muted' }, `${def.season} · Stage: `, h('span', { class: 'dotted', ...tip({ head: stage.title, text: stage.text }) }, stage.title))),
+      h('div', { class: 'mh-title' },
+        h('b', null, def.name), h('span', { class: 'muted' }, ` · wk ${t.week + 1}/${def.weeks} · `),
+        h('span', { class: 'dotted', ...tip({ head: `Stage: ${stage.title}`, text: stage.text }) }, stage.title), ' · ',
+        h('span', { class: 'dotted', ...tip({ head: 'Map key', text: '✈ airfield · ▙ aircraft works · ◘ fuel depot (pips: condition). Red hatching: enemy-held. Red line: the front, arrow shows which way the pressure runs. Dashed line: our operation. Blue ring: our patrol. Red pennant: named in a standing order. Struck-through plate: probably wrecked. Faded: out of range.' }) }, 'map key')),
       h('div', { class: 'objective', ...tip({ head: 'Primary objective', text: `Take ${DECISIVE_GAIN} sectors to win the theater outright. If nobody breaks through by week ${def.weeks}, it goes to whoever holds the advantage, but only if they have taken at least one sector.` }) },
-        h('span', { class: 'small' }, 'Sectors taken'), h('span', { class: 'flags' }, flags), h('b', { class: gain > 0 ? 'good' : gain < 0 ? 'bad' : '' }, `${gain >= 0 ? '+' : ''}${gain} / ${DECISIVE_GAIN}`)),
+        h('span', { class: 'small' }, 'Sectors taken'), h('span', { class: 'flags' }, flags), h('b', { class: gain > 0 ? 'good' : gain < 0 ? 'bad' : '' }, `${gain >= 0 ? '+' : ''}${gain}/${DECISIVE_GAIN}`)),
     ),
-    warn ? h('div', { class: 'warning-line' }, h('span', { class: 'stamp intel' }, 'Y-SERVICE'), ' ', warn.text, h('span', { class: 'muted small' }, warn.sector !== undefined ? ' Patrols over that sector would meet it. It may be wrong.' : ' It may be wrong.')) : null,
+    warn ? h('div', { class: 'warning-line', ...tip({ head: 'Y-Service', text: `${warn.text} The warning may be wrong.`, source: 'signals intelligence' }) },
+      h('span', { class: 'stamp intel' }, 'Y-SERVICE'), h('span', { class: 'wl-text' }, warn.text),
+      warn.sector !== undefined && (warn.sector < t.held0 ? 0 : 1) === side.id
+        ? h('button', { class: 'btn small', onclick: () => patrolSector(app, side, warn.sector!) }, `Patrol ${def.sectors[warn.sector]} ▸`)
+        : null) : null,
     theaterMap(st, {
-      viewer: side.id, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), feint: plan.feint?.sector, raid: plan.raid ?? undefined, scale: 3, inRange,
+      viewer: side.id, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), feint: plan.feint?.sector, raid: plan.raid ?? undefined, scale: 3, inRange, ordered,
       rangeLines: [{ depth: longest, label: 'BOMBER RANGE', color: '#8a5a1a' }, ...(reach < longest ? [{ depth: reach, label: 'ESCORT RANGE', color: '#2c4672' }] : [])],
       onSite: (site) => {
         if (!inRange(site)) return app.toast(`${site.name} is out of range of our bombers`, true);
@@ -116,7 +160,7 @@ function mapCard(app: App, side: SideState): HTMLElement {
     }),
     pressureGauge(side.perceived.front, { band: side.perceived.frontBand }),
     h('div', { class: 'map-foot small' },
-      h('span', tip({ head: 'Secondary objective', text: obj.text }), h('b', null, 'Secondary: '), obj.text, ' ', h('span', { class: `stamp ${obj.status === 'discredited' || obj.status === 'overrun' ? 'reprimand' : obj.status === 'open' ? 'order' : 'notice'}` }, objStatus)),
+      h('span', { class: 'mf-obj', ...tip({ head: 'Secondary objective', text: obj.text }) }, h('b', null, 'Secondary: '), obj.text, ' ', h('span', { class: `stamp ${obj.status === 'discredited' || obj.status === 'overrun' ? 'reprimand' : obj.status === 'open' ? 'order' : 'notice'}` }, objStatus)),
       h('span', { class: 'theater-mini' }, THEATERS.map((th, i) => {
         const r = st.theaterResults.find((x) => x.index === i);
         const cls = r ? (r.winner === side.id ? 'won' : r.winner === null ? 'drawn' : 'lost') : i === t.index ? 'current' : '';
@@ -157,8 +201,14 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
       h('div', { class: 'small muted' }, `${def.sectors[site.sector]} · ${depthLabel(st, side.id, site)} · ${depth > escortRange(side) ? 'beyond escort range' : 'escorts can stay with the bombers'}`),
       h('div', { class: 'cond-row', ...tip({ head: 'Believed condition', text: 'How much of the site still works, as far as we know.', source: side.perceived.photographed.includes(site.id) ? 'photographs' : 'crews\' bombing reports (often optimistic)' }) },
         h('span', { class: 'cond-bar' }, h('i', { style: `width:${cond}%` })), h('b', null, `≈${cond}%`), side.perceived.photographed.includes(site.id) ? ' 📷' : ''),
-      h('div', { class: 'site-chips' }, h('span', { class: 'small muted' }, 'In range: '),
-        enemySites.filter(inRange).map((x) => h('button', { class: `site-chip ${x.id === site.id ? 'on' : ''}`, ...tip(`${x.name}, ${depthLabel(st, side.id, x).toLowerCase()}, ≈${believed(st, side.id, x)}%`), onclick: () => pick(x.type, x.id) }, `${x.name.split(' ')[0]} ${x.type === 'airfield' ? '✈' : x.type === 'industry' ? '▙' : '◘'}`))),
+      h('div', { class: 'site-chips' },
+        enemySites.filter(inRange).map((x) => {
+          const c = believed(st, side.id, x);
+          const ord = side.orders.some((o) => o.siteId === x.id && !o.done);
+          return h('button', { class: `site-chip ${x.id === site.id ? 'on' : ''} ${c <= 20 ? 'wrecked' : ''}`, ...tip({ head: x.name, text: `${depthLabel(st, side.id, x)}. Believed condition ≈${c}%.${ord ? ' Named in a standing order.' : ''}${c <= 20 ? ' Probably wrecked already.' : ''}` }), onclick: () => pick(x.type, x.id) },
+            h('span', { class: 'sc-name' }, `${x.type === 'airfield' ? '✈' : x.type === 'industry' ? '▙' : '◘'} ${siteKind(app, x)}`, ord ? h('span', { class: 'sc-ord' }, ' ORDERED') : null),
+            h('span', { class: 'sc-sub' }, def.sectors[x.sector], h('span', { class: 'sc-bar' }, h('i', { style: `width:${c}%` })), `${c}%`));
+        })),
     );
   } else if (mission === 'support' || mission === 'sweep') {
     target = h('div', { class: 'target-box' }, h('div', { class: 'tb-name' }, `${TARGETS[mission].name} over ${def.sectors[frontSector(t, side.id)]}`), h('div', { class: 'small muted' }, TARGETS[mission].desc));
@@ -205,8 +255,9 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
       h('div', { class: 'sq-id', ...tip({ head: `${sq.name} — ${AIRCRAFT[sq.kind].name[side.id]}`, text: `${sq.leader.rank} ${sq.leader.name} (${info.label}): ${info.blurb}`, effect: `${ready} ready of ${sq.airframes.length}. Flying costs ${cost} stores.` }) },
         h('div', { class: 'sq-face' }, leaderPortrait(sq.leader, side.id, 1)),
         h('div', null,
-          h('div', { class: 'sq-name' }, sq.name.replace(/^No\. \d+ /, '')),
-          h('div', { class: 'small muted' }, h('span', { class: 'sq-type' }, aircraftCanvas(sq.kind, { side: side.id, seed: sq.insignia }, 1)), `${ready}/${sq.airframes.length} · `,
+          h('div', { class: 'sq-name' }, sqLabel(sq.name)),
+          h('div', { class: 'small muted' }, h('span', { class: 'sq-type' }, aircraftCanvas(sq.kind, { side: side.id, seed: sq.insignia }, 1)), `${ready}/${sq.airframes.length} ready`),
+          h('div', { class: 'small muted' },
             h('span', tip({ head: 'Fatigue', text: 'Rises each week a squadron flies, falls when it rests. Tired crews shoot and fly worse; above 6/10 their morale slides.' }), 'fat ', pips(sq.fatigue, 6, 0.6)),
             ' ', h('span', tip({ head: 'Morale', text: 'Falls with losses. If the whole wing stays very low for three weeks, the crews refuse to fly.' }), 'mor ', pips(sq.morale, 6, 0.3, true))))),
       seg<Role>(roles.map((r) => ({ ...r, disabled: ready === 0 && r.value !== 'rest', tip: { text: r.tip, effect: r.value === 'rest' ? undefined : `− ${cost} stores` } })), role, (r) => app.act(() => assign(sq, r)), 'roles-seg'),
@@ -234,29 +285,51 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
 
 /* ---------------- In-tray ---------------- */
 
+let trayTab: 'requests' | 'orders' | 'mail' | null = null;
+
 function inTray(app: App, side: SideState): HTMLElement {
   const st = app.state!;
-  const fresh = dedupeMemos(side.memos.filter((m) => m.turn >= st.turn && m.kind !== 'supply'));
+  const { enemySites, inRange, pick } = planner(app, side);
+  // What High Command already read out in its letter is not repeated here.
+  const read = new Set(letterMemos(side, st.turn, 6));
+  const fresh = dedupeMemos(side.memos.filter((m) => m.turn >= st.turn && m.kind !== 'supply' && !read.has(m)));
   const supply = side.memos.find((m) => m.kind === 'supply' && m.turn >= st.turn);
+  const due = side.orders.filter((o) => o.deadline <= st.turn).length;
+  const tab = trayTab ?? (side.requests.length ? 'requests' : due ? 'orders' : 'mail');
+  const tabs: [typeof tab, string, number][] = [['requests', 'Requests', side.requests.length], ['orders', 'Orders', side.orders.length], ['mail', 'Mail', fresh.length]];
+  let body: HTMLElement[];
+  if (tab === 'requests') {
+    body = side.requests.length ? side.requests.map((r) => requestCard(app, side, r)) : [h('p', { class: 'small muted' }, 'No requests this week.')];
+  } else if (tab === 'orders') {
+    body = side.orders.length ? side.orders.map((o) => {
+      const site = o.siteId ? enemySites.find((x) => x.id === o.siteId) : undefined;
+      const current = site && app.plans[side.id].raid?.siteId === site.id;
+      return h('div', { class: 'order-item' },
+        h('span', { class: 'order-text' }, o.text),
+        h('span', { class: `order-due ${o.deadline <= st.turn ? 'now' : ''}` }, o.graced ? `wk ${o.deadline}: awaiting photographs` : o.deadline <= st.turn ? 'DUE THIS WEEK' : `due wk ${o.deadline}`),
+        site && !current ? h('button', { class: 'btn small', disabled: !inRange(site), onclick: () => pick(site.type, site.id) }, inRange(site) ? 'Make target ▸' : 'Out of range') : current ? h('span', { class: 'small good' }, '✓ this week\'s target') : null);
+    }) : [h('p', { class: 'small muted' }, 'No outstanding directives.')];
+  } else {
+    body = ([
+      supply ? h('div', { class: 'small muted' }, supply.body) : null,
+      ...(fresh.length ? fresh.map((m) => h('details', { class: `slip memo-${m.kind}` },
+        h('summary', null, h('span', { class: `stamp ${m.kind}` }, STAMP[m.kind]), ' ', h('b', null, m.subject), h('span', { class: 'small muted' }, ` · ${m.from}`)),
+        h('div', { class: 'memo-body' }, m.body))) : [h('p', { class: 'small muted' }, 'Nothing new. Older correspondence is filed under Intelligence.')]),
+    ] as (HTMLElement | null)[]).filter((x): x is HTMLElement => !!x);
+  }
   return h('section', { class: 'paper panel intray' },
-    h('div', { class: 'intray-cols' },
-      h('div', null,
-        h('h3', null, 'Requests'),
-        side.requests.length ? side.requests.map((r) => h('div', { class: 'request' },
-          h('div', { class: 'request-text' }, r.text),
-          h('div', { class: 'request-effect small' }, h('b', null, 'If approved: '), r.effect),
-          h('div', { class: 'request-actions' },
-            h('button', { class: 'btn small', onclick: () => app.cmd(side.id, { k: 'approve', id: r.id }) }, r.cost ? `Approve (${r.cost})` : 'Approve'),
-            h('button', { class: 'btn choice small', onclick: () => app.cmd(side.id, { k: 'decline', id: r.id }) }, 'Decline')))) : h('p', { class: 'small muted' }, 'No requests this week.'),
-        h('h3', null, 'Standing orders'),
-        side.orders.length ? h('ul', { class: 'orders' }, side.orders.map((o) => h('li', { class: 'order-item' },
-          h('span', { class: 'order-text' }, o.text),
-          h('span', { class: `order-due ${o.deadline <= st.turn ? 'now' : ''}` }, o.graced ? `wk ${o.deadline}: awaiting photographs` : o.deadline <= st.turn ? 'DUE THIS WEEK' : `due wk ${o.deadline}`)))) : h('p', { class: 'small muted' }, 'No outstanding directives.')),
-      h('div', null,
-        h('h3', null, 'This week\'s mail'),
-        supply ? h('div', { class: 'small muted' }, supply.body) : null,
-        fresh.length ? fresh.map((m) => h('details', { class: `slip memo-${m.kind}` },
-          h('summary', null, h('span', { class: `stamp ${m.kind}` }, STAMP[m.kind]), ' ', h('b', null, m.subject), h('span', { class: 'small muted' }, ` · ${m.from}`)),
-          h('div', { class: 'memo-body' }, m.body))) : h('p', { class: 'small muted' }, 'Nothing new. Older correspondence is filed under Intelligence.')),
-    ));
+    h('div', { class: 'tray-tabs' }, tabs.map(([id, label, n]) => h('button', { class: `tray-tab ${tab === id ? 'on' : ''}`, onclick: () => { trayTab = id; app.render(); } }, label, n ? h('span', { class: `badge ${id === 'orders' && !due ? 'quiet' : ''}` }, String(n)) : null))),
+    h('div', { class: 'tray-body', 'data-keep-scroll': 'tray' }, body));
+}
+
+/** A squadron leader's request, with the trade-off and the answer buttons. */
+export function requestCard(app: App, side: SideState, r: SideState['requests'][number]): HTMLElement {
+  const sq = side.squadrons.find((q) => q.id === r.squadronId);
+  return h('div', { class: 'request' },
+    h('div', { class: 'request-who' }, sq ? h('span', { class: 'req-face' }, leaderPortrait(sq.leader, side.id, 1)) : null, sq ? sqLabel(sq.name) : null),
+    h('div', { class: 'request-text' }, r.text),
+    h('div', { class: 'request-effect small' }, h('b', null, 'If approved: '), r.effect),
+    h('div', { class: 'request-actions' },
+      h('button', { class: 'btn small', onclick: () => app.cmd(side.id, { k: 'approve', id: r.id }) }, r.cost ? `Approve (${r.cost})` : 'Approve'),
+      h('button', { class: 'btn choice small', onclick: () => app.cmd(side.id, { k: 'decline', id: r.id }) }, 'Decline')));
 }

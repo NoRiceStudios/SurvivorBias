@@ -13,7 +13,7 @@ import type { App } from './app';
 import { sfxClick, sfxStamp } from './audio';
 import { h, plural } from './dom';
 import { missionLabel, topBar } from './hq';
-import { mapLegend, theaterMap } from './theaterui';
+import { theaterMap } from './theaterui';
 import { chipRow, readinessChips } from './readiness';
 
 /** Everything this commander has ordered for the coming week, on one sheet. */
@@ -74,7 +74,6 @@ export function ordersOverview(app: App, sideId: SideId): HTMLElement {
       ),
       h('div', { class: 'col' },
         theaterMap(st, { viewer: sideId, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), feint: plan.feint?.sector, raid: plan.raid ?? undefined, scale: 2 }),
-        mapLegend(),
         changes.length ? h('div', { class: 'orders-changes' }, h('h3', null, 'Changes made this week'), h('ul', null, changes.map((c) => h('li', { class: 'small' }, c)))) : null,
       ),
     ),

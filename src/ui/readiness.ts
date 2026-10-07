@@ -12,6 +12,8 @@ import type { AircraftKind, SideId, SideState, Squadron } from '../core/types';
 import type { App } from './app';
 import { h, plural } from './dom';
 import { missionLabel } from './hq';
+import { believed } from './theaterui';
+import { bestTarget, strikeAt } from './warroom';
 import { tip } from './tip';
 
 export interface Chip {
@@ -21,7 +23,12 @@ export interface Chip {
   tab: string;
   focus?: string;
   detail: string;
+  /** Fix it in one click instead of going there. */
+  act?: () => void;
 }
+
+/** Show every chip instead of the first few. */
+let showAll = false;
 
 /** Everything that needs the commander's attention before sealing, most urgent first. */
 export function readinessChips(app: App, side: SideState): Chip[] {
@@ -32,16 +39,25 @@ export function readinessChips(app: App, side: SideState): Chip[] {
   if (!v.ok) chips.push({ label: v.reason.split(/[.:]/)[0], level: 'block', tab: 'war', focus: '.orders-col', detail: v.reason });
   const c = planCost(side, plan);
   if (c.stores > side.resources.stores) chips.push({ label: `Stores short by ${c.stores - side.resources.stores}`, level: 'block', tab: 'war', focus: '.orders-col', detail: `This plan needs ${c.stores} stores and we hold ${side.resources.stores}. Stand a squadron down, fly a smaller operation, use "Fit to stores" or buy a convoy (${CONVOY.supplies} supplies for ${CONVOY.stores} stores).` });
+  // Striking a site our own crews believe is already wrecked.
+  const tgt = plan.raid?.siteId ? st.theater.sites.find((x) => x.id === plan.raid!.siteId) : undefined;
+  if (tgt && tgt.owner !== side.id && believed(st, side.id, tgt) <= 20) {
+    const alt = bestTarget(app, side);
+    const better = alt && alt.id !== tgt.id && believed(st, side.id, alt) > 20 ? alt : undefined;
+    chips.push({ label: `Target ≈${believed(st, side.id, tgt)}%: already wrecked?${better ? ` Strike ${better.name}` : ''}`, level: 'warn', tab: 'war', focus: '.orders-col',
+      detail: `Our crews believe ${tgt.name} is down to ≈${believed(st, side.id, tgt)}%. Another raid may add little.${better ? ` Click to strike ${better.name} instead${side.orders.some((o) => o.siteId === better.id) ? ' (named in a standing order)' : ''}.` : ''}`,
+      act: better ? () => strikeAt(app, side, better) : undefined });
+  }
   if (side.requests.length) chips.push({ label: plural(side.requests.length, 'request'), level: 'warn', tab: 'war', focus: '.intray', detail: 'Squadron leaders are waiting for an answer. Unanswered requests lapse at the end of the week.' });
   const raidIds = plan.raid?.squadronIds ?? [];
   const kindIn = (k: AircraftKind[]) => raidIds.some((id) => k.includes(side.squadrons.find((q) => q.id === id)?.kind ?? 'recon'));
   if (plan.raid && plan.raid.target !== 'sweep' && kindIn(['medium', 'heavy']) && !kindIn(['fighter'])) chips.push({ label: 'Bombers unescorted', level: 'warn', tab: 'war', focus: '.orders-col', detail: 'No fighters fly with the bombers this week. Enemy fighters will have them to themselves.' });
   const tired = side.squadrons.filter((q) => q.fatigue >= 0.7 && q.airframes.length > 0);
-  if (tired.length) chips.push({ label: `${plural(tired.length, 'squadron')} exhausted`, level: 'warn', tab: 'war', focus: '.orders-col', detail: `${tired.map((q) => q.name).join(', ')}: tired crews shoot and fly worse and their morale slides. Each week standing down takes off about a third of it.` });
+  if (tired.length) chips.push({ label: tired.length <= 2 ? `${tired.map((q) => q.name.replace(/^No\. \d+ |^Staffel /, '').replace(/"/g, '')).join(', ')} exhausted` : `${tired.length} squadrons exhausted`, level: 'warn', tab: 'war', focus: '.orders-col', detail: `${tired.map((q) => q.name).join(', ')}: tired crews shoot and fly worse and their morale slides. Each week standing down takes off about a third of it.` });
   const low = side.squadrons.filter((q) => q.morale <= 0.25 && q.airframes.length > 0);
   if (low.length) chips.push({ label: 'Morale very low', level: 'warn', tab: 'squadrons', detail: `${low.map((q) => q.name).join(', ')}. If the whole wing's morale stays this low for three weeks, the crews will refuse to fly.` });
   const thin = raidIds.map((id) => side.squadrons.find((q) => q.id === id)).filter((q): q is Squadron => !!q && flyable(q).length > 0 && flyable(q).length <= 2);
-  if (thin.length) chips.push({ label: 'Tiny formations', level: 'warn', tab: 'war', detail: `${thin.map((q) => `${q.name} can put up only ${flyable(q).length}`).join('; ')}. A handful flying alone is easy prey.` });
+  if (thin.length) chips.push({ label: `${thin.map((q) => q.name.replace(/^No\. \d+ |^Staffel /, '').replace(/"/g, '')).join(', ')}: ${thin.map((q) => flyable(q).length).join('–')} aircraft, easy prey`, level: 'warn', tab: 'war', detail: `${thin.map((q) => `${q.name} can put up only ${flyable(q).length}`).join('; ')}. A handful flying alone is easy prey.` });
   const busy = new Set([...raidIds, ...plan.defense, ...(plan.feint?.squadronIds ?? []), plan.recon?.squadronId, ...(plan.rested ?? []).map((r) => r.id)]);
   const idle = side.squadrons.filter((q) => !busy.has(q.id) && flyable(q).length > 0 && q.fatigue < 0.5);
   if (idle.length) chips.push({ label: `${plural(idle.length, 'squadron')} idle`, level: 'info', tab: 'war', focus: '.orders-col', detail: `${idle.map((q) => q.name).join(', ')} ${idle.length > 1 ? 'have' : 'has'} no task. Unassigned squadrons rest but do not fight.` });
@@ -80,14 +96,14 @@ function planSentence(app: App, side: SideState): HTMLElement {
 
 /** Chips for the warnings; `readOnly` when the orders are sealed and cannot be changed from here. */
 export function chipRow(app: App, sideId: SideId, chips: Chip[], max = 5, readOnly = false): HTMLElement {
-  const shown = chips.slice(0, max);
+  const shown = showAll ? chips : chips.slice(0, max);
   return h('div', { class: 'chips' },
     shown.map((c) => h('button', {
       class: `chip ${c.level}`,
       ...tip({ head: c.label, text: c.detail }),
-      onclick: readOnly ? undefined : () => app.jump(sideId, c.tab, c.focus),
+      onclick: readOnly ? undefined : () => (c.act ? c.act() : app.jump(sideId, c.tab, c.focus)),
     }, c.level === 'block' ? '⛔ ' : c.level === 'warn' ? '⚠ ' : '· ', c.label)),
-    chips.length > max ? h('span', { class: 'chip more', ...tip(chips.slice(max).map((c) => c.label).join(' · ')) }, `+${chips.length - max}`) : null);
+    chips.length > max ? h('button', { class: 'chip more', onclick: () => { showAll = !showAll; app.render(); } }, showAll ? '− fewer' : `+${chips.length - max} more`) : null);
 }
 
 export function readinessBar(app: App, sideId: SideId): HTMLElement {

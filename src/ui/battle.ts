@@ -1,4 +1,4 @@
-import { AIRCRAFT, APPROACH_LABEL, ARCHETYPE_INFO, ZONE_LABEL } from '../core/data';
+import { AIRCRAFT, APPROACH_LABEL, ARCHETYPE_INFO, CALLSIGNS, ZONE_LABEL } from '../core/data';
 import type { AircraftKind, Archetype, Debrief, FighterApproach, Hit, SideId, SquadronReport, ZoneId } from '../core/types';
 import { leaderPortrait } from './general';
 import { REPORTS_LIKE } from './squadronsui';
@@ -6,7 +6,7 @@ import { pressureGauge, theaterMap } from './theaterui';
 import { tip } from './tip';
 import type { App } from './app';
 import { sfxClick, sfxKey, sfxStamp, sfxStatic, startDrone, stopDrone } from './audio';
-import { h, meter, plural } from './dom';
+import { animOn, h, meter, plural } from './dom';
 import { topBar } from './hq';
 import { aircraftCanvas } from './sprites';
 
@@ -20,19 +20,25 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
   const lines = d.radio;
   const log = h('div', { class: 'radio-log', 'data-keep-scroll': 'radio' });
   const maxT = Math.max(60, ...lines.map((l) => l.t));
-  const map = radioMap(maxT);
+  const map = plotMap(app, sideId, maxT);
   let shown = 0;
   let typing = false;
   let done = false;
   const sent = d.reports.reduce((a, r) => a + r.sent, 0);
   let calls = 0;
   let troubles = 0;
+  // One row per squadron that flew, by its call sign: how many went, how many called in trouble.
+  const groups = d.reports.map((r) => {
+    const sq = side.squadrons.find((q) => q.id === r.squadronId);
+    const cs = sq ? CALLSIGNS[sideId][sq.insignia % CALLSIGNS[sideId].length] : r.squadronName;
+    return { cs, name: r.squadronName, sent: r.sent, trouble: new Set<string>() };
+  });
   const tally = h('div', { class: 'radio-tally' });
   const paintTally = () => tally.replaceChildren(
-    h('span', null, h('b', null, String(sent)), ' took off'),
-    h('span', null, h('b', null, String(calls)), ' calls heard'),
-    h('span', { class: troubles ? 'bad' : '' }, h('b', null, String(troubles)), ' in trouble'),
-    h('span', { class: 'muted' }, 'Who came back: ', h('b', null, done ? 'at the debrief' : '?')));
+    h('div', { class: 'rt-sum' }, h('span', null, h('b', null, String(sent)), ' took off'), h('span', null, h('b', null, String(calls)), ' calls heard'), h('span', { class: troubles ? 'bad' : '' }, h('b', null, String(troubles)), ' in trouble'), h('span', { class: 'muted' }, done ? 'Who came back: at the debrief' : 'Who came back: ?')),
+    ...groups.map((g) => h('div', { class: 'rt-row' }, h('b', null, g.cs.toUpperCase()), h('span', { class: 'muted' }, g.name),
+      h('span', { class: 'rt-planes' }, Array.from({ length: g.sent }, (_, i) => h('i', { class: g.trouble.has(`${g.cs} ${i + 1}`) ? 'down' : '' }))),
+      h('span', { class: g.trouble.size ? 'bad' : 'muted' }, g.trouble.size ? `${g.trouble.size} down?` : ''))));
   paintTally();
   const proceed = h('button', { class: 'btn primary launch', onclick: () => { stopDrone(); sfxStamp(); app.go({ kind: 'debrief', side: sideId, tab: 'returns' }); } }, 'Debrief the crews ▸');
   const speeds = h('div', { class: 'seg mini' }, [1, 2].map((v) => h('button', { class: `seg-btn ${speed === v ? 'on' : ''}`, onclick: (e: MouseEvent) => {
@@ -46,7 +52,10 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
     const dead = /no further|carrier wave|static\]|cry/.test(l.text);
     const trouble = /going down|gone in|blew up|falling out|burning|on fire|won't answer|coming off|spinning|no further|carrier/.test(l.text);
     calls++;
-    if (trouble) troubles++;
+    if (trouble) {
+      troubles++;
+      groups.find((g) => l.callsign.startsWith(`${g.cs} `))?.trouble.add(l.callsign);
+    }
     paintTally();
     const row = h('div', { class: `radio-line ${isOther ? 'home' : ''} ${dead ? 'dead' : ''} ${trouble ? 'trouble' : ''}` },
       h('span', { class: 'rt' }, l.t >= 200 ? `HOME` : `T+${String(l.t).padStart(3, '0')}`),
@@ -109,6 +118,7 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
   if (lines.length === 0) log.append(h('div', { class: 'radio-line dead' }, h('span', { class: 'tx' }, 'Radio silence. No operations reported this week.')));
 
   return h('div', { class: 'radio-screen' },
+    h('div', { class: 'issued' }, h('span', { class: 'stamp big' }, 'ORDERS ISSUED')),
     topBar(app, side, d.turn, 'operations'),
     h('div', { class: 'radio-body' },
       h('div', { class: 'radio-left' },
@@ -124,65 +134,50 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
   );
 }
 
-function radioMap(maxT: number) {
-  const W = 220;
-  const H = 150;
+/** The theater map at night, with the operation plotted on it as the calls come in. */
+function plotMap(app: App, sideId: SideId, maxT: number) {
+  const st = app.state!;
+  const plan = app.plans[sideId];
+  const base = theaterMap(st, { viewer: sideId, raid: plan.raid ?? undefined, scale: 3 });
+  base.classList.add('night');
+  const [hx, hy, tx, ty, W, H] = JSON.parse(base.dataset.route ?? '[20,140,240,140,480,264]') as number[];
   const c = document.createElement('canvas');
   c.width = W;
   c.height = H;
-  c.className = 'pix radio-map';
+  c.className = 'pix plot-overlay';
   const g = c.getContext('2d')!;
-  g.fillStyle = '#2f3a2b';
-  g.fillRect(0, 0, W, H);
-  for (let y = 0; y < H; y += 10) {
-    g.fillStyle = '#36432f';
-    g.fillRect(0, y, W, 1);
-  }
-  for (let x = 0; x < W; x += 10) {
-    g.fillStyle = '#36432f';
-    g.fillRect(x, 0, 1, H);
-  }
-  // Coastline
-  g.fillStyle = '#3f5a6a';
-  for (let y = 0; y < H; y++) g.fillRect(Math.round(80 + Math.sin(y / 11) * 6), y, 14, 1);
-  const base = [20, 110];
-  const tgt = [190, 40];
-  g.fillStyle = '#d8cca6';
-  g.fillRect(base[0] - 2, base[1] - 2, 5, 5);
-  g.fillStyle = '#b0302a';
-  g.fillRect(tgt[0] - 2, tgt[1] - 2, 5, 5);
-  // Route dashes
-  g.fillStyle = '#c9c1ae';
-  for (let i = 0; i < 40; i += 2) {
-    const f = i / 40;
-    g.fillRect(Math.round(base[0] + (tgt[0] - base[0]) * f), Math.round(base[1] + (tgt[1] - base[1]) * f), 1, 1);
-  }
+  const el = h('div', { class: 'plot' }, base, c);
   const pos = (t: number) => {
-    // Outbound until ~60% of the timeline, then back.
+    // Outbound until ~55% of the timeline, then home again.
     const f = Math.min(1, t / (maxT * 0.55));
     const back = t > maxT * 0.55 ? Math.min(1, (t - maxT * 0.55) / (maxT * 0.45)) : 0;
     const k = f - back;
-    return [base[0] + (tgt[0] - base[0]) * k, base[1] + (tgt[1] - base[1]) * k + (back > 0 ? 8 : 0)];
+    return [hx + (tx - hx) * k, hy + (ty - hy) * k + (back > 0 ? 8 : 0)];
   };
   return {
-    el: c,
+    el,
     mark(t: number, loss: boolean, callsign = '') {
       if (t < 0) return;
       const [x0, y0] = pos(t);
       // Spread the plots of one moment a little, so a busy fight reads as a crowd.
-      const jit = ((callsign.length * 7 + t * 3) % 9) - 4;
-      const x = x0 + jit * 0.8;
-      const y = y0 + ((callsign.charCodeAt(0) || 0) % 7) - 3;
-      g.fillStyle = loss ? '#e04a3a' : '#e0c070';
+      const n = parseInt(callsign.split(' ').pop() ?? '0', 10) || 0;
+      const x = Math.round(x0 + ((n * 5) % 11) - 5);
+      const y = Math.round(y0 + ((callsign.charCodeAt(0) || 0) % 9) - 4);
+      g.font = '8px monospace';
       if (loss) {
-        for (let i = -2; i <= 2; i++) {
-          g.fillRect(Math.round(x + i), Math.round(y + i), 1, 1);
-          g.fillRect(Math.round(x + i), Math.round(y - i), 1, 1);
+        g.fillStyle = '#ff5a44';
+        for (let i = -3; i <= 3; i++) {
+          g.fillRect(x + i, y + i, 2, 2);
+          g.fillRect(x + i, y - i, 2, 2);
         }
-        g.font = '6px monospace';
-        g.fillText(callsign.split(' ').slice(-1)[0].slice(0, 8), Math.round(x + 4), Math.round(y + 2));
+        g.fillStyle = 'rgba(15,17,13,0.75)';
+        const w = g.measureText(callsign.toUpperCase()).width;
+        g.fillRect(x + 5, y - 5, w + 4, 10);
+        g.fillStyle = '#ffb0a0';
+        g.fillText(callsign.toUpperCase(), x + 7, y + 3);
       } else {
-        g.fillRect(Math.round(x), Math.round(y), 2, 2);
+        g.fillStyle = '#f0d070';
+        g.fillRect(x - 1, y - 1, 3, 3);
       }
     },
   };
@@ -244,14 +239,41 @@ function kpis(app: App, d: Debrief): HTMLElement {
   const claims = d.reports.reduce((a, r) => a + r.claims, 0);
   const front = side.perceived.front;
   const df = d.frontBefore === undefined ? null : front - d.frontBefore;
-  const kpi = (value: string, label: string, cls: string, t: string) => h('div', { class: `kpi ${cls}`, ...tip({ head: label, text: t }) }, h('b', null, value), h('span', null, label));
+  const news = d.theaterNews.filter((x) => !STATUS.test(x));
+  const landing = firstLook(app, d);
+  const kpi = (value: string, label: string, cls: string, t: string, count?: number) => {
+    const b = h('b', null, value);
+    // The first time the sheet opens, "back" counts up as the aircraft land.
+    if (count !== undefined && landing && animOn()) {
+      const [, of] = value.split('/');
+      let k = 0;
+      b.textContent = `0/${of}`;
+      const tick = () => { if (k > 0 && !b.isConnected) return; b.textContent = `${Math.min(count, k)}/${of}`; if (k++ < count) setTimeout(tick, 120); };
+      setTimeout(tick, 200);
+    }
+    return h('div', { class: `kpi ${cls}`, ...tip({ head: label, text: t }) }, b, h('span', null, label));
+  };
   return h('section', { class: 'kpis' },
-    kpi(sent ? `${back}/${sent}` : '—', 'back', sent && back < sent ? 'bad' : 'good', 'Aircraft that came home of those that took off.'),
+    kpi(sent ? `${back}/${sent}` : '—', 'back', sent && back < sent ? 'bad' : 'good', 'Aircraft that came home of those that took off.', sent ? back : undefined),
     kpi(String(d.missing.length), 'missing', d.missing.length ? 'bad' : 'good', 'Did not return. Their damage was never recorded.'),
     kpi(String(claims), 'enemy claimed', '', 'What our crews claim to have destroyed. Unverified.'),
-    kpi(`${front >= 0 ? '+' : ''}${front}`, df === null || df === 0 ? 'front pressure' : `front ${df > 0 ? '▲' : '▼'}${Math.abs(df)}`, front >= 0 ? 'good' : 'bad', 'The Army liaison\'s figure for pressure on the front. A sector falls at about ±24.'),
-    d.theaterNews.length ? h('div', { class: 'kpi-news' }, d.theaterNews.map((x) => h('p', { class: 'typed' }, x))) : null,
+    h('div', { class: `kpi ${front >= 0 ? 'good' : 'bad'}`, ...tip({ head: 'Front pressure', text: 'The Army liaison\'s figure for pressure on the front. A sector falls at about ±24.' }) },
+      h('b', null, `${front >= 0 ? '+' : ''}${front}`), h('span', null, 'front pressure'), df ? h('small', { class: df > 0 ? 'up' : 'down' }, `${df > 0 ? '▲' : '▼'}${Math.abs(df)} this week`) : null),
+    news.length ? h('div', { class: 'kpi-news paper' }, h('span', { class: 'stamp intel' }, 'TELEPHONE'), news.map((x) => h('p', { class: 'typed' }, x))) : null,
   );
+}
+
+/** News of the wing's own men: it belongs with the telegrams, not the headlines. */
+const STATUS = /presumed killed|is alive|prisoner|Red Cross|is back with|is missing with/i;
+
+/** Weeks whose debrief has been opened once already (the landing plays only the first time). */
+const looked = new Set<string>();
+function firstLook(app: App, d: Debrief): boolean {
+  const k = `${app.state!.seed}:${d.side}:${d.turn}`;
+  if (looked.has(k)) return false;
+  // Marked after this render, so both the figures and the hardstanding animate on the same first look.
+  setTimeout(() => looked.add(k), 0);
+  return true;
 }
 
 /* ---------- Sheet 1: the returns ---------- */
@@ -266,6 +288,8 @@ function returnsSheet(app: App, d: Debrief): HTMLElement {
   const board = kind ? damageBoard(app, d, kind) : h('p', { class: 'muted' }, 'Nothing flew this week.');
   const damaged = d.returned.filter((r) => r.hits.length > 0 || r.fate !== 'returned');
   const clean = d.returned.filter((r) => !damaged.includes(r));
+  const landing = firstLook(app, d);
+  const status = d.theaterNews.filter((x) => STATUS.test(x));
   return h('div', { class: 'col' },
     h('section', { class: 'paper panel damage-board' },
       h('div', { class: 'board-head' },
@@ -275,10 +299,10 @@ function returnsSheet(app: App, d: Debrief): HTMLElement {
     h('section', { class: 'paper panel' },
       h('h2', null, 'On the hardstanding'),
       h('div', { class: 'fleet' },
-        damaged.map((r) => {
+        damaged.map((r, i) => {
           const af = side.squadrons.flatMap((s) => s.airframes).find((a) => a.id === r.airframeId);
           const tag = r.fate === 'crashed' ? 'Written off on landing' : r.fate === 'aborted' ? 'Turned back early' : `${r.hits.length} hole${r.hits.length > 1 ? 's' : ''}`;
-          return h('div', { class: `airframe ${r.fate}` },
+          return h('div', { class: `airframe ${r.fate} ${landing ? 'taxi' : ''}`, style: landing ? `animation-delay:${i * 120}ms` : undefined },
             aircraftCanvas(r.kind, { side: d.side, hits: r.hits, seed: r.serial.length, patches: af?.patches ? af.patches - r.hits.length : 0 }, r.kind === 'fighter' || r.kind === 'recon' ? 3 : 2),
             h('div', { class: 'af-serial' }, r.serial),
             h('div', { class: 'small muted' }, `${sqName(r.squadronId)} · ${r.role}`),
@@ -289,45 +313,57 @@ function returnsSheet(app: App, d: Debrief): HTMLElement {
           h('div', { class: 'fine-sprites' }, clean.slice(0, 16).map((r) => h('span', tip(`${r.serial} · ${sqName(r.squadronId)} · not a mark on her`), aircraftCanvas(r.kind, { side: d.side, seed: r.serial.length }, 1)))),
           h('div', { class: 'small muted' }, `+${clean.length} back without a scratch`)) : null,
         d.returned.length === 0 ? h('p', { class: 'muted' }, 'Nothing came back to inspect.') : null)),
-    d.missing.length ? h('section', { class: 'paper panel telegrams' },
-      h('h2', null, 'Telegrams: missing from operations'),
-      h('table', { class: 'missing' },
+    d.missing.length || status.length ? h('section', { class: 'paper panel telegrams' },
+      h('h2', null, 'Telegrams'),
+      status.length ? h('div', { class: 'status-updates' }, status.map((x) => h('p', { class: 'typed' }, h('span', { class: 'stamp notice' }, 'STATUS'), ' ', x))) : null,
+      d.missing.length ? h('h3', null, 'Missing from operations') : null,
+      d.missing.length ? h('table', { class: 'missing' },
         h('thead', null, h('tr', null, h('th', null, 'Serial'), h('th', null, 'Unit'), h('th', null, 'Captain and crew'), h('th', null, 'Last heard'))),
         h('tbody', null, d.missing.map((m) => h('tr', null,
           h('td', null, m.serial, h('div', { class: 'small muted' }, AIRCRAFT[m.kind].name[d.side])), h('td', null, sqName(m.squadronId)),
           h('td', null, `${m.captain ?? 'Unknown'}${AIRCRAFT[m.kind].crew > 1 && !m.captain?.includes('(') ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}`),
-          h('td', { class: 'typed' }, m.lastWords ? `"${m.lastWords}"` : 'Nothing heard.', m.witnessed ? h('div', { class: 'small muted' }, m.witnessed) : null))))),
-      h('p', { class: 'muted small' }, 'Next-of-kin telegrams will be sent in due course.')) : null,
+          h('td', { class: 'typed' }, m.lastWords ? `"${m.lastWords}"` : 'Nothing heard.', m.witnessed ? h('div', { class: 'small muted' }, m.witnessed) : null))))) : null,
+      d.missing.length ? h('p', { class: 'muted small' }, 'Next-of-kin telegrams will be sent in due course.') : null) : null,
   );
 }
 
 /** What came back, hole by hole, next to the aircraft that did not. */
 function damageBoard(app: App, d: Debrief, kind: AircraftKind): HTMLElement {
+  const st = app.state!;
   const back = d.returned.filter((r) => r.kind === kind);
   const hits = back.flatMap((r) => r.hits);
   const lost = d.missing.filter((m) => m.kind === kind);
+  // Earlier weeks' holes on this type, faint: the pattern building up.
+  const earlier = st.archive.slice(-10, -1).flatMap((e) => e.survivorHits[d.side]).filter((x) => (x.kind ?? 'medium') === kind);
   const scale = kind === 'heavy' ? 5 : kind === 'medium' ? 6 : 8;
   const holder = h('div', { class: 'hero-plot' });
+  const draw = (n: number) => holder.replaceChildren(aircraftCanvas(kind, { side: d.side, style: 'blueprint', hits: hits.slice(0, n), faintHits: earlier, dots: true, bigDots: true }, scale));
   // The holes are stamped onto the plot one batch at a time.
-  const steps = Math.min(15, hits.length);
+  const steps = animOn() ? Math.min(15, hits.length) : 0;
   let k = 0;
   const paint = () => {
-    const n = steps ? Math.round((k / steps) * hits.length) : 0;
-    holder.replaceChildren(aircraftCanvas(kind, { side: d.side, style: 'blueprint', hits: hits.slice(0, n), dots: true }, scale));
+    const n = steps ? Math.round((k / steps) * hits.length) : hits.length;
+    draw(n);
     if (k > 0 && n > 0) sfxKey();
     k++;
     // Stop once the sheet has been left (the first frame is drawn before it is on screen).
     if (k <= steps && (k === 1 || holder.isConnected)) setTimeout(paint, 80);
   };
   paint();
+  const byZone: Partial<Record<ZoneId, number>> = {};
+  for (const x of hits) byZone[x.zone] = (byZone[x.zone] ?? 0) + 1;
+  const tally = (Object.entries(byZone) as [ZoneId, number][]).sort((a, b) => b[1] - a[1]);
   return h('div', { class: 'damage-hero' },
-    h('figure', { class: 'hero-left' }, holder,
-      h('figcaption', null, h('b', null, `${hits.length} holes`), ` on ${back.length} ${AIRCRAFT[kind].name[d.side]} that came back.`),
+    h('figure', { class: 'hero-left' },
+      h('div', { class: 'hero-row' }, holder,
+        h('ul', { class: 'zone-tally' }, tally.map(([z, n]) => h('li', null, h('span', null, ZONE_LABEL[z]), h('b', null, String(n)))),
+          tally.length ? null : h('li', { class: 'muted' }, 'No holes'))),
+      h('figcaption', null, h('b', null, `${hits.length} holes`), ` on ${back.length} ${AIRCRAFT[kind].name[d.side]} that came back`, earlier.length ? h('span', { class: 'muted' }, ` · faint: ${earlier.length} from earlier weeks`) : null),
       h('p', { class: 'handwritten' }, fitterSays(hits))),
     h('div', { class: 'hero-right' },
       h('h3', null, lost.length ? `${lost.length} did not return` : 'Every one came back'),
       lost.length ? h('div', { class: 'ghosts' }, lost.slice(0, 6).map((m) => h('div', { class: 'ghost' },
-        h('div', { class: 'ghost-wrap' }, h('div', { class: 'ghost-plane' }, aircraftCanvas(kind, { side: d.side, style: 'blueprint' }, kind === 'fighter' ? 3 : 2)), h('span', { class: 'ghost-q' }, '?')),
+        h('div', { class: 'ghost-wrap' }, h('div', { class: 'ghost-plane' }, aircraftCanvas(kind, { side: d.side, style: 'blueprint' }, kind === 'fighter' ? 3 : 2)), h('span', { class: 'stamp reprimand no-record' }, 'NO RECORD')),
         h('div', { class: 'af-serial' }, m.serial),
         h('div', { class: 'small typed' }, m.lastWords ? `"${m.lastWords}"` : 'Nothing heard.')))) : null,
       h('p', { class: 'small muted' }, lost.length ? 'Their damage was not recorded: there is nothing left to inspect. Their last calls are the only clue to what brings an aircraft down.' : 'No missing aircraft of this type this week.')),

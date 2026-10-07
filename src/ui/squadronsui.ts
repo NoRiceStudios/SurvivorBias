@@ -18,6 +18,7 @@ import { leaderPortrait } from './general';
 import { aircraftCanvas, spriteDef, zoneAt } from './sprites';
 import { setTip, tip } from './tip';
 import { pips } from './widgets';
+import { requestCard, sqLabel } from './warroom';
 
 /** How each kind of leader colours his reports, as the adjutant puts it. */
 export const REPORTS_LIKE: Record<Archetype, string> = {
@@ -49,9 +50,34 @@ function taskOf(app: App, side: SideState, sq: Squadron): string {
   return 'REST';
 }
 
+/** The wing at a glance, under the roster: strength by type and how long each type will last. */
+function wingSummary(app: App, side: SideState): HTMLElement {
+  const st = app.state!;
+  const kinds = (['fighter', 'medium', 'heavy', 'recon'] as const).filter((k) => side.squadrons.some((q) => q.kind === k && q.airframes.length));
+  const avgFat = side.squadrons.filter((q) => q.airframes.length).reduce((a, q, _, all) => a + q.fatigue / all.length, 0);
+  return h('div', { class: 'wing-summary paper' },
+    h('h3', null, 'The wing'),
+    kinds.map((k) => {
+      const sqs = side.squadrons.filter((q) => q.kind === k);
+      const have = sqs.reduce((a, q) => a + q.airframes.length, 0);
+      const crews = sqs.reduce((a, q) => a + q.crews, 0);
+      const lost3 = (side.roll ?? []).filter((e) => e.week >= st.turn - 3 && sqs.some((q) => q.name === e.squadron)).length;
+      const onOrder = side.factory.queue.filter((x) => x === k).length;
+      const weeks = lost3 > onOrder ? Math.max(1, Math.round((have / (lost3 - onOrder)) * 3)) : null;
+      return h('div', { class: 'ws-row', ...tip({ head: AIRCRAFT[k].name[side.id], text: `${have} aircraft, ${crews} crews, ${onOrder} on order. Lost in the last three weeks: ${lost3}.` }) },
+        h('span', null, AIRCRAFT[k].name[side.id]), h('b', null, `${have}`), h('small', { class: 'muted' }, ` a/c · ${crews} crews`),
+        weeks !== null && weeks <= 8 ? h('div', { class: 'small bad' }, `gone in ~${weeks} weeks at this rate`) : null);
+    }),
+    h('div', { class: 'ws-row' }, h('span', null, 'Average fatigue'), pips(avgFat, 6, 0.6)));
+}
+
 function roster(app: App, side: SideState): HTMLElement {
   const st = app.state!;
-  return h('nav', { class: 'roster' }, side.squadrons.map((q) => {
+  return h('nav', { class: 'roster' }, wingRows(app, side, st), wingSummary(app, side));
+}
+
+function wingRows(app: App, side: SideState, st: NonNullable<App['state']>): HTMLElement[] {
+  return side.squadrons.map((q) => {
     const flags = [
       side.requests.some((r) => r.squadronId === q.id) ? '✉' : '',
       q.candidate && q.candidateWeek === st.turn ? '★' : '',
@@ -61,11 +87,11 @@ function roster(app: App, side: SideState): HTMLElement {
     return h('button', { class: `roster-row ${q.id === app.selected ? 'on' : ''} ${q.airframes.length === 0 ? 'empty' : ''}`, onclick: () => { app.selected = q.id; sfxClick(); app.render(); } },
       h('div', { class: 'rr-face' }, leaderPortrait(q.leader, side.id, 1)),
       h('div', { class: 'rr-main' },
-        h('div', { class: 'rr-name' }, q.name.replace(/^No\. \d+ /, ''), flags ? h('span', { class: 'rr-flags' }, flags) : null),
+        h('div', { class: 'rr-name' }, sqLabel(q.name), flags ? h('span', { class: 'rr-flags' }, flags) : null),
         h('div', { class: 'rr-sub' }, `${AIRCRAFT[q.kind].name[side.id]} · ${flyable(q).length}/${q.airframes.length}`),
         h('div', { class: 'rr-pips' }, pips(q.fatigue, 6, 0.6), pips(q.morale, 6, 0.3, true))),
       h('span', { class: `task-chip ${task === 'REST' ? 'rest' : ''}` }, task));
-  }));
+  });
 }
 
 function dossier(app: App, side: SideState, sq: Squadron): HTMLElement {
@@ -95,14 +121,15 @@ function dossier(app: App, side: SideState, sq: Squadron): HTMLElement {
     h('section', { class: 'paper panel dossier-head' },
       h('div', { class: 'leader-photo' }, leaderPortrait(sq.leader, side.id, 2)),
       h('div', { class: 'dh-main' },
-        h('h2', null, sq.name, h('span', { class: 'dh-type' }, ` · ${AIRCRAFT[sq.kind].name[side.id]}, ${AIRCRAFT[sq.kind].role.toLowerCase()}`)),
+        h('h2', null, sqLabel(sq.name), h('span', { class: 'dh-type' }, ` · ${AIRCRAFT[sq.kind].name[side.id]}, ${AIRCRAFT[sq.kind].role.toLowerCase()}`)),
         h('div', { class: 'leader' }, `${sq.leader.rank} ${sq.leader.name} `,
           h('span', { class: 'trait', ...tip({ head: info.label, text: info.blurb }) }, info.label),
           trait ? h('span', { class: `trait rep ${sq.leader.trait}`, ...tip({ head: trait.label, text: trait.blurb }) }, trait.label) : null,
           h('span', { class: 'small muted' }, ` ${sq.leader.ops ?? 0} ops`)),
         h('div', { class: 'reports-like handwritten' }, `How he reports: ${REPORTS_LIKE[sq.leader.archetype]}`),
         sq.deputy ? h('div', { class: 'small muted' }, describeFlightCommander(sq.deputy, `Next in line: ${sq.deputy.rank} ${sq.deputy.name}`)) : null,
-        actions),
+        actions,
+        side.requests.filter((r) => r.squadronId === sq.id).map((r) => h('div', { class: 'bubble' }, requestCard(app, side, r)))),
       h('div', { class: 'dh-stats' },
         stat('Aircraft', `${flyable(sq).length}/${sq.airframes.length}`, repairs ? `${repairs} in repair` : 'ready / on strength'),
         stat('Crews', String(sq.crews), sq.crews < sq.airframes.length ? 'short of crews' : 'enough to fly them'),
