@@ -123,7 +123,7 @@ export function readinessBar(app: App, sideId: SideId): HTMLElement {
     ),
     h('div', { class: 'launch-actions' },
       c.stores > side.resources.stores ? h('button', { class: 'btn small choice', ...tip('Drop maximum effort and the feint, then escorts and squadrons from the raid, until the plan fits the stores we hold.'), onclick: () => app.act(() => app.fitToStores(sideId)) }, 'Fit to stores') : null,
-      h('button', { class: 'btn small', disabled: side.convoyWeek === st.turn || side.resources.supplies < CONVOY.supplies, ...tip(`Buy a stores convoy: ${CONVOY.supplies} supplies for ${CONVOY.stores} stores, once a week.`), onclick: () => app.cmd(sideId, { k: 'convoy' }) }, side.convoyWeek === st.turn ? 'Convoy bought' : `Convoy +${CONVOY.stores}`),
+      h('button', { class: 'btn small', disabled: side.convoyWeek === st.turn || side.resources.supplies < CONVOY.supplies || side.resources.stores >= storesCap(side), ...tip(`Buy a stores convoy: ${CONVOY.supplies} supplies for ${CONVOY.stores} stores, once a week.`), onclick: () => app.cmd(sideId, { k: 'convoy' }) }, side.convoyWeek === st.turn ? 'Convoy bought' : `Convoy +${CONVOY.stores}`),
       h('div', { class: 'cta' },
         h('button', { class: 'btn primary launch', disabled: !!blocked, onclick: () => void app.seal(sideId) }, label),
         blocked ? h('div', { class: 'cta-why' }, blocked.label) : null),

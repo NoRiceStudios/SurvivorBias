@@ -86,6 +86,7 @@ import {
   mergeSquadrons,
   crewPrice,
   aircraftName,
+  spec,
 } from '../src/core';
 
 interface SaveFile {
@@ -182,8 +183,8 @@ function adjutant(): string[] {
     const have = me().squadrons.filter((q) => q.kind === kind).reduce((a, q) => a + q.airframes.length, 0);
     const onOrder = me().factory.queue.filter((k) => k === kind).length;
     const lost3 = (me().roll ?? []).filter((e) => e.week >= state!.turn - 3 && me().squadrons.find((q) => q.name === e.squadron)?.kind === kind).length;
-    if (have > 0 && have <= 6 && onOrder === 0) notes.push(`Only ${have} ${aircraftName(kind, { id: 0 })} left and none on order: order more (build ${kind}); crews follow aircraft, or ask the Ministry (crews N).`);
-    else if (have > 0 && lost3 >= 4 && onOrder * 2 < lost3) notes.push(`We have lost ${lost3} ${aircraftName(kind, { id: 0 })} in three weeks and have ${onOrder} on order. At this rate the type will be gone in ${Math.max(1, Math.round((have / lost3) * 3))} weeks (build ${kind}).`);
+    if (have > 0 && have <= 6 && onOrder === 0) notes.push(`Only ${have} ${aircraftName(kind, me())} left and none on order: order more (build ${kind}); crews follow aircraft, or ask the Ministry (crews N).`);
+    else if (have > 0 && lost3 >= 4 && onOrder * 2 < lost3) notes.push(`We have lost ${lost3} ${aircraftName(kind, me())} in three weeks and have ${onOrder} on order. At this rate the type will be gone in ${Math.max(1, Math.round((have / lost3) * 3))} weeks (build ${kind}).`);
   }
   for (const q of side.squadrons) {
     if (q.candidate && q.candidateWeek === state!.turn) notes.push(`${sqCode(q)} ${q.name}: ${q.leader.rank} ${q.leader.name} has taken command. ${describeFlightCommander(q.candidate, `The other flight commander, ${q.candidate.rank} ${q.candidate.name}`)} Appoint him instead this week: appoint ${sqCode(q)}.`);
@@ -241,12 +242,12 @@ function squadrons() {
     const d = sq.doctrine;
     const repairs = sq.airframes.filter((a) => a.status === 'repair').length;
     say(
-      `${sqCode(sq)} ${sq.name} — ${aircraftName(sq.kind, { id: 0 })} (${AIRCRAFT[sq.kind].role}), range ${sq.kind === 'fighter' ? escortRange(me()) : bomberRange(sq.kind)} sectors`,
+      `${sqCode(sq)} ${sq.name} — ${aircraftName(sq.kind, me())} (${AIRCRAFT[sq.kind].role}), range ${sq.kind === 'fighter' ? escortRange(me()) : bomberRange(sq.kind)} sectors`,
       `    aircraft ${sq.airframes.length} (${flyable(sq).length} ready, ${repairs} in repair) · crews ${sq.crews} · skill ${ten(sq.skill)} · morale ${ten(sq.morale)} · fatigue ${ten(sq.fatigue)}`,
       `    leader: ${sq.leader.rank} ${sq.leader.name} — "${info.label}": ${info.blurb} · ${sq.leader.ops ?? 0} operation${sq.leader.ops === 1 ? '' : 's'} in command${sq.leader.trait ? ` · known as "${TRAIT_INFO[sq.leader.trait].label}": ${TRAIT_INFO[sq.leader.trait].blurb}` : ''}`,
       ...(sq.leader.log ?? []).slice(-3).map((e) => `    record: week ${e.week}, ${e.text}`),
       `    doctrine: aggression ${d.aggression.toFixed(2)} · formation ${d.formation.toFixed(2)} · altitude ${d.altitude.toFixed(2)} · break off at ${pct(d.breakOff)} lost`,
-      `    armor (${armorUsed(sq)}/${AIRCRAFT[sq.kind].armorBudget} plates): ${ZONES.filter((z) => sq.armor[z]).map((z) => `${z} ${sq.armor[z]}`).join(', ') || 'none'}`,
+      `    armor (${armorUsed(sq)}/${spec(me(), sq.kind).armorBudget} plates): ${ZONES.filter((z) => sq.armor[z]).map((z) => `${z} ${sq.armor[z]}`).join(', ') || 'none'}`,
       ...sq.notables.slice(0, 2).map((n) => `    note: ${n}`),
     );
   }
@@ -258,8 +259,8 @@ function hangar(code: string) {
   const comp = st.archive.slice(-10).flatMap((e) => e.survivorHits[0]).filter((h) => (h.kind ?? 'medium') === sq.kind);
   const counts: Record<string, number> = {};
   for (const h of comp) counts[h.zone] = (counts[h.zone] ?? 0) + 1;
-  say(`Hangar — ${sq.name} (${aircraftName(sq.kind, { id: 0 })}). Plates ${armorUsed(sq)}/${AIRCRAFT[sq.kind].armorBudget} (max ${MAX_ARMOR_PER_ZONE} per zone; fitting a plate costs ${COSTS.armorChange} supplies, removing is free; plates add weight, slower aircraft are caught more often).`);
-  say(`Damage survey of returned ${aircraftName(sq.kind, { id: 0 })}s (last 10 weeks; each type is built differently): ${comp.length} holes plotted.`);
+  say(`Hangar — ${sq.name} (${aircraftName(sq.kind, me())}). Plates ${armorUsed(sq)}/${spec(me(), sq.kind).armorBudget} (max ${MAX_ARMOR_PER_ZONE} per zone; fitting a plate costs ${COSTS.armorChange} supplies, removing is free; plates add weight, slower aircraft are caught more often).`);
+  say(`Damage survey of returned ${aircraftName(sq.kind, me())}s (last 10 weeks; each type is built differently): ${comp.length} holes plotted.`);
   const calls = me().perceived.lastCalls?.[sq.kind];
   for (const z of ZONES) say(`   ${ZONE_LABEL[z].padEnd(12)} armor ${'■'.repeat(sq.armor[z])}${'□'.repeat(MAX_ARMOR_PER_ZONE - sq.armor[z])}   holes seen: ${counts[z] ?? 0}${comp.length ? ` (${Math.round(((counts[z] ?? 0) / comp.length) * 100)}%)` : ''}${calls?.[z] ? ` · last calls of the missing: ${calls[z]}` : ''}`);
   if (calls) say('   (Last calls: what crews who did not come back said over the radio as they went down.)');
@@ -274,8 +275,8 @@ function factory() {
   say(`Flak defences strength ${Math.round(side.flak * 100)}. Add batteries: ${COSTS.flakUpgrade(side.flak)} supplies + 20 stores.`);
   say('Can build:');
   for (const k of ['fighter', 'medium', 'heavy', 'recon'] as AircraftKind[]) {
-    const s = AIRCRAFT[k];
-    say(`   ${k}: ${aircraftName(k, { id: 0 })} — ${s.role}, ${s.cost} supplies, ${s.build} production points, crew ${s.crew}${canBuild(side, k) ? '' : ` [requires ${RESEARCH.find((r) => r.id === s.requires)?.name}]`}`);
+    const s = spec(side, k);
+    say(`   ${k}: ${aircraftName(k, me())} — ${s.role}, ${s.cost} supplies, ${s.build} production points, crew ${s.crew}${canBuild(side, k) ? '' : ` [requires ${RESEARCH.find((r) => r.id === s.requires)?.name}]`}`);
   }
   say(`Queue: ${f.queue.length ? f.queue.map((k, i) => `${i + 1}. ${k}`).join(', ') : 'empty'} (progress carried ${f.progress.toFixed(1)} pts)`);
 }
@@ -402,7 +403,7 @@ function launch() {
   say('Returned aircraft (ground crew damage plot):');
   for (const r of d.returned) {
     const sq = me().squadrons.find((q) => q.id === r.squadronId);
-    say(`  ${r.serial} ${aircraftName(r.kind, { id: 0 })} (${sq ? sqCode(sq) : 'disbanded'}, ${r.role})${r.fate === 'crashed' ? ' WRITTEN OFF ON LANDING' : r.fate === 'aborted' ? ' turned back early' : ''}: ${zoneCounts(r.hits)}`);
+    say(`  ${r.serial} ${aircraftName(r.kind, me())} (${sq ? sqCode(sq) : 'disbanded'}, ${r.role})${r.fate === 'crashed' ? ' WRITTEN OFF ON LANDING' : r.fate === 'aborted' ? ' turned back early' : ''}: ${zoneCounts(r.hits)}`);
   }
   const bomberHits = d.returned.filter((r) => r.kind === 'medium' || r.kind === 'heavy').flatMap((r) => r.hits);
   if (bomberHits.length) say(`  Bomber damage this operation: ${zoneCounts(bomberHits)}`);
@@ -424,7 +425,7 @@ function launch() {
   }
   if (d.missing.length) {
     say('Missing:');
-    for (const m of d.missing) say(`  ${m.serial} ${aircraftName(m.kind, { id: 0 })} — ${m.captain}${AIRCRAFT[m.kind].crew > 1 && !m.captain?.includes('(') ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}. Last heard: ${m.lastWords ? `"${m.lastWords}"` : 'nothing'}${m.witnessed ? ` · ${m.witnessed}` : ''}`);
+    for (const m of d.missing) say(`  ${m.serial} ${aircraftName(m.kind, me())} — ${m.captain}${AIRCRAFT[m.kind].crew > 1 && !m.captain?.includes('(') ? ` and ${AIRCRAFT[m.kind].crew - 1} crew` : ''}. Last heard: ${m.lastWords ? `"${m.lastWords}"` : 'nothing'}${m.witnessed ? ` · ${m.witnessed}` : ''}`);
   }
   say('Home front:', ...d.defenseSummary.map((x) => `  ${x}`));
   const photographed = d.recon && st.theater.sites.find((x) => x.id === d.recon!.siteId);
@@ -460,7 +461,7 @@ function endView() {
     const lost = st.archive.flatMap((e) => e.lostHits[0]).filter((h) => (h.kind ?? 'medium') === k);
     if (!surv.length && !lost.length) continue;
     const fatal = lost.filter((h) => h.lethal);
-    say(`DECLASSIFIED — where our ${aircraftName(k, { id: 0 })}s were hit:`);
+    say(`DECLASSIFIED — where our ${aircraftName(k, me())}s were hit:`);
     for (const z of ZONES) {
       const c = (a: Hit[]) => a.filter((h) => h.zone === z).length;
       say(`   ${ZONE_LABEL[z].padEnd(12)} on survivors ${String(c(surv)).padStart(4)} · on aircraft that did not return ${String(c(lost)).padStart(4)} · fatal hits ${String(c(fatal)).padStart(3)} · chance one hit brings her down ${pct(st.lethality[k][z])}`);

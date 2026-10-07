@@ -11,7 +11,7 @@ import { CRIPPLED, facilityEffects } from './effects';
 import { generateRequests } from './requests';
 import { autoChooseAllotment, drawAllotments } from './allotments';
 import { Rng } from './rng';
-import { captainName, makeAirframe, makeLeader, makeSquadron } from './setup';
+import { captainName, makeAirframe, makeLeader, makeSquadron, pickArchetype } from './setup';
 import { finishDay, flyable, gatherFliers, newDay, resolveRaid, resolveRecon, type Flier } from './sim';
 import {
   applyPressure,
@@ -258,9 +258,8 @@ function flightCommanders(rng: Rng, state: GameState, side: SideState, sq: Squad
   const deputy = sq.deputy;
   delete sq.deputy;
   const a = deputy ?? makeLeader(rng, side, undefined, taken);
-  // Two different characters, so the choice is a real one.
-  const others = (['braggart', 'pessimist', 'gloryHunter', 'byTheBook', 'timid'] as const).filter((x) => x !== a.archetype);
-  const b = makeLeader(rng, side, rng.pick([...others]), [...taken, a.name]);
+  // Two different characters, so the choice is a real one; both drawn the way this nation promotes.
+  const b = makeLeader(rng, side, pickArchetype(rng, side, [a.archetype]), [...taken, a.name]);
   if (!deputy) a.rank = ranks[top];
   b.rank = ranks[Math.max(0, top - 1)];
   for (const c of [a, b]) {

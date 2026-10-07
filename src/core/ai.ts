@@ -179,7 +179,7 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   if (!side.researching) {
     const prefs = ['radar', 'gunneryManual', 'dropTanks', 'selfSealing', 'powerTurrets', 'gunCameras', a >= 2 ? 'heavyAirframe' : 'photoRecon', 'gyroSight', 'engineTuning', 'armorAlloy', 'assembly1', 'radios', 'extinguishers', 'bombsight2', 'intelOfficer', 'radarChain', 'photoRecon', 'heavyAirframe'];
     // Then anything else that is open, cheapest first.
-    const rest = RESEARCH.filter((r) => !prefs.includes(r.id)).sort((x, y) => x.cost - y.cost).map((r) => r.id);
+    const rest = RESEARCH.filter((r) => !prefs.includes(r.id)).sort((x, y) => researchCost(side, x) - researchCost(side, y)).map((r) => r.id);
     for (const p of [...prefs, ...rest]) {
       const item = RESEARCH.find((r) => r.id === p)!;
       if (!side.research.includes(p) && side.resources.supplies > researchCost(side, item) + 80) {

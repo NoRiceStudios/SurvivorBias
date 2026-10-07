@@ -10,7 +10,7 @@ import {
 } from './data';
 import { facilityEffects } from './effects';
 import { tech } from './tech';
-import { nationOf, rulesOf, spec } from './factions';
+import { nationOf, rulesOf } from './factions';
 import { ABORT_MECH, BANDITS, BOMBS_GONE, BREAK_OFF, CHATTER, CONTACT, ESCORT_HOME, ESCORT_KILL, FEINT_OUT, FORM_UP, GROUND_SITE, GROUND_SUPPORT, GUNNER_KILL, MANY, NO_FIGHTERS, rt, RUN_IN, SEEN_GO, SEEN_WHAT, SUPPORT_IN, TOWER, WE_ARE_HIT, WEATHER_OUT, WOUNDED } from './radio';
 import { DEFAULT_LETHALITY, type LethalityTable } from './lethality';
 import type { Rng } from './rng';

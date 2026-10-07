@@ -4,7 +4,7 @@
  * wing, the likelier the rare and exceptional offers. Some come with strings
  * attached: favours are never free.
  */
-import { AIRCRAFT, RESEARCH } from './data';
+import { RESEARCH } from './data';
 import { aircraftLabel, nationOf, storesCap } from './factions';
 import { makeAirframe, makeSquadron } from './setup';
 import { Rng } from './rng';

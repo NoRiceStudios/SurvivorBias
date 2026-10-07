@@ -28,8 +28,6 @@ function tpick(c: Ctx, id: number, wordings: string[]): string | null {
   return wordings[i];
 }
 
-/** Words that differ between the two air forces. */
-
 /** A new man's name: never one already on the roll of the missing or used before in this war. */
 function newcomer(c: Ctx): string {
   const { rng, side } = c;

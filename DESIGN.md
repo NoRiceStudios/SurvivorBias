@@ -384,8 +384,9 @@ A war without nations (saves from before version 6, the tutorial, or "Nations:
 off" on the title screen) is the classic one: Aldmere against the Directorate
 with symmetric rules. Both sides must be different nations. Measured with
 `npm run balance -- 200 --matrix` (the AI on both sides, equal resources):
-every pairing ends between 45% and 55% of decisive theaters, counting both
-seats together.
+every pairing ends between 44% and 56% of decisive theaters, counting both
+seats together. The classic, symmetric war sits at 56% for the same measure,
+so that is the noise floor of the method rather than a nation's edge.
 
 ## 7. Doctrine (behaviour settings per squadron)
 
