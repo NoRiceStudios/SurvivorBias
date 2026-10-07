@@ -1335,3 +1335,22 @@ body[data-phase=dawn] .content .paper { filter: saturate(0.9) brightness(1.02); 
 /* Sealed: the task beside its squadron, top-aligned */
 .orders-table .sq-row { align-items: start; }
 .orders-table .task { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+
+/* Works, stacked: each building across the full width at its full height, its controls in columns beneath */
+.works { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+.works .banner .bscene-view { height: 156px; display: block; }
+.works .banner .bscene-canvas { display: block; position: relative; left: 50%; transform: translateX(-50%); }
+.works-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 22px; align-items: start; }
+.works-sub > h3:first-child { margin-top: 4px; }
+.works-sub > .kv:first-child { margin-top: 4px; }
+.works-research .lane-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* Armor blueprint: a tag on each plated part, one bar per plate; plated rows stand out in the table */
+.armor-plot { position: relative; line-height: 0; }
+.plate-tag { position: absolute; transform: translate(-50%, -50%); display: flex; gap: 2px; padding: 3px; background: #10233c; box-shadow: 0 0 0 2px #e0e9f1, 2px 2px 0 2px rgba(0, 0, 0, 0.35); pointer-events: none; }
+.plate-tag i { display: block; width: 6px; height: 10px; background: #e0e9f1; }
+.armor-table tr.armored td:first-child { font-weight: 700; box-shadow: inset 4px 0 0 #56769a; padding-left: 10px; }
+.armor-table tr.armored { background: rgba(86, 118, 154, 0.12); }
+/* The scene canvas must not set the panel's width: it is re-sized to the view every frame. */
+.works > .panel { min-width: 0; }
+.works .banner .bscene-view { min-width: 0; width: 100%; }
