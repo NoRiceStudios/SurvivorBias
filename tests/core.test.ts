@@ -1169,10 +1169,12 @@ describe('High Command allotments', () => {
       side.researching = RESEARCH[0].id;
       const offer = card.make(host, side);
       if (!offer) continue;
-      side.allotments = [{ ...offer, id: 'al-lan', card: card.id, rarity: card.rarity }];
+      side.allotments = [{ ...offer, id: 'al901', card: card.id, rarity: card.rarity }];
       const client = redactView(host, 1);
-      expect(applyCommands(client, 1, [{ k: 'allot', id: 'al-lan' }]).ok).toBe(true);
-      expect(applyCommands(host, 1, [{ k: 'allot', id: 'al-lan' }]).ok).toBe(true);
+      expect(applyCommands(client, 1, [{ k: 'allot', id: 'al901' }]).ok).toBe(true);
+      // Meanwhile the host's own commander has used up ids of the shared counter.
+      host.nextId += 37;
+      expect(applyCommands(host, 1, [{ k: 'allot', id: 'al901' }]).ok).toBe(true);
       const view = (st: GameState) => JSON.stringify({ sq: st.sides[1].squadrons, r: st.sides[1].resources, t: st.sides[1].trust, p: st.sides[1].perceived.sites, res: st.sides[1].research, o: st.sides[1].orders.map((o) => o.text) });
       expect(view(client), card.id).toBe(view(host));
     }

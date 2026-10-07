@@ -312,6 +312,9 @@ export const ALLOTMENT_CARDS: Card[] = [
   },
 ];
 
+/** Ids reserved for what allotments create, far above the shared counter. */
+const ALLOTMENT_ID_BASE = 10_000_000;
+
 const RANK: Record<AllotmentRarity, number> = { common: 0, rare: 1, exceptional: 2 };
 
 /** Three offers for the coming week, drawn by High Command's confidence. */
@@ -345,7 +348,17 @@ export function chooseAllotment(state: GameState, side: SideState, id: string): 
   if (!card) return { ok: false, reason: 'Unknown offer' };
   // Its own random stream, so a LAN host replaying the choice gets the same aircraft (the seed itself is hidden from a client).
   const rng = Rng.fromSeed(`allotment:${a.id}:${state.turn}`);
-  const result = card.apply(state, side, a, rng);
+  // Ids for whatever the allotment creates come from a block reserved for it, not the shared counter: a LAN client
+  // takes it during planning and the host replays it at sealing, after its own commands have used up other ids,
+  // and the client's orders must name the same new squadron the host has.
+  const shared = state.nextId;
+  state.nextId = ALLOTMENT_ID_BASE + Number(a.id.replace(/\D/g, '')) * 50;
+  let result: string;
+  try {
+    result = card.apply(state, side, a, rng);
+  } finally {
+    state.nextId = shared;
+  }
   side.allotments = [];
   side.memos.unshift({ turn: state.turn, from: 'High Command', subject: a.title, body: result, kind: 'notice' });
   if (side.memos.length > 40) side.memos.length = 40;
