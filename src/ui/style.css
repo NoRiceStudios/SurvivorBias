@@ -845,3 +845,18 @@ td.glyph { width: 1%; font-size: 22px; }
 .sealed-chips .chip { background: #e6dcbc; color: var(--ink); box-shadow: 0 0 0 1px var(--paper-3); }
 .ghost-wrap { position: relative; }
 .dotted { text-decoration: underline dotted; cursor: help; }
+
+/* Title: logo and menu in one column on the left */
+.title-overlay { align-items: flex-end; justify-content: flex-start; }
+.title-col { display: flex; flex-direction: column; gap: 22px; }
+.title-menu { width: 380px; }
+.btn.menu:not(.primary):not(.small) { background: rgba(75, 90, 57, 0.55); }
+.btn.menu.small { background: transparent; box-shadow: none; color: #b8ad8e; text-decoration: underline dotted; padding: 4px 14px; }
+
+/* End: the reveal and the ledger chart */
+.reveal { display: flex; justify-content: center; gap: 48px; margin: 20px auto; }
+.reveal-item { display: flex; flex-direction: column; align-items: center; }
+.reveal-item b { font-size: 64px; line-height: 1; font-weight: normal; }
+.reveal-item span { font-family: 'Silkscreen'; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: #5e5546; }
+.reveal-item.truth.done b { animation: stamp-drop .35s steps(4) both; }
+.ledger-chart { width: 100%; height: auto; margin: 6px 0 14px; font-family: 'VT323'; }

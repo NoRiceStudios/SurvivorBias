@@ -1,7 +1,7 @@
 import { AIRCRAFT, ZONE_LABEL } from '../core/data';
 import { KINDS } from '../core/lethality';
 import { SECTORS, THEATERS } from '../core/theaters';
-import type { AircraftKind, Hit, Outcome, SideId } from '../core/types';
+import type { AircraftKind, GameState, Hit, Outcome, SideId } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
 import { sfxClick } from './audio';
@@ -101,6 +101,7 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
   } else if (tab === 'ledger') {
     body = h('section', { class: 'paper panel' },
       h('h2', null, 'Claims against the truth, week by week'),
+      ledgerChart(st.archive, sideId),
       h('table', { class: 'ledger' },
         h('thead', null, h('tr', null, ['Week', 'Theater', 'Crews claimed', 'Reported to HQ', 'Actually destroyed', 'Our losses', 'Sectors held'].map((x) => h('th', null, x)))),
         h('tbody', null, st.archive.map((e) => h('tr', null,
@@ -114,13 +115,12 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
     body = h('section', { class: 'paper panel end-summary' },
       h('div', { class: `stamp big outcome ${outcome}` }, title),
       h('p', { class: 'typed big' }, text),
-      h('div', { class: 'stats' },
-        h('div', null, h('span', null, 'Weeks of operations'), h('b', null, String(st.archive.length))),
-        h('div', null, h('span', null, 'Aircraft lost'), h('b', null, String(trueLost))),
-        h('div', null, h('span', null, 'Enemy aircraft claimed by crews'), h('b', null, String(claimed))),
-        h('div', null, h('span', null, 'Enemy aircraft reported to High Command'), h('b', null, String(toHq))),
-        h('div', null, h('span', null, 'Enemy aircraft actually destroyed'), h('b', { class: 'truth' }, String(trueKills))),
+      h('div', { class: 'reveal' },
+        reveal('Claimed by our crews', claimed, 0),
+        reveal('Reported to High Command', toHq, 900),
+        reveal('Actually destroyed', trueKills, 1800, 'truth'),
       ),
+      h('p', { class: 'muted' }, `${st.archive.length} weeks of operations. ${trueLost} of our aircraft lost.`),
       h('div', { class: 'theater-record end-record' }, st.theaterResults.map((r) =>
         h('div', { class: `theater-step ${r.winner === sideId ? 'won' : r.winner === null ? 'drawn' : 'lost'}` },
           h('b', null, r.name), h('span', null, `${r.weeks} weeks`), h('span', { class: 'step-label' }, r.winner === null ? 'DRAWN' : r.winner === sideId ? (r.decisive ? 'BROKE THROUGH' : 'WON') : r.decisive ? 'BROKEN' : 'LOST')))),
@@ -128,4 +128,58 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
     );
   }
   return h('div', { class: 'hq end' }, h('div', { class: 'hq-body' }, nav, h('main', { class: 'content' }, body)));
+}
+
+/** A big figure that counts up after a delay, then gets stamped. */
+function reveal(label: string, value: number, delay: number, cls = ''): HTMLElement {
+  const b = h('b', { class: cls }, '0');
+  const el = h('div', { class: `reveal-item ${cls}` }, b, h('span', null, label));
+  const steps = 20;
+  let k = 0;
+  const tick = () => {
+    if (k > 0 && !el.isConnected) return;
+    k++;
+    b.textContent = String(Math.round((value * Math.min(k, steps)) / steps));
+    if (k < steps) setTimeout(tick, 45);
+    else el.classList.add('done');
+  };
+  setTimeout(tick, 400 + delay);
+  return el;
+}
+
+/** Claims, returns to HQ and the truth per week, as lines; weeks a sector was lost shaded. */
+function ledgerChart(archive: GameState['archive'], side: SideId): SVGElement {
+  const W = 900;
+  const H = 180;
+  const n = archive.length;
+  const max = Math.max(4, ...archive.flatMap((e) => [e.claimed[side], e.reportedToHq[side], e.trueKills[side]]));
+  const x = (i: number) => 30 + (i / Math.max(1, n - 1)) * (W - 40);
+  const y = (v: number) => H - 20 - (v / max) * (H - 40);
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('class', 'ledger-chart');
+  const add = (tag: string, attrs: Record<string, string | number>, text?: string) => {
+    const e = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+    if (text) e.textContent = text;
+    svg.append(e);
+    return e;
+  };
+  archive.forEach((e, i) => {
+    const prev = archive[i - 1];
+    const held = (a: typeof e) => (side === 0 ? a.sectors0 : SECTORS - a.sectors0);
+    if (prev && prev.theater === e.theater && held(e) < held(prev)) add('rect', { x: x(i) - 8, y: 10, width: 16, height: H - 30, fill: 'rgba(168,53,42,0.15)' });
+  });
+  add('line', { x1: 30, y1: H - 20, x2: W - 10, y2: H - 20, stroke: '#5e5546', 'stroke-width': 1 });
+  const line = (f: (e: (typeof archive)[number]) => number, color: string, dash = '') =>
+    add('polyline', { points: archive.map((e, i) => `${x(i)},${y(f(e))}`).join(' '), fill: 'none', stroke: color, 'stroke-width': 3, 'stroke-dasharray': dash });
+  line((e) => e.claimed[side], '#5e5546', '6 4');
+  line((e) => e.reportedToHq[side], '#2f4a7a');
+  line((e) => e.trueKills[side], '#a8352a');
+  add('text', { x: 34, y: 18, fill: '#5e5546', 'font-size': 16 }, '— — claimed by crews');
+  add('text', { x: 230, y: 18, fill: '#2f4a7a', 'font-size': 16 }, '—— reported to HQ');
+  add('text', { x: 420, y: 18, fill: '#a8352a', 'font-size': 16 }, '—— actually destroyed');
+  add('text', { x: 640, y: 18, fill: '#a8352a', 'font-size': 16, opacity: 0.7 }, '▮ week a sector was lost');
+  return svg;
 }
