@@ -17,6 +17,7 @@ import { believed, depthLabel, pressureGauge, theaterMap } from './theaterui';
 import { tip } from './tip';
 import { countPlanes, pips, seg } from './widgets';
 import { aircraftCanvas } from './sprites';
+import { animatedMap, hoverFlight, type Flight } from './mapanim';
 
 type Role = 'raid' | 'defense' | 'rest' | 'recon' | 'feint';
 
@@ -145,7 +146,7 @@ function mapCard(app: App, side: SideState): HTMLElement {
       h('div', { class: 'mh-title' },
         h('b', null, def.name), h('span', { class: 'muted' }, ` · wk ${Math.min(t.week + 1, def.weeks)}/${def.weeks} · `),
         h('span', { class: 'dotted', ...tip({ head: `Stage: ${stage.title}`, text: stage.text }) }, stage.title), ' · ',
-        h('span', { class: 'dotted', ...tip({ head: 'Map key', text: '✈ airfield · ▙ aircraft works · ◘ fuel depot (pips: condition). Red hatching: enemy-held. Red line: the front, arrow shows which way the pressure runs. Dashed line: our operation. Blue ring: our patrol. Red pennant: named in a standing order. Struck-through plate: probably wrecked. Faded: out of range.' }) }, 'map key')),
+        h('span', { class: 'dotted', ...tip({ head: 'Map key', text: '✈ airfield · ▙ aircraft works · ◘ fuel depot (pips: condition). Red hatching: enemy-held. Red line: the front, arrow shows which way the pressure runs. Dashed line: our operation. Blue ring: our patrol. The small aircraft fly this week\'s orders: hover a squadron\'s row to pick it out. Red pennant: named in a standing order. Struck-through plate: probably wrecked. Faded: out of range.' }) }, 'map key')),
       h('div', { class: 'objective', ...tip({ head: 'Primary objective', text: `Take ${DECISIVE_GAIN} sectors to win the theater outright. If nobody breaks through by week ${def.weeks}, it goes to whoever holds the advantage, but only if they have taken at least one sector.` }) },
         h('span', { class: 'small' }, 'Sectors taken'), h('span', { class: 'flags' }, flags), h('b', { class: gain > 0 ? 'good' : gain < 0 ? 'bad' : '' }, `${gain >= 0 ? '+' : ''}${gain}/${DECISIVE_GAIN}`)),
     ),
@@ -154,14 +155,14 @@ function mapCard(app: App, side: SideState): HTMLElement {
       warn.sector !== undefined && (warn.sector < t.held0 ? 0 : 1) === side.id
         ? h('button', { class: 'btn small', onclick: () => patrolSector(app, side, warn.sector!) }, `Patrol ${def.sectors[warn.sector]} ▸`)
         : null) : null,
-    theaterMap(st, {
+    animatedMap(theaterMap(st, {
       viewer: side.id, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), feint: plan.feint?.sector, raid: plan.raid ?? undefined, scale: 3, inRange, ordered,
       rangeLines: [{ depth: longest, label: 'BOMBER RANGE', color: '#8a5a1a' }, ...(reach < longest ? [{ depth: reach, label: 'ESCORT RANGE', color: '#2c4672' }] : [])],
       onSite: (site) => {
         if (!inRange(site)) return app.toast(`${site.name} is out of range of our bombers`, true);
         pick(site.type, site.id);
       },
-    }),
+    }), flights(app, side)),
     pressureGauge(side.perceived.front, { band: side.perceived.frontBand }),
     h('div', { class: 'map-foot small' },
       h('span', { class: 'mf-obj', ...tip({ head: 'Secondary objective', text: obj.text }) }, h('b', null, 'Secondary: '), obj.text, ' ', h('span', { class: `stamp ${obj.status === 'discredited' || obj.status === 'overrun' ? 'reprimand' : obj.status === 'open' ? 'order' : 'notice'}` }, objStatus)),
@@ -172,6 +173,22 @@ function mapCard(app: App, side: SideState): HTMLElement {
       })),
     ),
   );
+}
+
+/** Every squadron with aircraft ready, and what this week's orders have it doing over the map. */
+function flights(app: App, side: SideState): Flight[] {
+  const { plan, roleOf } = planner(app, side);
+  return side.squadrons.filter((q) => flyable(q).length > 0).map((sq) => {
+    const role = roleOf(sq);
+    const f: Flight = { id: sq.id, name: sq.name, kind: sq.kind, ready: flyable(sq).length, task: 'rest' };
+    if (role === 'defense') {
+      f.task = plan.cover[sq.id] === undefined ? 'reserve' : 'patrol';
+      f.sector = plan.cover[sq.id];
+    } else if (role === 'raid') f.task = sq.kind !== 'fighter' ? 'raid' : plan.raid?.target === 'sweep' ? 'sweep' : 'escort';
+    else if (role === 'feint') { f.task = 'feint'; f.sector = plan.feint?.sector; }
+    else if (role === 'recon') { f.task = 'recon'; f.siteId = plan.recon?.siteId; }
+    return f;
+  });
 }
 
 /* ---------------- Orders column ---------------- */
@@ -264,7 +281,7 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
             })())
           : null;
     const info = ARCHETYPE_INFO[sq.leader.archetype];
-    return h('div', { class: `sq-row ${role !== 'rest' ? 'active' : ''}`, 'data-sq': sq.id },
+    return h('div', { class: `sq-row ${role !== 'rest' ? 'active' : ''}`, 'data-sq': sq.id, onmouseenter: () => hoverFlight(sq.id), onmouseleave: () => hoverFlight(null) },
       h('div', { class: 'sq-line1', ...tip({ head: `${sq.name} — ${aircraftName(sq.kind, side)}`, text: `${sq.leader.rank} ${sq.leader.name} (${info.label}): ${info.blurb}`, effect: `${ready} ready of ${sq.airframes.length}. Flying costs ${cost} stores.` }) },
         h('span', { class: 'sq-face' }, leaderPortrait(sq.leader, side.id, 1)),
         h('span', { class: 'sq-name' }, sqLabel(sq.name)),

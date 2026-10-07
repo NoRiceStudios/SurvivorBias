@@ -240,6 +240,23 @@ function terrainImage(g: CanvasRenderingContext2D, index: number, viewer: SideId
 
 const imageCache = new Map<string, ImageData>();
 
+/** Where things sit on a drawn map, in its own pixels: what the flight animation flies between. */
+export interface MapGeo {
+  w: number;
+  h: number;
+  home: [number, number];
+  sites: Record<string, [number, number]>;
+  /** Screen x of the middle of a sector. */
+  sectorX: (sector: number) => number;
+  /** Screen x of the front line at height y. */
+  frontX: (y: number) => number;
+  /** Where the operation's route ends. */
+  raidTo: [number, number];
+  /** +1 if the enemy lies to the right. */
+  toward: number;
+}
+export const mapGeo = new WeakMap<HTMLCanvasElement, MapGeo>();
+
 export function theaterMap(state: GameState, opts: MapOpts): HTMLCanvasElement {
   const t = state.theater;
   const def = THEATERS[t.index];
@@ -334,6 +351,10 @@ export function theaterMap(state: GameState, opts: MapOpts): HTMLCanvasElement {
     const [tx, ty] = target ? [target.x, target.y + 3] : [X(depthToX(t.held0, v)), H * 0.58];
     if (opts.raid) dashed(home.x, home.y, tx, ty, '#2a2620');
     c.dataset.route = JSON.stringify([home.x, home.y, tx, ty, W, H]);
+    mapGeo.set(c, {
+      w: W, h: H, home: [home.x, home.y], sites: Object.fromEntries(placed.map((p) => [p.site.id, [p.x, p.y]])),
+      sectorX: (s) => X(s * CELL_W + CELL_W / 2), frontX: fx, raidTo: [tx, ty], toward: v === 0 ? 1 : -1,
+    });
   }
 
   // Front line with its teeth pointing at the enemy, displaced by the reported pressure.
