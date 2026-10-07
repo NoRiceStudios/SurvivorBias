@@ -4,7 +4,8 @@
  * (who rested, who joined, who is missing), so in hotseat and LAN each
  * commander reads only the scenes of their own wing.
  */
-import { CREW_FIRST, CREW_LAST, TRAIT_INFO } from './data';
+import { TRAIT_INFO } from './data';
+import { nationOf } from './factions';
 import type { Rng } from './rng';
 import type { GameState, SideState, Squadron } from './types';
 
@@ -27,20 +28,15 @@ function tpick(c: Ctx, id: number, wordings: string[]): string | null {
   return wordings[i];
 }
 
-/** Words that differ between the two air forces. */
-const LOCAL = [
-  { mess: 'the mess', money: 'shillings', padre: 'the padre', drink: 'warm beer', song: '"A Nightingale Sang"', town: 'the village pub', cards: 'brag' },
-  { mess: 'the Kasino', money: 'marks', padre: 'the chaplain', drink: 'thin coffee', song: '"Lili Marleen"', town: 'the inn in the valley', cards: 'Skat' },
-] as const;
-
 /** A new man's name: never one already on the roll of the missing or used before in this war. */
 function newcomer(c: Ctx): string {
   const { rng, side } = c;
   const taken = new Set([...(side.roll ?? []).map((e) => e.name.split(' ').slice(-1)[0]), ...(side.usedLines ?? []).filter((x) => x.startsWith('name:')).map((x) => x.slice(5))]);
-  const lasts = CREW_LAST[side.id].filter((x) => !taken.has(x));
-  const last = rng.pick(lasts.length ? lasts : CREW_LAST[side.id]);
+  const nat = nationOf(side);
+  const lasts = nat.crewLast.filter((x) => !taken.has(x));
+  const last = rng.pick(lasts.length ? lasts : nat.crewLast);
   side.usedLines = [...(side.usedLines ?? []), `name:${last}`];
-  return `${rng.pick(side.id === 0 ? ['Plt Off', 'Sgt', 'Fg Off'] : ['Leutnant', 'Feldwebel', 'Unteroffizier'])} ${rng.pick(CREW_FIRST[side.id])} ${last}`;
+  return `${rng.pick(nat.juniorRanks)} ${rng.pick(nat.crewFirst)} ${last}`;
 }
 
 type Scene = (c: Ctx) => string | null;
@@ -48,10 +44,10 @@ type Scene = (c: Ctx) => string | null;
 const SCENES: Scene[] = [
   // A wake for a commanding officer posted missing.
   (c) => {
-    const ranks = c.side.id === 0 ? ['Flt Lt', 'Sqn Ldr', 'Wg Cdr'] : ['Hauptmann', 'Major', 'Oberst'];
+    const ranks = nationOf(c.side).ranks;
     const co = (c.side.roll ?? []).find((e) => c.state.turn - e.week <= 2 && ranks.some((r) => e.name.startsWith(r)) && e.fate !== 'returned' && e.fate !== 'prisoner');
     if (!co) return null;
-    const L = LOCAL[c.side.id];
+    const L = nationOf(c.side).local;
     return tpick(c, 1, [
       `${co.squadron} held a wake for ${co.name} in ${L.mess}. Somebody played the piano badly, and nobody stopped him.`,
       `Nobody has moved ${co.name}'s cap from the peg in the ${co.squadron} crew room.`,
@@ -61,7 +57,7 @@ const SCENES: Scene[] = [
   (c) => {
     const lost = (c.side.roll ?? []).filter((e) => e.week === c.state.turn);
     if (lost.length < 3) return null;
-    const L = LOCAL[c.side.id];
+    const L = nationOf(c.side).local;
     const sq = lost[0].squadron;
     return tpick(c, 2, [
       `After this week's losses ${sq} went to ${L.town}, all of them, and drank to the empty chairs. The landlord wouldn't take their money.`,
@@ -72,7 +68,7 @@ const SCENES: Scene[] = [
   (c) => {
     const sq = c.rested.length ? c.rng.pick(c.rested) : null;
     if (!sq) return null;
-    const L = LOCAL[c.side.id];
+    const L = nationOf(c.side).local;
     const lead = `${sq.leader.rank} ${sq.leader.name.split(' ').slice(-1)[0]}`;
     return tpick(c, 3, [
       `${sq.name} stood down. In ${L.mess}, ${lead} lost eleven ${L.money} at ${L.cards} and the gramophone played ${L.song} until somebody hid the needle.`,
@@ -87,7 +83,7 @@ const SCENES: Scene[] = [
     const recent = (c.side.roll ?? []).filter((e) => c.state.turn - e.week <= 3 && e.fate !== 'returned' && e.fate !== 'prisoner');
     if (!recent.length) return null;
     const e = c.rng.pick(recent);
-    const L = LOCAL[c.side.id];
+    const L = nationOf(c.side).local;
     return tpick(c, 4, [
       `${newcomer(c)} of ${e.squadron} sat up late writing to the family of ${e.name}, missing since week ${e.week}. ${L.padre[0].toUpperCase()}${L.padre.slice(1)} helped with the hard part.`,
       `The kit of ${e.name} (${e.serial}) was packed and labelled for next-of-kin. Somebody kept back his photograph of a girl in a summer dress, in case.`,
@@ -121,7 +117,7 @@ const SCENES: Scene[] = [
     const scenes: Record<string, string[]> = {
       ace: [
         `The local paper wants a photograph of ${name}. He has told them, twice, to photograph his ground crew instead.`,
-        `A girl from ${LOCAL[c.side.id].town} sent ${name} a scarf she had knitted. He wears it on every operation and denies it is for luck.`,
+        `A girl from ${nationOf(c.side).local.town} sent ${name} a scarf she had knitted. He wears it on every operation and denies it is for luck.`,
       ],
       lucky: [
         `The men of ${sq.name} touch ${name}'s sleeve before every operation. He pretends not to notice.`,

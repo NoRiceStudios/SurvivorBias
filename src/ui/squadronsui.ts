@@ -4,6 +4,8 @@
  * over the evidence (holes on the aircraft that came back, last calls of those
  * that did not), and the aircraft themselves.
  */
+import { spec } from '../core/factions';
+import { nationAt } from './nation';
 import { armorUsed, COSTS } from '../core/actions';
 import { AIRCRAFT, ARCHETYPE_INFO, MAX_ARMOR_PER_ZONE, TRAIT_INFO, ZONE_LABEL } from '../core/data';
 import { flyable } from '../core/sim';
@@ -64,8 +66,8 @@ function wingSummary(app: App, side: SideState): HTMLElement {
       const lost3 = (side.roll ?? []).filter((e) => e.week >= st.turn - 3 && sqs.some((q) => q.name === e.squadron)).length;
       const onOrder = side.factory.queue.filter((x) => x === k).length;
       const weeks = lost3 > onOrder ? Math.max(1, Math.round((have / (lost3 - onOrder)) * 3)) : null;
-      return h('div', { class: 'ws-row', ...tip({ head: AIRCRAFT[k].name[side.id], text: `${have} aircraft, ${crews} crews, ${onOrder} on order. Lost in the last three weeks: ${lost3}.` }) },
-        h('span', null, AIRCRAFT[k].name[side.id]), h('b', null, `${have}`), h('small', { class: 'muted' }, ` a/c · ${crews} crews`),
+      return h('div', { class: 'ws-row', ...tip({ head: nationAt(side.id).aircraft[k], text: `${have} aircraft, ${crews} crews, ${onOrder} on order. Lost in the last three weeks: ${lost3}.` }) },
+        h('span', null, nationAt(side.id).aircraft[k]), h('b', null, `${have}`), h('small', { class: 'muted' }, ` a/c · ${crews} crews`),
         weeks !== null && weeks <= 8 ? h('div', { class: 'small bad' }, `gone in ~${weeks} weeks at this rate`) : null);
     }),
     h('div', { class: 'ws-row' }, h('span', null, 'Average fatigue'), pips(avgFat, 6, 0.6)));
@@ -88,7 +90,7 @@ function wingRows(app: App, side: SideState, st: NonNullable<App['state']>): HTM
       h('div', { class: 'rr-face' }, leaderPortrait(q.leader, side.id, 1)),
       h('div', { class: 'rr-main' },
         h('div', { class: 'rr-name' }, sqLabel(q.name), flags ? h('span', { class: 'rr-flags', ...tip([flags.includes('✉') ? '✉ a request from this squadron' : '', flags.includes('★') ? '★ a new CO to confirm this week' : '', flags.includes('✚') ? '✚ the medical officer is worried about the CO' : ''].filter(Boolean).join(' · ')) }, flags) : null),
-        h('div', { class: 'rr-sub' }, `${AIRCRAFT[q.kind].name[side.id]} · ${flyable(q).length}/${q.airframes.length}`),
+        h('div', { class: 'rr-sub' }, `${nationAt(side.id).aircraft[q.kind]} · ${flyable(q).length}/${q.airframes.length}`),
         h('div', { class: 'rr-pips' }, pips(q.fatigue, 6, 0.6), pips(q.morale, 6, 0.3, true))),
       h('span', { class: `task-chip ${task === 'REST' ? 'rest' : ''}` }, task));
   });
@@ -122,7 +124,7 @@ function dossier(app: App, side: SideState, sq: Squadron): HTMLElement {
       h('div', { class: 'leader-photo' }, leaderPortrait(sq.leader, side.id, 2)),
       h('div', { class: 'dh-main' },
         h('div', { class: 'dh-unit' }, sqLabel(sq.name)),
-        h('div', { class: 'dh-type' }, `${AIRCRAFT[sq.kind].name[side.id]}, ${AIRCRAFT[sq.kind].role.toLowerCase()}`),
+        h('div', { class: 'dh-type' }, `${nationAt(side.id).aircraft[sq.kind]}, ${AIRCRAFT[sq.kind].role.toLowerCase()}`),
         h('div', { class: 'leader' }, `${sq.leader.rank} ${sq.leader.name} `,
           h('span', { class: 'trait', ...tip({ head: info.label, text: info.blurb }) }, info.label),
           trait ? h('span', { class: `trait rep ${sq.leader.trait}`, ...tip({ head: trait.label, text: trait.blurb }) }, trait.label) : null,
@@ -163,7 +165,7 @@ function survivorHits(app: App, side: SideState, sq: Squadron): Hit[] {
 }
 
 function armorEditor(app: App, side: SideState, sq: Squadron): HTMLElement {
-  const budget = AIRCRAFT[sq.kind].armorBudget;
+  const budget = spec(side, sq.kind).armorBudget;
   const used = armorUsed(sq);
   const comp = survivorHits(app, side, sq);
   const holes: Record<string, number> = {};
@@ -209,9 +211,9 @@ function armorEditor(app: App, side: SideState, sq: Squadron): HTMLElement {
     h('td', { class: 'num' }, comp.length ? h('span', { class: 'holes' }, `${holes[z] ?? 0}`, h('small', null, ` ${Math.round(((holes[z] ?? 0) / total) * 100)}%`)) : '—'),
     h('td', { class: 'num lastcall' }, calls?.[z] ? `📻 ${calls[z]}` : '')));
   return h('div', { class: 'armor-editor' },
-    h('h3', null, `Armor · ${AIRCRAFT[sq.kind].name[side.id]}`),
+    h('h3', null, `Armor · ${nationAt(side.id).aircraft[sq.kind]}`),
     sameType.length ? h('div', { class: 'seg mini scope' },
-      h('button', { class: `seg-btn ${all ? 'on' : ''}`, ...tip(`Every change is made on ${[sq, ...sameType].map((q) => q.name).join(', ')} at once.`), onclick: () => { armorWholeType = true; app.render(); } }, `All ${sameType.length + 1} ${AIRCRAFT[sq.kind].name[side.id]} squadrons`),
+      h('button', { class: `seg-btn ${all ? 'on' : ''}`, ...tip(`Every change is made on ${[sq, ...sameType].map((q) => q.name).join(', ')} at once.`), onclick: () => { armorWholeType = true; app.render(); } }, `All ${sameType.length + 1} ${nationAt(side.id).aircraft[sq.kind]} squadrons`),
       h('button', { class: `seg-btn ${!all ? 'on' : ''}`, onclick: () => { armorWholeType = false; app.render(); } }, 'This squadron only')) : null,
     h('div', { class: 'blueprint-wrap' }, h('div', { class: 'armor-plot' }, c, badges)),
     h('p', { class: 'handwritten fitter' }, comp.length > 30 ? 'Orange crosses: holes on aircraft that came back. Pale steel with a tag: plate, one bar per plate. The holes show where an aircraft can be hit and still come home.' : 'Too few returns yet to see a pattern. Orange marks are holes on aircraft that came back; pale steel with a tag is plate, one bar per plate.'),

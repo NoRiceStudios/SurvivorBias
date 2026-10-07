@@ -4,7 +4,7 @@
  * sectors, who holds them, the sites, the front line and this week's orders.
  * The sector logic is unchanged: the map is only how the strip of sectors looks.
  */
-import { HIGH_COMMAND, portraitCanvas } from './general';
+import { highCommand, portraitCanvas } from './general';
 import { SECTOR_PRESSURE, SECTORS, THEATERS, depthFor } from '../core/theaters';
 import type { FacilityType, GameState, SideId, Site, TargetId, TheaterResult } from '../core/types';
 import type { App } from './app';
@@ -545,7 +545,7 @@ function generalVerdict(st: GameState, side: SideId, res: TheaterResult): HTMLEl
   const lost = st.archive.filter((e) => e.theater === res.index).reduce((a, e) => a + e.trueLosses[side], 0);
   const roll = (st.sides[side].roll ?? []).filter((e) => e.theater === res.index);
   const count = (f: string) => roll.filter((e) => e.fate === f).length;
-  const hc = HIGH_COMMAND[side];
+  const hc = highCommand(side);
   const mid = res.name.replace(/^The /, 'the ');
   const verdict = res.winner === null
     ? `${res.name} ends in stalemate after ${res.weeks} weeks. Nobody will write songs about it.`

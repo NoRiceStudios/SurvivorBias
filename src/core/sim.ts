@@ -3,7 +3,6 @@ import {
   APPROACH_ZONES,
   ARMOR_FACTOR,
   ARMOR_FACTOR_ALLOY,
-  CALLSIGNS,
   MAX_EFFORT,
   TURRET_FITS,
   ZONE_AREA,
@@ -11,6 +10,7 @@ import {
 } from './data';
 import { facilityEffects } from './effects';
 import { tech } from './tech';
+import { nationOf, rulesOf } from './factions';
 import { ABORT_MECH, BANDITS, BOMBS_GONE, BREAK_OFF, CHATTER, CONTACT, ESCORT_HOME, ESCORT_KILL, FEINT_OUT, FORM_UP, GROUND_SITE, GROUND_SUPPORT, GUNNER_KILL, MANY, NO_FIGHTERS, rt, RUN_IN, SEEN_GO, SEEN_WHAT, SUPPORT_IN, TOWER, WE_ARE_HIT, WEATHER_OUT, WOUNDED } from './radio';
 import { DEFAULT_LETHALITY, type LethalityTable } from './lethality';
 import type { Rng } from './rng';
@@ -90,13 +90,15 @@ export function emptyApproach(): Record<FighterApproach, number> {
 
 export function armorLoad(sq: Squadron, side?: SideState): number {
   const total = ZONES.reduce((a, z) => a + sq.armor[z], 0);
+  // Weight is measured against the standard airframe, so a nation's extra plates really cost speed.
   return (total / Math.max(1, AIRCRAFT[sq.kind].armorBudget)) * (1 - (side ? tech(side, 'plateWeight') : 0));
 }
 
 export function hitLethality(zone: ZoneId, f: Flier, armor = f.sq.armor[zone]): number {
   const res = f.side.research;
   const factor = res.includes('armorAlloy') ? ARMOR_FACTOR_ALLOY : ARMOR_FACTOR;
-  let p = f.leth[zone] * Math.pow(factor, armor);
+  // How the nation builds its aircraft: an armored seat, or tanks that burn.
+  let p = f.leth[zone] * (rulesOf(f.side).lethality[zone] ?? 1) * Math.pow(factor, armor);
   if (zone === 'fuel' && res.includes('selfSealing')) p *= 0.45;
   if (zone === 'fuel' || zone === 'engines') p *= 1 - tech(f.side, 'fireproof');
   // Small, fast airframes take less punishment per hole but have less to lose.
@@ -189,7 +191,8 @@ function skillMult(f: Flier): number {
 }
 
 function makeFlier(sq: Squadron, af: Airframe, side: SideState, role: PlaneRecord['role'], index: number, lethality: LethalityTable = DEFAULT_LETHALITY): Flier {
-  const cs = CALLSIGNS[side.id][sq.insignia % CALLSIGNS[side.id].length];
+  const calls = nationOf(side).callsigns;
+  const cs = calls[sq.insignia % calls.length];
   return {
     rec: {
       airframeId: af.id,

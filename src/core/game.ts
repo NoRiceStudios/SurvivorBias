@@ -5,6 +5,7 @@ import { newGame, SAVE_VERSION, type NewGameOptions } from './setup';
 import { DEFAULT_LETHALITY } from './lethality';
 import { depthFor } from './theaters';
 import { resolveTurn, STORES_CAP } from './turn';
+import { nationOf } from './factions';
 import type { GameState, SideId, TurnPlan } from './types';
 
 /** Create a new campaign with opening orders and memos. */
@@ -31,7 +32,7 @@ export function startCampaign(opts: NewGameOptions & { commanders?: [string, str
         from: 'Air Ministry',
         kind: 'order',
         subject: 'Assumption of command',
-        body: `You are hereby appointed to command the ${side.id === 0 ? 'No. 7 Composite Wing' : 'Kampfgeschwader Nord'}. The war will be fought across three theaters, beginning with ${state.theater.id === 'narrow-sea' ? 'the Narrow Sea' : 'the front'}. The ${enemy.short} air force is of unknown strength. Returns are to be submitted after every operation. Accuracy is expected.`,
+        body: `You are hereby appointed to command the ${nationOf(side).wing}. The war will be fought across three theaters, beginning with ${state.theater.id === 'narrow-sea' ? 'the Narrow Sea' : 'the front'}. The ${enemy.short} air force is of unknown strength. Returns are to be submitted after every operation. Accuracy is expected.`,
       },
       {
         turn: 1,
@@ -69,7 +70,7 @@ export function deserialize(json: string): GameState {
   // Version 2 saves predate feints, commander names and sealed hotseat orders.
   if (s.version === 2) {
     s.sealed = [null, null];
-    for (const side of s.sides) side.commander ??= side.id === 0 ? 'Air Commodore' : 'Oberst';
+    for (const side of s.sides) side.commander ??= nationOf(side).title;
     s.version = 3;
   }
   // Version 3 saves predate per-campaign lethality profiles: they keep the original fixed one.
@@ -88,6 +89,8 @@ export function deserialize(json: string): GameState {
     }
     s.version = 5;
   }
+  // Version 5 saves predate nations: they carry on as a classic war with symmetric rules.
+  if (s.version === 5) s.version = 6;
   if (s.version !== SAVE_VERSION) throw new Error(`Save version ${s.version} is not supported (expected ${SAVE_VERSION})`);
   for (const p of s.sealed) if (p) p.feint ??= null;
   for (const side of s.sides) {

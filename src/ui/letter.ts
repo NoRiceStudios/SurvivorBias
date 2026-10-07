@@ -10,13 +10,13 @@ import type { Allotment, SideId } from '../core/types';
 import type { App } from './app';
 import { sfxClick, sfxKey, sfxStamp } from './audio';
 import { fadeScroll, h } from './dom';
-import { HIGH_COMMAND, memoDispatch, portraitCanvas, type DispatchLine } from './general';
+import { highCommand, memoDispatch, portraitCanvas, type DispatchLine } from './general';
 import { strikeAt } from './warroom';
 
 export function renderLetter(app: App, sideId: SideId, mode: 'returns' | 'week'): HTMLElement {
   const st = app.state!;
   const side = st.sides[sideId];
-  const hc = HIGH_COMMAND[sideId];
+  const hc = highCommand(sideId);
   const d = mode === 'returns' ? st.lastDebriefs[sideId] : null;
   const memos: DispatchLine[] = memoDispatch(side, st.turn, 6)?.lines ?? [];
   const typed: HTMLElement[] = [];

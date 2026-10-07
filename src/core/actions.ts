@@ -1,5 +1,6 @@
 import { tech } from './tech';
 import { AIRCRAFT, MAX_ARMOR_PER_ZONE, MAX_EFFORT, RESEARCH, TURRET_FITS, TURRET_REFIT_COST } from './data';
+import { researchCost, spec, storesCap } from './factions';
 import { flyable } from './sim';
 import { bomberRange, depthFor, frontSector, syncFacilities } from './theaters';
 import type {
@@ -42,7 +43,7 @@ export function setArmor(side: SideState, sqId: string, zone: ZoneId, value: num
   const v = Math.max(0, Math.min(MAX_ARMOR_PER_ZONE, Math.round(value)));
   const delta = v - sq.armor[zone];
   if (delta === 0) return ok;
-  const budget = AIRCRAFT[sq.kind].armorBudget;
+  const budget = spec(side, sq.kind).armorBudget;
   if (armorUsed(sq) + delta > budget) return fail('Armor budget exceeded: remove plate elsewhere first');
   // Fitting plate costs supplies; taking it off is free.
   const cost = Math.max(0, delta) * COSTS.armorChange;
@@ -161,7 +162,7 @@ export function canBuild(side: SideState, kind: AircraftKind): boolean {
 
 export function queueAircraft(side: SideState, kind: AircraftKind): ActionResult {
   if (!canBuild(side, kind)) return fail('Not yet developed');
-  const cost = AIRCRAFT[kind].cost;
+  const cost = spec(side, kind).cost;
   if (side.resources.supplies < cost) return fail('Not enough supplies');
   side.resources.supplies -= cost;
   side.factory.queue.push(kind);
@@ -172,7 +173,7 @@ export function cancelQueued(side: SideState, index: number): ActionResult {
   const kind = side.factory.queue[index];
   if (!kind) return fail('Nothing queued there');
   side.factory.queue.splice(index, 1);
-  side.resources.supplies += Math.round(AIRCRAFT[kind].cost * 0.8);
+  side.resources.supplies += Math.round(spec(side, kind).cost * 0.8);
   return ok;
 }
 
@@ -182,8 +183,9 @@ export function startResearch(side: SideState, id: string): ActionResult {
   if (side.research.includes(id)) return fail('Already developed');
   if (side.researching) return fail('Engineers are busy with another project');
   if (item.requires && !side.research.includes(item.requires)) return fail('Prerequisite missing');
-  if (side.resources.supplies < item.cost) return fail('Not enough supplies');
-  side.resources.supplies -= item.cost;
+  const cost = researchCost(side, item);
+  if (side.resources.supplies < cost) return fail('Not enough supplies');
+  side.resources.supplies -= cost;
   side.researching = id;
   side.researchProgress = 0;
   return ok;
@@ -208,8 +210,10 @@ export const CONVOY = { supplies: 60, stores: 35 };
 export function buyConvoy(state: GameState, side: SideState): ActionResult {
   if (side.convoyWeek === state.turn) return fail('One convoy a week is all the railways can manage');
   if (side.resources.supplies < CONVOY.supplies) return fail('Not enough supplies');
+  const cap = storesCap(side);
+  if (side.resources.stores >= cap) return fail('The depots are full');
   side.resources.supplies -= CONVOY.supplies;
-  side.resources.stores += CONVOY.stores;
+  side.resources.stores = Math.min(cap, side.resources.stores + CONVOY.stores);
   side.convoyWeek = state.turn;
   return ok;
 }

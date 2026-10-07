@@ -1,10 +1,11 @@
+import { FOLDER_TAB, look, nationAt, setSeats } from './nation';
 import { aiPlan } from '../core/ai';
 import { emptyPlan, validatePlan } from '../core/actions';
 import { deserialize, serialize, startCampaign } from '../core/game';
 import { resolveTurn } from '../core/turn';
 import { applyCommand, type Command } from '../core/commands';
 import { carryPlan, defaultPlan, fitPlanToStores } from '../core/plans';
-import type { GameState, SideId, TurnPlan } from '../core/types';
+import type { GameState, NationId, SideId, TurnPlan } from '../core/types';
 import { sfxClick, sfxPaper, sfxStamp, sfxStatic, stopDrone } from './audio';
 import { animOn, clear, h } from './dom';
 import { clearDispatches, memoDispatch, showDispatch, type Dispatch } from './general';
@@ -112,6 +113,7 @@ export class App {
   }
 
   render() {
+    setSeats(this.state);
     const scrollers = [...this.root.querySelectorAll<HTMLElement>('[data-keep-scroll]')].map((e) => [e.dataset.keepScroll!, e.scrollTop] as const);
     clear(this.root);
     const s = this.screen;
@@ -229,8 +231,8 @@ export class App {
     this.handover(side, { kind: 'hq', side, tab: 'war' }, `Week ${st.turn} — Planning`, side === 1 && st.sealed[0] ? `${other.commander} has sealed their orders.` : undefined);
   }
 
-  newGame(mode: 'single' | 'hotseat', insight = 0.4, commanders?: [string, string]) {
-    this.state = startCampaign({ mode, aiInsight: insight, seed: `${Date.now()}`, commanders });
+  newGame(mode: 'single' | 'hotseat', insight = 0.4, commanders?: [string, string], factions?: [NationId, NationId]) {
+    this.state = startCampaign({ mode, aiInsight: insight, seed: `${Date.now()}`, commanders, factions });
     this.plans = [defaultPlan(this.state, 0), defaultPlan(this.state, 1)];
     this.selected = null;
     this.announced.clear();
@@ -439,13 +441,13 @@ export class App {
     return h(
       'div',
       { class: 'handover' },
-      h('div', { class: `handover-card folder paper side${s.side}` },
-        h('div', { class: 'folder-tab' }, side.id === 0 ? 'AIR MINISTRY · MOST SECRET' : 'DIREKTORAT · GEHEIM'),
+      h('div', { class: `handover-card folder paper side${look(s.side)}` },
+        h('div', { class: 'folder-tab' }, FOLDER_TAB[nationAt(side.id).id]),
         h('div', { class: 'stamp big' }, 'MOST SECRET'),
-        h('div', { class: `crest big side${s.side}` }),
+        h('div', { class: `crest big nation-${nationAt(s.side).id}` }),
         h('div', { class: 'handover-for' }, 'For the eyes of'),
         h('h1', null, side.commander),
-        h('div', { class: 'handover-side' }, side.id === 0 ? `No. 7 Composite Wing · ${side.name}` : `Kampfgeschwader Nord · ${side.name}`),
+        h('div', { class: 'handover-side' }, `${nationAt(side.id).wing} · ${side.name}`),
         h('div', { class: 'handover-phase' }, s.phase),
         s.note ? h('p', { class: 'handwritten' }, s.note) : null,
         h('p', { class: 'muted' }, 'Hand over the controls. The other commander should look away until this folder is closed again.'),

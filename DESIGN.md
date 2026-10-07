@@ -364,6 +364,30 @@ What you see of a theater is mostly true: sector ownership and your own sites.
 The **condition of enemy sites** and the **pressure on the front** are beliefs,
 built from crews' reports and an optimistic Army liaison.
 
+### 6.7 Nations *(implemented)*
+
+Each side fights for one of three nations, chosen before the war (the AI's
+too, in single player). The nations push towards different ways of fighting
+and pull in different directions: Aldmere flies cheap, accurate operations and
+reads the war clearly, the Directorate sends few aircraft that come home, and
+Varn replaces what it loses. All rules live in `core/factions.ts`; most strengths are innate
+research effects added in `tech()`, so the simulation reads them like any
+development.
+
+| Nation | Strengths | Weaknesses |
+|---|---|---|
+| **Aldmere**, the radar net | Ground radar and photo recon from week 1, +15% interception, recon caught less often, +10% of lost crews home; bombs +10% damage and sorties use 8% fewer stores; reports stray a third less from the truth | Bomb load −5%; confidence rises only 90% as fast |
+| **The Directorate**, the elite | +1 armor plate per type (+2 heavy), armored seat (cockpit lethality ×0.7); +5% hits; gyro sight and cannon at half price; plate weighs 30% less; crews learn 1.5× as fast | 20% less of the weekly stores ration and depots of 110; aircraft +25% dearer, works −15%; replacements −30%; confidence swings 1.5× both ways |
+| **The League of Varn**, mass and supply | Works +15%, aircraft −15%, four-engine airframe and assembly lines at half price; 25 supplies a week of lend-lease whatever the trust; replacements +25%; a third fighter squadron | Twice the hidden defects; −1 plate per type and tanks that burn (fuel lethality ×1.2); weaker training and flak; more showmen and glory-seekers as leaders |
+
+A war without nations (saves from before version 6, the tutorial, or "Nations:
+off" on the title screen) is the classic one: Aldmere against the Directorate
+with symmetric rules. Both sides must be different nations. Measured with
+`npm run balance -- 200 --matrix` (the AI on both sides, equal resources):
+every pairing ends between 44% and 56% of decisive theaters, counting both
+seats together. The classic, symmetric war sits at 56% for the same measure,
+so that is the noise floor of the method rather than a nation's edge.
+
 ## 7. Doctrine (behaviour settings per squadron)
 
 - **Aggression:** press the attack ↔ preserve the aircraft.
@@ -630,8 +654,10 @@ PvP, not just flavour.
 
 **5. Fairness.** In PvP there is no AI escalation bonus. Theater stage effects
 (weather, flak, radar, close-support weight) apply to both sides. Each player
-sees the map from their own side. The Aldmere and Directorate sides are mirror
-images in rules, and differ only in names and paint.
+sees the map from their own side. The rules of the war are the same for
+both; what differs is each side's nation (§6.7), which both players know.
+In a classic war the two sides are mirror images and differ only in names
+and paint.
 
 **6. Turn protocol (shared by hotseat and LAN; implemented).** Each turn has five steps:
 

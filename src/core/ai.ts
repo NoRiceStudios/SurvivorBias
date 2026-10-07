@@ -1,5 +1,6 @@
 import { buyConvoy, CONVOY, planCost, requestCrews, emergencyRepair, emptyPlan, queueAircraft, REPAIR_COST, setApproach, setTurrets, startResearch, upgradeFactory, upgradeFlak, upgradeTraining, validatePlan } from './actions';
 import { AIRCRAFT, APPROACH_ZONES, MAX_ARMOR_PER_ZONE, RESEARCH, TURRET_FITS, TURRET_REFIT_COST, ZONE_AREA } from './data';
+import { researchCost, spec } from './factions';
 import { Rng } from './rng';
 import { fitPlanToStores } from './plans';
 import { flyable } from './sim';
@@ -45,7 +46,7 @@ export function chooseArmor(side: SideState, sq: Squadron): Record<ZoneId, numbe
   const own = side.perceived.survivorHitsByKind?.[sq.kind];
   const seen = own && ZONES.reduce((a, z) => a + own[z], 0) > 10 ? own : side.perceived.survivorHits;
   const totalSeen = ZONES.reduce((a, z) => a + seen[z], 0);
-  const budget = AIRCRAFT[sq.kind].armorBudget;
+  const budget = spec(side, sq.kind).armorBudget;
   const weights = {} as Record<ZoneId, number>;
   // Expected exposure if every hit were equally survivable.
   const exp = {} as Record<ZoneId, number>;
@@ -178,10 +179,10 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
   if (!side.researching) {
     const prefs = ['radar', 'gunneryManual', 'dropTanks', 'selfSealing', 'powerTurrets', 'gunCameras', a >= 2 ? 'heavyAirframe' : 'photoRecon', 'gyroSight', 'engineTuning', 'armorAlloy', 'assembly1', 'radios', 'extinguishers', 'bombsight2', 'intelOfficer', 'radarChain', 'photoRecon', 'heavyAirframe'];
     // Then anything else that is open, cheapest first.
-    const rest = RESEARCH.filter((r) => !prefs.includes(r.id)).sort((x, y) => x.cost - y.cost).map((r) => r.id);
+    const rest = RESEARCH.filter((r) => !prefs.includes(r.id)).sort((x, y) => researchCost(side, x) - researchCost(side, y)).map((r) => r.id);
     for (const p of [...prefs, ...rest]) {
       const item = RESEARCH.find((r) => r.id === p)!;
-      if (!side.research.includes(p) && side.resources.supplies > item.cost + 80) {
+      if (!side.research.includes(p) && side.resources.supplies > researchCost(side, item) + 80) {
         if (startResearch(side, p).ok) break;
       }
     }

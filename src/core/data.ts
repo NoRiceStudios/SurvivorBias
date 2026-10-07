@@ -72,7 +72,6 @@ export const ZONE_LABEL: ZoneMap<string> = {
 
 export interface AircraftSpec {
   kind: AircraftKind;
-  name: [string, string];
   role: string;
   /** Armor points that can be distributed over zones. */
   armorBudget: number;
@@ -94,7 +93,6 @@ export interface AircraftSpec {
 export const AIRCRAFT: Record<AircraftKind, AircraftSpec> = {
   fighter: {
     kind: 'fighter',
-    name: ['Kestrel Mk.II', 'Falke-7'],
     role: 'Escort & interception',
     armorBudget: 3,
     guns: 4,
@@ -107,7 +105,6 @@ export const AIRCRAFT: Record<AircraftKind, AircraftSpec> = {
   },
   medium: {
     kind: 'medium',
-    name: ['Harrow B.III', 'Kormoran K-2'],
     role: 'Medium bomber',
     armorBudget: 6,
     guns: 4,
@@ -120,7 +117,6 @@ export const AIRCRAFT: Record<AircraftKind, AircraftSpec> = {
   },
   heavy: {
     kind: 'heavy',
-    name: ['Colossus B.I', 'Gigant G-4'],
     role: 'Heavy bomber',
     armorBudget: 9,
     guns: 8,
@@ -134,7 +130,6 @@ export const AIRCRAFT: Record<AircraftKind, AircraftSpec> = {
   },
   recon: {
     kind: 'recon',
-    name: ['Swift PR.I', 'Elster A-1'],
     role: 'Photo reconnaissance',
     armorBudget: 1,
     guns: 0,
@@ -333,42 +328,3 @@ export const ARCHETYPE_BIAS: Record<
   byTheBook: { claims: 1.05, enemies: 1.0, damage: 1.0, flak: 1.0, unknownRate: 0.4 },
   timid: { claims: 0.9, enemies: 1.3, damage: 0.8, flak: 1.7, unknownRate: 0.15 },
 };
-
-export const SIDE_NAMES: [{ name: string; short: string }, { name: string; short: string }] = [
-  { name: 'Commonwealth of Aldmere', short: 'Aldmere' },
-  { name: 'Northern Directorate', short: 'Directorate' },
-];
-
-export const FIRST_NAMES: [string[], string[]] = [
-  ['Arthur', 'Edmund', 'Hugh', 'Walter', 'Percy', 'Roland', 'Cecil', 'Douglas', 'Leonard', 'Harold', 'Ivor', 'Rupert', 'Giles', 'Neville', 'Clive', 'Desmond'],
-  ['Anton', 'Ewald', 'Gerrit', 'Lothar', 'Matthis', 'Konrad', 'Henrik', 'Jaro', 'Ulrich', 'Waldemar', 'Bastian', 'Falk', 'Emil', 'Reinhold', 'Torben', 'Viktor'],
-];
-export const LAST_NAMES: [string[], string[]] = [
-  ['Ashworth', 'Penrose', 'Hale', 'Brackley', 'Carrow', 'Thorne', 'Mabey', 'Fenwick', 'Lisle', 'Wexford', 'Dunmore', 'Ridley', 'Sallow', 'Pryce', 'Cobham', 'Garside', 'Aldridge', 'Bancroft', 'Blakeney', 'Brereton', 'Calloway', 'Carver', 'Chalcott', 'Coverley', 'Dacre', 'Danvers', 'Ellerby', 'Fairbairn', 'Farrant', 'Gilchrist', 'Granville', 'Hadley', 'Harcourt', 'Hensley', 'Keswick', 'Lancing', 'Latimer', 'Linley', 'Maitland', 'Marlowe', 'Melbury', 'Northcote', 'Ormsby', 'Pagett', 'Pelham', 'Quarrie', 'Radcliffe', 'Rawdon', 'Selwyn', 'Shelford', 'Stanmore', 'Tavener', 'Thursby', 'Trevelyan', 'Upton', 'Vane', 'Verity', 'Waverley', 'Westlake', 'Whitcombe', 'Wraxall', 'Yardley'],
-  ['Kessler', 'Brandt', 'Voigt', 'Ahlers', 'Reinke', 'Strahl', 'Lindqvist', 'Haber', 'Ostrow', 'Falkner', 'Merz', 'Rauch', 'Tiede', 'Brückner', 'Sommer', 'Kranz', 'Adler', 'Bergmann', 'Bohlen', 'Dorn', 'Eckhart', 'Falk', 'Gerlach', 'Hagen', 'Heller', 'Hollmann', 'Jäger', 'Kemper', 'Kohl', 'Landau', 'Lenz', 'Marquardt', 'Nagel', 'Oberle', 'Pfeiffer', 'Quandt', 'Reuter', 'Ritter', 'Sander', 'Seeger', 'Stein', 'Thalmann', 'Ulrich', 'Vogt', 'Wendt', 'Winkler', 'Zander', 'Arndt', 'Baumann', 'Dressler', 'Eichler', 'Fendt', 'Grote', 'Henning', 'Ihlenfeld', 'Kessel', 'Lüders', 'Mahler', 'Nolte', 'Pahl', 'Rehberg', 'Schott'],
-];
-/** Aircrew names: a larger pool than the squadron leaders', drawn afresh each campaign. */
-export const CREW_FIRST: [string[], string[]] = [
-  ['Albert', 'Alfred', 'Bernard', 'Charles', 'Colin', 'Dennis', 'Derek', 'Donald', 'Eric', 'Ernest', 'Frank', 'Frederick', 'Geoffrey', 'George', 'Gordon', 'Henry', 'Herbert', 'Jack', 'James', 'John', 'Kenneth', 'Lionel', 'Maurice', 'Norman', 'Patrick', 'Peter', 'Ralph', 'Raymond', 'Reginald', 'Robert', 'Ronald', 'Sidney', 'Stanley', 'Thomas', 'Victor', 'William'],
-  ['Alfons', 'Bruno', 'Dieter', 'Egon', 'Erich', 'Ernst', 'Franz', 'Friedrich', 'Fritz', 'Georg', 'Gerhard', 'Günther', 'Hans', 'Heinz', 'Helmut', 'Herbert', 'Horst', 'Johann', 'Josef', 'Karl', 'Klaus', 'Kurt', 'Ludwig', 'Manfred', 'Max', 'Otto', 'Paul', 'Peter', 'Richard', 'Rudolf', 'Siegfried', 'Walter', 'Werner', 'Wilhelm', 'Willi', 'Wolfgang'],
-];
-export const CREW_LAST: [string[], string[]] = [
-  ['Abbott', 'Archer', 'Bailey', 'Barker', 'Bennett', 'Bishop', 'Booth', 'Bradshaw', 'Burton', 'Chapman', 'Clarke', 'Collins', 'Cooper', 'Dawson', 'Dixon', 'Ellis', 'Fletcher', 'Foster', 'Gibson', 'Graham', 'Harding', 'Harper', 'Hayes', 'Holmes', 'Hughes', 'Jennings', 'Kemp', 'Lawrence', 'Lloyd', 'Marsh', 'Mason', 'Morgan', 'Newman', 'Osborne', 'Parker', 'Payne', 'Porter', 'Reed', 'Rowe', 'Shaw', 'Spencer', 'Stevens', 'Turner', 'Walsh', 'Ward', 'Webb', 'Wells', 'Wood', 'Atkins', 'Baxter', 'Bell', 'Brooks', 'Carter', 'Cole', 'Cross', 'Dale', 'Day', 'Doyle', 'Edwards', 'Evans', 'Farmer', 'Ford', 'Fox', 'Gardner', 'Gray', 'Green', 'Hall', 'Hart', 'Hill', 'Hunt', 'Jarvis', 'Kelly', 'King', 'Knight', 'Lane', 'Long', 'Lucas', 'Mills', 'Moore', 'Nash', 'Nicholls', 'Owen', 'Page', 'Palmer', 'Pearce', 'Price', 'Rees', 'Rose', 'Ross', 'Russell', 'Simmons', 'Stone', 'Swift', 'Tucker', 'Wade', 'Watts', 'West', 'Wilkins', 'Wright', 'Young'],
-  ['Albrecht', 'Bauer', 'Beck', 'Berger', 'Busch', 'Dietrich', 'Ebert', 'Engel', 'Fischer', 'Frank', 'Fuchs', 'Graf', 'Hahn', 'Hartmann', 'Hoffmann', 'Huber', 'Jung', 'Kaiser', 'Keller', 'Klein', 'Koch', 'König', 'Krause', 'Kuhn', 'Lang', 'Lehmann', 'Lorenz', 'Maier', 'Meyer', 'Möller', 'Neumann', 'Peters', 'Pohl', 'Richter', 'Roth', 'Schäfer', 'Schmitt', 'Schneider', 'Schulz', 'Schwarz', 'Seidel', 'Thiel', 'Vogel', 'Wagner', 'Weber', 'Werner', 'Winter', 'Wolf', 'Albers', 'Arnold', 'Bach', 'Beyer', 'Brandt', 'Dahl', 'Ernst', 'Franke', 'Friedrich', 'Geiger', 'Hesse', 'Horn', 'Jansen', 'Kraft', 'Krüger', 'Kühn', 'Lange', 'Lindner', 'Ludwig', 'Martin', 'Mayer', 'Otto', 'Paul', 'Pieper', 'Ramm', 'Rieger', 'Sauer', 'Scholz', 'Seidl', 'Simon', 'Sommerfeld', 'Stahl', 'Thomas', 'Unger', 'Vetter', 'Voss', 'Walter', 'Weiss', 'Wolff', 'Ziegler', 'Brauer', 'Fink', 'Haas', 'Kurz', 'Lindemann', 'Möbius', 'Nowak', 'Pohle', 'Reich', 'Schuster'],
-];
-
-/** Squadron commanders' ranks, most junior first. */
-export const RANKS: [string[], string[]] = [
-  ['Flt Lt', 'Sqn Ldr', 'Wg Cdr'],
-  ['Hauptmann', 'Major', 'Oberst'],
-];
-
-export const SQUADRON_NAMES: [string[], string[]] = [
-  ['No. 41 "Lanterns"', 'No. 112 "Old Crows"', 'No. 9 "Ploughmen"', 'No. 207 "Nightjars"', 'No. 73 "Saints"', 'No. 18 "Ferrymen"', 'No. 304 "Harriers"', 'No. 61 "Long Odds"', 'No. 15 "Vespers"', 'No. 88 "Tinkers"'],
-  ['Staffel Grau', 'Staffel Anker', 'Staffel Eis', 'Staffel Hammer', 'Staffel Ruß', 'Staffel Pflug', 'Staffel Nord', 'Staffel Auge', 'Staffel Hagel', 'Staffel Kreuz'],
-];
-
-export const CALLSIGNS: [string[], string[]] = [
-  ['Lantern', 'Crow', 'Plough', 'Nightjar', 'Saint', 'Ferry', 'Harrier', 'Odds', 'Vesper', 'Tinker'],
-  ['Grau', 'Anker', 'Eis', 'Hammer', 'Ruß', 'Pflug', 'Nord', 'Auge', 'Hagel', 'Kreuz'],
-];

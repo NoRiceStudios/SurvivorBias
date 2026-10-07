@@ -3,6 +3,7 @@
  * would do (previewed live while a slider is dragged), and two small drawings:
  * the formation from above and the bombing height from the side.
  */
+import { nationAt } from './nation';
 import { AIRCRAFT, APPROACH_LABEL, TURRET_FITS, TURRET_REFIT_COST } from '../core/data';
 import { altitudeFeet, doctrineEffects, doctrineKeys, doctrineSummary, type DoctrineEffect, type DoctrineKey } from '../core/doctrine';
 import { flyable } from '../core/sim';
@@ -216,7 +217,7 @@ function formationCanvas(sq: Squadron, tight: number): HTMLCanvasElement {
   g.fillStyle = INK;
   g.fillText(tight >= 0.75 ? 'TIGHT BOX' : tight >= 0.4 ? 'STANDARD' : 'LOOSE', 3, 9);
   g.fillStyle = 'rgba(42,38,32,0.6)';
-  g.fillText(`${n} ${AIRCRAFT[sq.kind].name[sq.side].toUpperCase()}`.slice(0, 22), 3, H - 3);
+  g.fillText(`${n} ${nationAt(sq.side).aircraft[sq.kind].toUpperCase()}`.slice(0, 22), 3, H - 3);
   return c;
 }
 

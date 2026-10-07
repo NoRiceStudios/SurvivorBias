@@ -1,7 +1,9 @@
+import { nationAt } from './nation';
 import { AIRCRAFT, ZONE_LABEL } from '../core/data';
 import { KINDS } from '../core/lethality';
+import { rulesOf } from '../core/factions';
 import { SECTORS, THEATERS } from '../core/theaters';
-import type { AircraftKind, GameState, Hit, Outcome, SideId } from '../core/types';
+import type { AircraftKind, GameState, Hit, Outcome, SideId, ZoneId } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
 import { sfxClick, sfxKey } from './audio';
@@ -48,18 +50,20 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
         const sv = ofKind(surv, k);
         const ls = ofKind(lost, k);
         const fatal = ls.filter((x) => x.lethal);
-        const leth = st.lethality[k];
+        // How this side's nation builds its aircraft changes the odds too (an armored seat, tanks that burn).
+        const nat = rulesOf(st.sides[sideId]).lethality;
+        const leth = Object.fromEntries(Object.entries(st.lethality[k]).map(([z, v]) => [z, v * (nat[z as ZoneId] ?? 1)])) as typeof st.lethality[typeof k];
         const maxL = Math.max(...Object.values(leth));
         const scale = k === 'heavy' ? 3 : k === 'medium' ? 4 : 5;
         return h('section', { class: 'paper panel declass' },
           i === 0 ? h('div', { class: 'stamp big declass-stamp' }, 'DECLASSIFIED') : null,
-          h('h2', null, `Where our ${NAMES[k]} were hit — ${AIRCRAFT[k].name[sideId]}`),
+          h('h2', null, `Where our ${NAMES[k]} were hit — ${nationAt(sideId).aircraft[k]}`),
           h('div', { class: 'composite-row three' },
             h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: sv, dots: true }, scale)), h('figcaption', null, `What you saw: ${plural(sv.length, 'hole')} on aircraft that returned.`)),
             h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: ls, dots: true, dotColor: '#e3ebf2' }, scale)), h('figcaption', null, `What you never saw: ${plural(ls.length, 'hole')} on aircraft that did not return.`)),
             h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: fatal, dots: true, dotColor: '#ff3b30' }, scale)), h('figcaption', null, `The ${fatal.length} hits that brought them down.`)),
           ),
-          h('h3', null, `This war's ${AIRCRAFT[k].name[sideId]}: chance that one hit brings her down (unarmored)`),
+          h('h3', null, `This war's ${nationAt(sideId).aircraft[k]}: chance that one hit brings her down (unarmored)`),
           ZONES.map((z) => h('div', { class: 'bar-row' }, h('span', null, ZONE_LABEL[z]), h('span', { class: 'bar red' }, h('i', { style: `width:${Math.round((leth[z] / maxL) * 100)}%` })), h('span', null, `${Math.round(leth[z] * 100)}%`))),
         );
       }),

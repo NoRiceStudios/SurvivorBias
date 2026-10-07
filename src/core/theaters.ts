@@ -4,6 +4,7 @@
  * the contested boundary captures sectors; two sectors gained wins the theater.
  */
 import type { Rng } from './rng';
+import { rulesOf } from './factions';
 import type {
   AircraftKind,
   Facilities,
@@ -140,7 +141,7 @@ export function bomberRange(kind: AircraftKind): number {
 }
 
 export function escortRange(side: SideState): number {
-  return side.research.includes('dropTanks') ? 3 : 2;
+  return Math.max(1, (side.research.includes('dropTanks') ? 3 : 2) + rulesOf(side).escort);
 }
 
 export function setupTheater(state: GameState, index: number, rng: Rng, headStart: SideId | null): TheaterState {

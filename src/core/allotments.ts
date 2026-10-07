@@ -4,10 +4,11 @@
  * wing, the likelier the rare and exceptional offers. Some come with strings
  * attached: favours are never free.
  */
-import { AIRCRAFT, RESEARCH, SQUADRON_NAMES } from './data';
+import { RESEARCH } from './data';
+import { aircraftLabel, nationOf, storesCap } from './factions';
 import { makeAirframe, makeSquadron } from './setup';
 import { Rng } from './rng';
-import { newOrder, STORES_CAP } from './turn';
+import { newOrder } from './turn';
 import type { ActionResult } from './actions';
 import type { AircraftKind, Allotment, AllotmentRarity, GameState, SideState, Squadron } from './types';
 
@@ -30,7 +31,7 @@ interface Card {
 }
 
 const combat = (side: SideState) => side.squadrons.filter((q) => q.kind !== 'recon');
-const typeName = (side: SideState, kind: AircraftKind) => AIRCRAFT[kind].name[side.id];
+const typeName = (side: SideState, kind: AircraftKind) => aircraftLabel(side, kind);
 
 /** The squadron of a type with the fewest aircraft and room for more. */
 function receiving(side: SideState, kind: AircraftKind): Squadron | undefined {
@@ -49,7 +50,7 @@ function deliver(state: GameState, side: SideState, kind: AircraftKind, n: numbe
   for (let i = 0; i < n; i++) {
     const sq = receiving(side, kind);
     if (!sq) break;
-    sq.airframes.push(makeAirframe(state, rng, kind, side.id, defectScale));
+    sq.airframes.push(makeAirframe(state, rng, kind, side, defectScale));
     given++;
   }
   return given;
@@ -57,8 +58,8 @@ function deliver(state: GameState, side: SideState, kind: AircraftKind, n: numbe
 
 function formSquadron(state: GameState, side: SideState, kind: AircraftKind, size: number, rng: Rng): Squadron {
   const used = new Set(side.squadrons.map((q) => q.name));
-  const free = SQUADRON_NAMES[side.id].findIndex((n) => !used.has(n));
-  const sq = makeSquadron(state, rng, side.id, kind, size, free >= 0 ? free : side.squadrons.length, undefined, [...side.squadrons.map((q) => q.leader.name), ...(side.usedNames ?? [])]);
+  const free = nationOf(side).squadronNames.findIndex((n) => !used.has(n));
+  const sq = makeSquadron(state, rng, side, kind, size, free >= 0 ? free : side.squadrons.length, undefined, [...side.squadrons.map((q) => q.leader.name), ...(side.usedNames ?? [])]);
   if (free < 0) sq.name = `${sq.name} (${side.squadrons.length + 1})`;
   side.squadrons.push(sq);
   return sq;
@@ -102,9 +103,9 @@ export const ALLOTMENT_CARDS: Card[] = [
   },
   {
     id: 'fuelConvoy', rarity: 'common',
-    make: (_s, side) => (side.resources.stores <= STORES_CAP - 20 ? { title: 'Fuel convoy', text: 'An extra convoy of fuel and munitions: +40 stores.' } : null),
+    make: (_s, side) => (side.resources.stores <= storesCap(side) - 20 ? { title: 'Fuel convoy', text: 'An extra convoy of fuel and munitions: +40 stores.' } : null),
     apply: (_state, side) => {
-      side.resources.stores = Math.min(STORES_CAP, side.resources.stores + 40);
+      side.resources.stores = Math.min(storesCap(side), side.resources.stores + 40);
       return 'The fuel convoy is in: +40 stores.';
     },
   },

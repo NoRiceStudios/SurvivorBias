@@ -4,6 +4,8 @@
  * across the full width, with their controls in columns beneath it. Every
  * locked or unaffordable action says why.
  */
+import { researchCost, spec as buildSpec } from '../core/factions';
+import { nationAt } from './nation';
 import { canBuild, COSTS, crewNeed, crewPrice, researchTurns } from '../core/actions';
 import { AIRCRAFT, BRANCHES, RESEARCH } from '../core/data';
 import { crewShortfall, LIVE_FIRE_STORES } from '../core/turn';
@@ -39,7 +41,7 @@ function factoryCol(app: App, side: SideState): HTMLElement {
   const queue = f.queue.map((k, i) => {
     cum += AIRCRAFT[k].build;
     const weeks = Math.max(1, Math.ceil(cum / Math.max(0.1, rate)));
-    return h('li', null, h('span', null, AIRCRAFT[k].name[side.id]), h('span', { class: 'small muted' }, ` arrives wk ${app.state!.turn + weeks}`),
+    return h('li', null, h('span', null, nationAt(side.id).aircraft[k]), h('span', { class: 'small muted' }, ` arrives wk ${app.state!.turn + weeks}`),
       h('button', { class: 'btn tiny', ...tip('Cancel the order (supplies refunded)'), onclick: () => app.cmd(side.id, { k: 'cancel', i }) }, '✕'));
   });
   const upCost = COSTS.factoryUpgrade(f.level);
@@ -56,12 +58,12 @@ function factoryCol(app: App, side: SideState): HTMLElement {
     ], [
       h('h3', null, 'Order aircraft'),
       h('div', { class: 'build-list' }, kinds.map((k) => {
-        const spec = AIRCRAFT[k];
+        const spec = buildSpec(side, k);
         const ok = canBuild(side, k);
         const req = RESEARCH.find((r) => r.id === spec.requires)?.name;
-        return h('div', { class: `build ${ok ? '' : 'locked'}`, ...tip({ head: spec.name[side.id], text: `${spec.role}. Crew of ${spec.crew}. ${spec.build} build points.` }) },
+        return h('div', { class: `build ${ok ? '' : 'locked'}`, ...tip({ head: nationAt(side.id).aircraft[k], text: `${spec.role}. Crew of ${spec.crew}. ${spec.build} build points.` }) },
           aircraftCanvas(k, { side: side.id, seed: 2 }, 1),
-          h('div', { class: 'b-name' }, h('div', { class: 'sq-name' }, spec.name[side.id]), ok ? null : h('div', { class: 'small muted' }, `Needs ${req}`)),
+          h('div', { class: 'b-name' }, h('div', { class: 'sq-name' }, nationAt(side.id).aircraft[k]), ok ? null : h('div', { class: 'small muted' }, `Needs ${req}`)),
           ok ? h('button', { class: 'btn small', disabled: sup < spec.cost, onclick: () => app.cmd(side.id, { k: 'build', kind: k }) }, `Order ${spec.cost}`) : null);
       })),
     ], [
@@ -121,8 +123,8 @@ function researchCol(app: App, side: SideState): HTMLElement {
     h('h2', null, 'Development'),
     current
       ? h('div', { class: 'in-works' }, h('span', { class: 'stamp order' }, 'IN THE WORKS'), ' ', h('b', null, current.name),
-        h('div', { class: 'progress' }, h('i', { style: `width:${(side.researchProgress / researchTurns(current.cost)) * 100}%` })),
-        h('div', { class: 'small muted' }, `${side.researchProgress}/${researchTurns(current.cost)} weeks · ${current.desc}`))
+        h('div', { class: 'progress' }, h('i', { style: `width:${(side.researchProgress / researchTurns(researchCost(side, current))) * 100}%` })),
+        h('div', { class: 'small muted' }, `${side.researchProgress}/${researchTurns(researchCost(side, current))} weeks · ${current.desc}`))
       : h('p', { class: 'small warnc' }, 'Engineers idle: fund one project. One at a time.'),
     h('div', { class: 'small muted' }, `${done} of ${RESEARCH.length} in service.`),
     BRANCHES.map((b) => {
@@ -139,14 +141,14 @@ function researchCol(app: App, side: SideState): HTMLElement {
           const locked = !!r.requires && !side.research.includes(r.requires);
           const active = side.researching === r.id;
           const need = RESEARCH.find((x) => x.id === r.requires)?.name;
-          const can = !isDone && !active && !locked && !side.researching && sup >= r.cost;
+          const can = !isDone && !active && !locked && !side.researching && sup >= researchCost(side, r);
           return h('button', {
             class: `r-chip ${isDone ? 'done' : ''} ${locked ? 'locked' : ''} ${active ? 'active' : ''} ${can ? 'can' : ''}`,
             style: `grid-column:${tier(r) + 1}`,
-            ...tip({ head: r.name, text: r.desc, effect: isDone ? 'in service' : locked ? `-needs ${need}` : `${r.cost} supplies, ${researchTurns(r.cost)} weeks` }),
+            ...tip({ head: r.name, text: r.desc, effect: isDone ? 'in service' : locked ? `-needs ${need}` : `${researchCost(side, r)} supplies, ${researchTurns(researchCost(side, r))} weeks` }),
             disabled: !can,
             onclick: () => app.cmd(side.id, { k: 'research', id: r.id }),
-          }, h('span', { class: 'r-name' }, `${tier(r) ? '▸ ' : ''}${r.name}`), h('span', { class: 'r-sub' }, isDone ? '✓ in service' : active ? 'in the works' : locked ? 'locked' : `${r.cost} · ${researchTurns(r.cost)}w`));
+          }, h('span', { class: 'r-name' }, `${tier(r) ? '▸ ' : ''}${r.name}`), h('span', { class: 'r-sub' }, isDone ? '✓ in service' : active ? 'in the works' : locked ? 'locked' : `${researchCost(side, r)} · ${researchTurns(researchCost(side, r))}w`));
         })));
     }),
   );

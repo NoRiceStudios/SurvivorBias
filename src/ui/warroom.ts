@@ -4,6 +4,7 @@
  * the target, every squadron's task and the returns policy; the in-tray under
  * the map holds requests, standing orders and this week's mail.
  */
+import { aircraftName } from '../core/setup';
 import { AIRCRAFT, APPROACH_LABEL, ARCHETYPE_INFO, MAX_EFFORT, TARGETS } from '../core/data';
 import { tech } from '../core/tech';
 import { flyable } from '../core/sim';
@@ -264,7 +265,7 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
           : null;
     const info = ARCHETYPE_INFO[sq.leader.archetype];
     return h('div', { class: `sq-row ${role !== 'rest' ? 'active' : ''}`, 'data-sq': sq.id },
-      h('div', { class: 'sq-line1', ...tip({ head: `${sq.name} — ${AIRCRAFT[sq.kind].name[side.id]}`, text: `${sq.leader.rank} ${sq.leader.name} (${info.label}): ${info.blurb}`, effect: `${ready} ready of ${sq.airframes.length}. Flying costs ${cost} stores.` }) },
+      h('div', { class: 'sq-line1', ...tip({ head: `${sq.name} — ${aircraftName(sq.kind, side)}`, text: `${sq.leader.rank} ${sq.leader.name} (${info.label}): ${info.blurb}`, effect: `${ready} ready of ${sq.airframes.length}. Flying costs ${cost} stores.` }) },
         h('span', { class: 'sq-face' }, leaderPortrait(sq.leader, side.id, 1)),
         h('span', { class: 'sq-name' }, sqLabel(sq.name)),
         h('span', { class: 'sq-pips' },

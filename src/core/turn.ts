@@ -4,13 +4,14 @@ import { stationLife } from './vignettes';
 import { plural } from './text';
 import { aiIntent } from './ai';
 import { planCost, researchTurns } from './actions';
-import { AIRCRAFT, ARCHETYPE_INFO, RANKS, REQUEST_SHORT, RESEARCH, SALVAGE, SQUADRON_NAMES, TARGETS, TRAIT_INFO } from './data';
+import { AIRCRAFT, ARCHETYPE_INFO, REQUEST_SHORT, RESEARCH, SALVAGE, TARGETS, TRAIT_INFO } from './data';
+import { aircraftLabel, nationOf, researchCost, rulesOf, spec, storesCap } from './factions';
 import { buildDebrief, updatePerceived } from './reports';
 import { CRIPPLED, facilityEffects } from './effects';
 import { generateRequests } from './requests';
 import { autoChooseAllotment, drawAllotments } from './allotments';
 import { Rng } from './rng';
-import { captainName, makeAirframe, makeLeader, makeSquadron } from './setup';
+import { captainName, makeAirframe, makeLeader, makeSquadron, pickArchetype } from './setup';
 import { finishDay, flyable, gatherFliers, newDay, resolveRaid, resolveRecon, type Flier } from './sim';
 import {
   applyPressure,
@@ -113,7 +114,7 @@ function reinforce(rng: Rng, state: GameState, side: SideState, news: string[]) 
     const kind: AircraftKind = fighters < planes / 2 || i % 2 === 0 ? 'fighter' : 'medium';
     const sq = side.squadrons.filter((q) => q.kind === kind).sort((x, y) => x.airframes.length - y.airframes.length)[0];
     if (!sq || sq.airframes.length >= 10) continue;
-    sq.airframes.push(makeAirframe(state, rng, kind, side.id));
+    sq.airframes.push(makeAirframe(state, rng, kind, side));
     sq.crews++;
     delivered++;
   }
@@ -153,7 +154,7 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
         if (!r.lead && out > 0 && rng.chance(tech(side, 'escape'))) {
           const all = out >= crew;
           news.push(crew === 1 ? `The pilot of ${r.serial} (${sq.name}) baled out and has been brought home.` : `${all ? 'The crew' : `${out} of the crew`} of ${r.serial} (${sq.name}) got out and ${all ? 'have' : 'have'} been brought home.`);
-          r.captain = `${captainName(side.id, r.serial, state.seed)} (${crew === 1 ? 'rescued, back with the squadron' : all ? 'rescued with his crew, back with the squadron' : `rescued with ${out - 1 > 0 ? `${out - 1} of his crew` : 'nobody else'}`})`;
+          r.captain = `${captainName(side, r.serial, state.seed)} (${crew === 1 ? 'rescued, back with the squadron' : all ? 'rescued with his crew, back with the squadron' : `rescued with ${out - 1 > 0 ? `${out - 1} of his crew` : 'nobody else'}`})`;
           // A crew is a crew only if enough of it came back.
           if (out * 2 < crew) sq.crews--;
         } else {
@@ -167,19 +168,19 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
           r.captain = `${sq.leader.rank} ${sq.leader.name}`;
         }
         if (!r.captain?.includes('rescued')) {
-          side.roll = [...(side.roll ?? []), { week: state.turn, theater: state.theater.index, name: r.captain ?? captainName(side.id, r.serial, state.seed), serial: r.serial, squadron: sq.name, crew: AIRCRAFT[r.kind].crew, fate: 'missing' }];
+          side.roll = [...(side.roll ?? []), { week: state.turn, theater: state.theater.index, name: r.captain ?? captainName(side, r.serial, state.seed), serial: r.serial, squadron: sq.name, crew: AIRCRAFT[r.kind].crew, fate: 'missing' }];
         }
         sq.airframes = sq.airframes.filter((a) => a.id !== r.airframeId);
         // Defenders come down over our own country, where the wreck can be recovered.
         if (r.role === 'defense') {
-          salvage += Math.round(AIRCRAFT[r.kind].cost * SALVAGE);
+          salvage += Math.round(spec(side, r.kind).cost * SALVAGE);
           wrecks++;
         }
       } else if (r.fate === 'crashed') {
         if (rng.chance(0.25)) sq.crews--;
         sq.airframes = sq.airframes.filter((a) => a.id !== r.airframeId);
         // The wreck is on our own field: engines, guns and instruments go back into the depots.
-        salvage += Math.round(AIRCRAFT[r.kind].cost * SALVAGE);
+        salvage += Math.round(spec(side, r.kind).cost * SALVAGE);
         wrecks++;
       } else if (af) {
         af.sorties++;
@@ -211,7 +212,7 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
         news.push(`${sq.leader.rank} ${sq.leader.name} of ${sq.name} has a name in the wing now: ${info.label}. ${info.blurb}`);
       }
     }
-    sq.skill = Math.min(0.95, sq.skill + 0.015 * (1 - frac));
+    sq.skill = Math.min(0.95, sq.skill + 0.015 * (1 - frac) * rulesOf(side).experience);
     sq.crews = Math.max(0, sq.crews);
     if (frac >= 0.5 && mine.some((r) => r.fate !== 'lost')) {
       sq.notables.unshift(`Week ${state.turn}: the survivors are badly shaken after losing ${lost} of ${mine.length}.`);
@@ -251,15 +252,14 @@ function applyLosses(rng: Rng, state: GameState, side: SideState, recs: PlaneRec
  */
 function flightCommanders(rng: Rng, state: GameState, side: SideState, sq: Squadron, old: Leader): [Leader, Leader] {
   const taken = [...side.squadrons.map((q) => q.leader.name), ...(side.usedNames ?? [])];
-  const ranks = RANKS[side.id];
+  const ranks = nationOf(side).ranks;
   const top = Math.max(0, ranks.indexOf(old.rank));
   // The squadron's own senior flight commander is first in line; otherwise two men step up.
   const deputy = sq.deputy;
   delete sq.deputy;
-  const a = deputy ?? makeLeader(rng, side.id, undefined, taken);
-  // Two different characters, so the choice is a real one.
-  const others = (['braggart', 'pessimist', 'gloryHunter', 'byTheBook', 'timid'] as const).filter((x) => x !== a.archetype);
-  const b = makeLeader(rng, side.id, rng.pick([...others]), [...taken, a.name]);
+  const a = deputy ?? makeLeader(rng, side, undefined, taken);
+  // Two different characters, so the choice is a real one; both drawn the way this nation promotes.
+  const b = makeLeader(rng, side, pickArchetype(rng, side, [a.archetype]), [...taken, a.name]);
   if (!deputy) a.rank = ranks[top];
   b.rank = ranks[Math.max(0, top - 1)];
   for (const c of [a, b]) {
@@ -443,7 +443,7 @@ function prisonerPost(rng: Rng, state: GameState, side: SideState, sq: Squadron,
   if (chutes === 0 || !rng.chance(0.6)) return;
   // Delivered at the end of week `due - 1`, i.e. two to four weeks after the loss.
   const due = state.turn + rng.int(3, 5);
-  const captain = captainName(side.id, r.serial, state.seed);
+  const captain = captainName(side, r.serial, state.seed);
   const one = AIRCRAFT[r.kind].crew === 1 || chutes === 1;
   const who = AIRCRAFT[r.kind].crew === 1 ? `${captain}, pilot of ${r.serial} (${sq.name})` : chutes === 1 ? `one man of the crew of ${r.serial} (${sq.name})` : `${chutes} of the crew of ${r.serial} (${sq.name}), ${captain} among them`;
   side.post = [...(side.post ?? []), {
@@ -482,17 +482,19 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   const r = side.resources;
   const trustF = 0.4 + side.trust / 100;
   const bonus = side.isAI ? aiBonus(state, side) : 1;
-  const sup = Math.round((45 + 45 * trustF) * (0.55 + 0.45 * Math.min(1.2, side.facilities.industry / 100)) * bonus);
-  // Our own requisition officers add a fixed amount, whatever the Air Council thinks of us.
-  const supTotal = sup + tech(side, 'supply');
+  const rules = rulesOf(side);
+  const sup = Math.round((45 + 45 * trustF) * (0.55 + 0.45 * Math.min(1.2, side.facilities.industry / 100)) * bonus * rules.supplies);
+  // Our own requisition officers add a fixed amount, and lend-lease comes by sea, whatever the Air Council thinks of us.
+  const lendLease = Math.round(rules.lendLease * bonus);
+  const supTotal = sup + tech(side, 'supply') + lendLease;
   // Stores are rationed by the wing's strength: a full effort every week burns more than arrives,
   // and wrecked fuel depots cut deliveries.
   // Difficulty bends the enemy's stores only half as much as its other deliveries: a starved enemy cannot fly at all.
-  const stores = storesRation(side, side.isAI ? 0.5 + 0.5 * bonus : 1);
+  const stores = Math.round(storesRation(side, side.isAI ? 0.5 + 0.5 * bonus : 1) * rules.stores);
   // Aircrew are posted only for aircraft the wing has or has on order.
-  const rep = Math.min(Math.max(0, crewShortfall(side) - r.replacements), Math.round((2 + 3 * trustF) * bonus));
+  const rep = Math.min(Math.max(0, crewShortfall(side) - r.replacements), Math.round((2 + 3 * trustF) * bonus * rules.replacements));
   r.supplies += supTotal;
-  r.stores = Math.min(STORES_CAP, r.stores + stores);
+  r.stores = Math.min(storesCap(side), r.stores + stores);
   r.replacements += rep;
   side.repaired = [];
   side.memos.unshift({
@@ -500,7 +502,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
     from: 'Supply Command',
     kind: 'supply',
     subject: 'Deliveries',
-    body: `Delivered this week: ${supTotal} supplies, ${stores} stores (fuel and munitions), ${rep} replacement aircrew.`,
+    body: `Delivered this week: ${supTotal} supplies${lendLease ? ` (${lendLease} of them lend-lease from overseas)` : ''}, ${stores} stores (fuel and munitions), ${rep} replacement aircrew.`,
   });
 
   // Factory production.
@@ -511,20 +513,20 @@ function economy(rng: Rng, state: GameState, side: SideState) {
     const kind = f.queue.shift() as AircraftKind;
     f.progress -= AIRCRAFT[kind].build;
     const defectScale = f.qc === 'rushed' ? 1.4 : f.qc === 'strict' ? 0.15 : 0.5;
-    const af = makeAirframe(state, rng, kind, side.id, defectScale);
+    const af = makeAirframe(state, rng, kind, side, defectScale);
     // Deliver to the squadron of that type with the fewest aircraft, or form one.
     const candidates = side.squadrons.filter((s) => s.kind === kind && s.airframes.length < 10);
     candidates.sort((a, b) => a.airframes.length - b.airframes.length);
     if (candidates.length > 0) candidates[0].airframes.push(af);
     else {
       const used = new Set(side.squadrons.map((q) => q.name));
-      const free = SQUADRON_NAMES[side.id].findIndex((n) => !used.has(n));
-      const sq = makeSquadron(state, rng, side.id, kind, 0, free >= 0 ? free : side.squadrons.length, undefined, [...side.squadrons.map((q) => q.leader.name), ...(side.usedNames ?? [])]);
+      const free = nationOf(side).squadronNames.findIndex((n) => !used.has(n));
+      const sq = makeSquadron(state, rng, side, kind, 0, free >= 0 ? free : side.squadrons.length, undefined, [...side.squadrons.map((q) => q.leader.name), ...(side.usedNames ?? [])]);
       if (free < 0) sq.name = `${sq.name} (${side.squadrons.length + 1})`;
       sq.crews = 0;
       sq.airframes.push(af);
       side.squadrons.push(sq);
-      memo(side, state.turn + 1, 'notice', `New squadron formed`, `${sq.name} has been formed to operate the ${AIRCRAFT[kind].name[side.id]}. ${sq.leader.rank} ${sq.leader.name} commanding.`, 'Group HQ');
+      memo(side, state.turn + 1, 'notice', `New squadron formed`, `${sq.name} has been formed to operate the ${aircraftLabel(side, kind)}. ${sq.leader.rank} ${sq.leader.name} commanding.`, 'Group HQ');
     }
   }
   if (f.queue.length === 0) f.progress = Math.min(f.progress, 3);
@@ -596,7 +598,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   if (side.researching) {
     const item = RESEARCH.find((x) => x.id === side.researching)!;
     side.researchProgress++;
-    if (side.researchProgress >= researchTurns(item.cost)) {
+    if (side.researchProgress >= researchTurns(researchCost(side, item))) {
       side.research.push(item.id);
       memo(side, state.turn + 1, 'notice', `Development complete: ${item.name}`, item.desc, 'Ministry of Aircraft Production');
       side.researching = null;
@@ -784,6 +786,9 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
       memo(side, state.turn + 1, 'reprimand', 'Discrepancy in returns', 'Your recent returns are inconsistent with independent reconnaissance. You will ensure that future returns reflect what was achieved, not what was hoped for. Form 1180 (Explanation of Discrepancy) is to be submitted in triplicate.');
     }
   }
+  // Some High Commands warm slowly; some swing wildly either way.
+  const temper = rulesOf(side);
+  trustDelta *= temper.trustSwing * (trustDelta > 0 ? temper.trustGain : 1);
   side.trust = Math.max(side.isAI ? 20 : 0, Math.min(100, Math.round(side.trust + trustDelta)));
   side.orders = side.orders.filter((o) => !o.done && !o.failed);
   if (side.orders.length === 0 || (side.orders.length < 2 && rng.chance(0.35))) {
@@ -824,7 +829,7 @@ function commandFailure(state: GameState): [Outcome, Outcome] | null {
   const lose = (s: SideState): Outcome | null => {
     const planes = s.squadrons.reduce((x, q) => x + q.airframes.length, 0);
     if (s.trust <= 0 && !s.isAI) return 'relieved';
-    if (planes === 0 && s.resources.supplies < AIRCRAFT.fighter.cost && s.factory.queue.length === 0) return 'grounded';
+    if (planes === 0 && s.resources.supplies < spec(s, 'fighter').cost && s.factory.queue.length === 0) return 'grounded';
     if (s.lowMoraleTurns >= 3) return 'mutiny';
     return null;
   };
