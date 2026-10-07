@@ -2,7 +2,7 @@
  * Headless balance runner: plays many campaigns with a scripted player against
  * the AI and prints outcome statistics.  Usage: npm run balance -- [games]
  */
-import { aiPlan, autoChooseAllotment, endTurnSingle, NATION_IDS, reachableSites, resolveTurn, startCampaign, validatePlan, type GameState, type NationId, type TurnPlan } from '../src/core';
+import { aiPlan, autoChooseAllotment, CLASSIC_AI, endTurnSingle, NATION_IDS, reachableSites, resolveTurn, startCampaign, validatePlan, type GameState, type NationId, type TurnPlan } from '../src/core';
 
 function scriptedPlan(state: GameState): TurnPlan {
   const side = state.sides[0];
@@ -30,6 +30,27 @@ function scriptedPlan(state: GameState): TurnPlan {
 }
 
 const games = Number(process.argv.slice(2).find((a) => !a.startsWith('--')) ?? 40);
+
+// --profiles: what each nation's AI profile is worth. Side 0 plays its nation's profile, then the
+// classic one, against a side 1 that always plays the classic profile.
+if (process.argv.includes('--profiles')) {
+  console.log('pairing                  side 0 share of decisive theaters: nation AI / classic AI');
+  for (const a of NATION_IDS) for (const b of NATION_IDS) {
+    if (a === b) continue;
+    const share = (aware: boolean) => {
+      let w = 0;
+      let l = 0;
+      for (let g = 0; g < games; g++) {
+        const s = startCampaign({ seed: `mx${g}`, mode: 'hotseat', factions: [a, b] });
+        while (!s.outcome) resolveTurn(s, [aware ? aiPlan(s, 0) : aiPlan(s, 0, CLASSIC_AI), aiPlan(s, 1, CLASSIC_AI)]);
+        for (const r of s.theaterResults) if (r.winner === 0) w++; else if (r.winner === 1) l++;
+      }
+      return w / Math.max(1, w + l);
+    };
+    console.log(`${`${a} v ${b}`.padEnd(25)}${(share(true) * 100).toFixed(0)}% / ${(share(false) * 100).toFixed(0)}%`);
+  }
+  process.exit(0);
+}
 
 // --matrix: the AI commands both nations, with equal resources, in every pairing (and the classic war for reference).
 if (process.argv.includes('--matrix')) {
