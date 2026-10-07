@@ -41,6 +41,8 @@ import {
   SECTOR_PRESSURE,
   THEATERS,
   chooseArmor,
+  chooseTurrets,
+  TURRET_REFIT_COST,
   deserialize,
   emptyPlan,
   endTurnSingle,
@@ -1073,5 +1075,43 @@ describe('designer decisions after round 2', () => {
     for (const q of s.sides[1].squadrons) if (q.kind === 'medium' || q.kind === 'heavy') q.airframes = [];
     endTurnSingle(s, playerPlan(s));
     expect(s.sides[0].perceived.warning?.text).toContain('no bomber force');
+  });
+});
+
+describe('turret layouts', () => {
+  it('a refit costs supplies once, and only bombers have turrets', () => {
+    const s = startCampaign({ seed: 'turrets' });
+    const side = s.sides[0];
+    side.resources.supplies = 100;
+    const bomber = side.squadrons.find((q) => q.kind === 'medium')!;
+    const fighter = side.squadrons.find((q) => q.kind === 'fighter')!;
+    expect(applyCommand(s, 0, { k: 'turrets', sq: bomber.id, fit: 'tail' }).ok).toBe(true);
+    expect(bomber.turrets).toBe('tail');
+    expect(side.resources.supplies).toBe(100 - TURRET_REFIT_COST);
+    expect(applyCommand(s, 0, { k: 'turrets', sq: bomber.id, fit: 'tail' }).ok).toBe(true);
+    expect(side.resources.supplies).toBe(100 - TURRET_REFIT_COST);
+    expect(applyCommand(s, 0, { k: 'turrets', sq: fighter.id, fit: 'nose' }).ok).toBe(false);
+    side.resources.supplies = TURRET_REFIT_COST - 1;
+    expect(applyCommand(s, 0, { k: 'turrets', sq: bomber.id, fit: 'nose' }).ok).toBe(false);
+    expect(bomber.turrets).toBe('tail');
+  });
+
+  it('a chin turret is chosen once the gunners report head-on attacks', () => {
+    const s = startCampaign({ seed: 'turrets-ai' });
+    const side = s.sides[1];
+    const bomber = side.squadrons.find((q) => q.kind === 'medium')!;
+    side.perceived.enemyApproach = { tail: 0.2, headOn: 0.6, beam: 0.2 };
+    expect(chooseTurrets(side, bomber)).toBe('nose');
+    side.perceived.enemyApproach = { tail: 0.8, headOn: 0.05, beam: 0.15 };
+    expect(chooseTurrets(side, bomber)).toBe('tail');
+  });
+
+  it('enemy fighters go round a wall of guns astern', () => {
+    const s = startCampaign({ seed: 'turrets-adapt' });
+    aiPlan(s, 1);
+    const before = s.sides[1].approach.headOn;
+    for (const q of s.sides[0].squadrons) if (q.kind === 'medium' || q.kind === 'heavy') q.turrets = 'tail';
+    for (let i = 0; i < 6; i++) aiPlan(s, 1);
+    expect(s.sides[1].approach.headOn).toBeGreaterThan(before + 0.1);
   });
 });

@@ -145,8 +145,17 @@ no plate about 20. The hangar shows, next to the holes on returned aircraft,
 how many last calls of crews who didn't come back named each zone: the only
 word from the aircraft nobody sees.
 
-**Loadouts:** engine variant, guns, turret configuration, fuel tanks
-(self-sealing option), bomb load.
+**Turret layouts** *(implemented)*: each bomber squadron chooses where its
+guns sit: standard (strong astern, little ahead), tail-heavy (a wall of fire
+astern, almost nothing ahead) or a chin turret (answers head-on attacks,
+weaker astern). A refit costs 15 supplies. The Squadrons tab shows the
+defensive fire per direction next to what the gunners report. Enemy pilots
+see the guns and, over a few weeks, shift their attacks round them, so no
+layout stays right for long. In measurement (`scripts/turrets.ts`) a fixed
+tail-heavy layout loses the most bombers once the enemy adapts.
+
+**Loadouts (planned):** engine variant, guns, fuel tanks (self-sealing
+option), bomb load.
 
 **Per-airframe history:** sorties flown, repairs, accumulated fatigue (hidden
 structural wear), and the factory batch it came from.

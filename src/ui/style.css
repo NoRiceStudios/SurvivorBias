@@ -530,6 +530,11 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .doc-row2 { display: grid; grid-template-columns: 110px auto; align-items: center; column-gap: 8px; }
 .doc-row2 .doc-sum { grid-column: 2; margin-top: -2px; }
 .doc-pictures { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 4px; }
+.turrets { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.turret-table { margin-top: 2px; }
+.turret-pips { display: inline-flex; gap: 2px; }
+.turret-pips i { width: 8px; height: 8px; box-shadow: inset 0 0 0 1px var(--ink-3); }
+.turret-pips i.on { background: var(--ink); }
 .doc-figure { margin: 0; }
 .doc-figure figcaption { margin-top: 2px; }
 .doc-canvas { box-shadow: 0 0 0 2px var(--ink); }
