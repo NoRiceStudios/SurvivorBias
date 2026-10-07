@@ -279,10 +279,12 @@ export interface RenderOpts {
   bigDots?: boolean;
   /** Earlier holes, drawn faint underneath the dots. */
   faintHits?: Hit[];
+  /** A zone to pick out (blueprint mode): its edge is drawn in yellow, as under the cursor. */
+  hover?: ZoneId | null;
 }
 
 /** The blueprint palette: Wald's diagram, drawn by a draughtsman. */
-export const BLUE = { fill: '#24426a', shade: '#2b4d78', zone: '#6f8fb4', line: '#e3ebf2', plate: '#e3ebf2', plateHatch: '#56769a', faint: '#7f9cc0', hole: '#ff6a3c' };
+export const BLUE = { fill: '#24426a', shade: '#2b4d78', zone: '#6f8fb4', line: '#e3ebf2', plate: '#e3ebf2', faint: '#7f9cc0', hole: '#ff6a3c', pick: '#ffd23c' };
 /** Steel fill of a plated zone by number of plates (1..3): the more plate, the paler. */
 export const PLATE_FILL = ['', '#93acc8', '#b9cbdd', '#e0e9f1'];
 
@@ -323,17 +325,21 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
       const lightEdge = !filled(x, y - 1) || !filled(x - 1, y);
       const darkEdge = !filled(x, y + 1) || !filled(x + 1, y);
       if (style === 'blueprint') {
-        // A draughtsman's drawing: blue fill, white lines; plated zones in pale steel with a fine hatch,
+        // A draughtsman's drawing: blue fill, white lines; plated zones in solid pale steel,
         // so armor reads at a glance against the dark blue of bare skin.
         const zi = def.zone[i];
         const tint = zi >= 0 ? opts.zoneTint?.[ZONES[zi]] : undefined;
         const plates = zi >= 0 ? opts.zonePlates?.[ZONES[zi]] ?? 0 : 0;
         let c = tint ?? (m === MAT_ID.glass || m === MAT_ID.engine || m === MAT_ID.prop ? BLUE.shade : BLUE.fill);
-        if (plates > 0) c = (x - y + 64) % 4 === 0 ? BLUE.plateHatch : PLATE_FILL[Math.min(plates, PLATE_FILL.length - 1)];
+        if (plates > 0) c = PLATE_FILL[Math.min(plates, PLATE_FILL.length - 1)];
         // Zone boundaries as fine lines.
         const zr = def.zone[i + 1];
         const zd = def.zone[i + w];
         if (zi >= 0 && ((zr >= 0 && zr !== zi && mat[i + 1]) || (zd >= 0 && zd !== zi && mat[i + w]))) c = BLUE.zone;
+        if (opts.hover && zi >= 0 && ZONES[zi] === opts.hover) {
+          const other = (j: number, ok: boolean) => !ok || def.zone[j] !== zi || !mat[j];
+          if (other(i - 1, x > 0) || other(i + 1, x < w - 1) || other(i - w, y > 0) || other(i + w, y < h - 1)) c = BLUE.pick;
+        }
         put(i, c);
         continue;
       }
@@ -422,14 +428,19 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
   return { w, h, data };
 }
 
+/** Draw an aircraft into an existing canvas at its native size (to redraw it in place). */
+export function paintAircraft(c: HTMLCanvasElement, kind: AircraftKind, opts: RenderOpts): { w: number; h: number } {
+  const img = renderAircraft(kind, opts);
+  if (c.width !== img.w) c.width = img.w;
+  if (c.height !== img.h) c.height = img.h;
+  c.getContext('2d')!.putImageData(new ImageData(img.data, img.w, img.h), 0, 0);
+  return img;
+}
+
 /** Draw an aircraft to a canvas at an integer scale. */
 export function aircraftCanvas(kind: AircraftKind, opts: RenderOpts, scale = 3): HTMLCanvasElement {
-  const img = renderAircraft(kind, opts);
   const c = document.createElement('canvas');
-  c.width = img.w;
-  c.height = img.h;
-  const ctx = c.getContext('2d')!;
-  ctx.putImageData(new ImageData(img.data, img.w, img.h), 0, 0);
+  const img = paintAircraft(c, kind, opts);
   c.style.width = `${img.w * scale}px`;
   c.style.height = `${img.h * scale}px`;
   c.className = 'pix';
