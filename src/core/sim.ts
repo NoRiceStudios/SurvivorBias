@@ -88,7 +88,8 @@ export function emptyApproach(): Record<FighterApproach, number> {
 
 export function armorLoad(sq: Squadron, side?: SideState): number {
   const total = ZONES.reduce((a, z) => a + sq.armor[z], 0);
-  return (total / Math.max(1, side ? spec(side, sq.kind).armorBudget : AIRCRAFT[sq.kind].armorBudget)) * (1 - (side ? tech(side, 'plateWeight') : 0));
+  // Weight is measured against the standard airframe, so a nation's extra plates really cost speed.
+  return (total / Math.max(1, AIRCRAFT[sq.kind].armorBudget)) * (1 - (side ? tech(side, 'plateWeight') : 0));
 }
 
 export function hitLethality(zone: ZoneId, f: Flier, armor = f.sq.armor[zone]): number {

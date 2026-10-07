@@ -292,7 +292,7 @@ function flag(g: G, x: number, top: number, side: SideId, wave: number) {
         c = '#3f6a4a';
         if (i < 3 && j < 2) c = '#e8e4d4';
         if (i >= 3 && i <= 5 && j >= 1 && j <= 3) c = i === 4 && j === 2 ? '#2f5a3a' : '#e8e4d4';
-      } else if (side === 0 || nationAt(side).id === 'aldmere') {
+      } else if (nationAt(side).id === 'aldmere') {
         // Light blue field with a roundel in the fly.
         c = '#6c8cb4';
         if (i < 3 && j < 2) c = '#2c4672';
@@ -489,7 +489,7 @@ function hangar(g: G, x: number, P: Pal, side: SideId, w = 46) {
   for (let k = 0; k < 7; k++) {
     const bx = x + 2 + Math.floor(hash(k, x) * (w - 8));
     const by = wallTop + 1 + Math.floor(hash(k, x, 1) * 8);
-    R(g, bx, by, 4 + Math.floor(hash(k, 2) * 4), 3, side === 0 ? '#5a5038' : '#5a6064');
+    R(g, bx, by, 4 + Math.floor(hash(k, 2) * 4), 3, look(side) === 0 ? '#5a5038' : '#5a6064');
   }
   for (let xx = x + 1; xx < x + w - 1; xx += 2) R(g, xx, wallTop, 1, GY - wallTop, 'rgba(0,0,0,0.12)');
   // Open doors: dark interior, slid-back door leaves, a machine inside.

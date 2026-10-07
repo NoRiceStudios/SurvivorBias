@@ -1132,9 +1132,9 @@ describe('nations', () => {
     expect(ald.short).toBe('Aldmere');
     expect(varn.squadrons.every((q) => q.name.startsWith('Skvadron'))).toBe(true);
     expect(varn.squadrons.filter((q) => q.kind === 'fighter')).toHaveLength(3);
-    expect(varn.research).toContain('heavyAirframe');
+    expect(researchCost(varn, RESEARCH.find((r) => r.id === 'heavyAirframe')!)).toBe(70);
     expect(ald.research).toEqual(expect.arrayContaining(['radar', 'photoRecon']));
-    expect(tech(ald, 'detection')).toBeCloseTo(0.12);
+    expect(tech(ald, 'detection')).toBeCloseTo(0.15);
     expect(s.sides[1].memos.some((m) => m.body.includes('No. 7 Composite Wing'))).toBe(true);
     expect(aircraftName('fighter', varn)).toBe('Varg J-21');
   });
@@ -1148,7 +1148,7 @@ describe('nations', () => {
     const [dir, varn] = s.sides;
     expect(spec(dir, 'heavy').armorBudget).toBe(11);
     expect(spec(dir, 'fighter').cost).toBe(38);
-    expect(spec(varn, 'fighter')).toMatchObject({ armorBudget: 2, cost: 24 });
+    expect(spec(varn, 'fighter')).toMatchObject({ armorBudget: 2, cost: 26 });
     for (const q of varn.squadrons) expect(ZONES.reduce((a, z) => a + q.armor[z], 0)).toBeLessThanOrEqual(spec(varn, q.kind).armorBudget);
     expect(researchCost(dir, RESEARCH.find((r) => r.id === 'cannon')!)).toBe(60);
     expect(dir.resources.stores).toBeLessThanOrEqual(storesCap(dir));

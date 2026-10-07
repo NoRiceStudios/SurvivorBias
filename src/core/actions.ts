@@ -1,6 +1,6 @@
 import { tech } from './tech';
 import { AIRCRAFT, MAX_ARMOR_PER_ZONE, RESEARCH } from './data';
-import { researchCost, spec } from './factions';
+import { researchCost, spec, storesCap } from './factions';
 import { flyable } from './sim';
 import { bomberRange, depthFor, frontSector, syncFacilities } from './theaters';
 import type {
@@ -190,8 +190,10 @@ export const CONVOY = { supplies: 60, stores: 35 };
 export function buyConvoy(state: GameState, side: SideState): ActionResult {
   if (side.convoyWeek === state.turn) return fail('One convoy a week is all the railways can manage');
   if (side.resources.supplies < CONVOY.supplies) return fail('Not enough supplies');
+  const cap = storesCap(side);
+  if (side.resources.stores >= cap) return fail('The depots are full');
   side.resources.supplies -= CONVOY.supplies;
-  side.resources.stores += CONVOY.stores;
+  side.resources.stores = Math.min(cap, side.resources.stores + CONVOY.stores);
   side.convoyWeek = state.turn;
   return ok;
 }

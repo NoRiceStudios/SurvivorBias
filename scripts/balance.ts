@@ -29,7 +29,7 @@ function scriptedPlan(state: GameState): TurnPlan {
   return plan;
 }
 
-const games = Number(process.argv[2] ?? 40);
+const games = Number(process.argv.slice(2).find((a) => !a.startsWith('--')) ?? 40);
 
 // --matrix: the AI commands both nations, with equal resources, in every pairing (and the classic war for reference).
 if (process.argv.includes('--matrix')) {

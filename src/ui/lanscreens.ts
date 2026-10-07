@@ -16,6 +16,8 @@ let connecting = false;
 /** The host's name and port as typed, kept while the nations are changed. */
 let hostDraft = '';
 let portDraft = '';
+/** The joining player's fields, kept the same way. The host names their wing, so a blank name keeps that title. */
+const joinDraft = { name: '', addr: '', port: '' };
 
 export function renderLanSetup(app: App): HTMLElement {
   const api = window.sbNative?.lan;
@@ -28,9 +30,9 @@ export function renderLanSetup(app: App): HTMLElement {
   }
   const hostName = h('input', { class: 'name-input', maxlength: '40', placeholder: 'Air Commodore …', value: hostDraft, oninput: (e: Event) => { hostDraft = (e.target as HTMLInputElement).value; } }) as HTMLInputElement;
   const hostPort = h('input', { class: 'name-input port', value: portDraft || String(DEFAULT_PORT), inputmode: 'numeric', oninput: (e: Event) => { portDraft = (e.target as HTMLInputElement).value; } }) as HTMLInputElement;
-  const joinName = h('input', { class: 'name-input', maxlength: '40', placeholder: 'Oberst …' }) as HTMLInputElement;
-  const joinAddr = h('input', { class: 'name-input', placeholder: '192.168.1.20', value: '' }) as HTMLInputElement;
-  const joinPort = h('input', { class: 'name-input port', value: String(DEFAULT_PORT), inputmode: 'numeric' }) as HTMLInputElement;
+  const joinName = h('input', { class: 'name-input', maxlength: '40', placeholder: 'Your name …', value: joinDraft.name, oninput: (e: Event) => { joinDraft.name = (e.target as HTMLInputElement).value; } }) as HTMLInputElement;
+  const joinAddr = h('input', { class: 'name-input', placeholder: '192.168.1.20', value: joinDraft.addr, oninput: (e: Event) => { joinDraft.addr = (e.target as HTMLInputElement).value; } }) as HTMLInputElement;
+  const joinPort = h('input', { class: 'name-input port', value: joinDraft.port || String(DEFAULT_PORT), inputmode: 'numeric', oninput: (e: Event) => { joinDraft.port = (e.target as HTMLInputElement).value; } }) as HTMLInputElement;
 
   const doHost = async () => {
     sfxClick();
@@ -58,7 +60,7 @@ export function renderLanSetup(app: App): HTMLElement {
     app.lan = session;
     connecting = true;
     app.render();
-    if (!(await session.join(joinAddr.value.trim(), joinName.value || 'Oberst'))) {
+    if (!(await session.join(joinAddr.value.trim(), joinName.value.trim()))) {
       app.endLan();
       connecting = false;
       app.render();
@@ -81,7 +83,7 @@ export function renderLanSetup(app: App): HTMLElement {
             nationPicker(1, 'The other player\'s nation:', () => app.render()),
             nationToggle(() => app.render()),
             h('label', { class: 'small' }, 'Port'), hostPort,
-            h('button', { class: 'btn primary', onclick: () => void doHost() }, 'Host'),
+            h('button', { class: 'btn primary lan-go', onclick: () => void doHost() }, 'Host'),
             h('p', { class: 'muted small' }, 'The other player needs your address and port. Both are shown at the top of your screen once the game starts. Over the internet the port must be forwarded on your router.'),
           ),
           h('div', { class: 'col' },
@@ -89,7 +91,7 @@ export function renderLanSetup(app: App): HTMLElement {
             h('label', { class: 'small' }, 'Your name'), joinName,
             h('label', { class: 'small' }, 'Host address'), joinAddr,
             h('label', { class: 'small' }, 'Port'), joinPort,
-            h('button', { class: 'btn primary', onclick: () => void doJoin() }, 'Join'),
+            h('button', { class: 'btn primary lan-go', onclick: () => void doJoin() }, 'Join'),
           ),
         ),
       back,

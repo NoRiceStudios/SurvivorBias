@@ -184,7 +184,8 @@ function makeSide(state: GameState, rng: Rng, id: SideId, isAI: boolean, faction
   const order = rng.shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
   const squadrons: Squadron[] = [];
   rules.squadrons.forEach(([kind, size], i) => {
-    const archetype = faction ? pickArchetype(rng, ref, squadrons.map((q) => q.leader.archetype)) : archetypes[i];
+    // A nation's wing leans the way its officers do, duplicates and all; a classic wing gets one of each.
+    const archetype = faction ? pickArchetype(rng, ref) : archetypes[i];
     squadrons.push(makeSquadron(state, rng, ref, kind, size, order[i], archetype, squadrons.map((q) => q.leader.name)));
   });
   return {

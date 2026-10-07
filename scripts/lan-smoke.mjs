@@ -34,7 +34,7 @@ await host.w.evaluate(() => window.sb.go({ kind: 'lanSetup' }));
 const hostForm = host.w.locator('.lan-forms .col').nth(0);
 await hostForm.locator('input').nth(0).fill('Cdre Ashworth');
 await hostForm.locator('input').nth(1).fill(String(PORT));
-await hostForm.locator('button').click();
+await hostForm.locator('button.lan-go').click();
 await waitFor(host.w, () => ['hq', 'letter'].includes(window.sb.screen.kind), 'host briefing');
 
 // Join through the real setup screen.
@@ -45,7 +45,7 @@ async function join(c) {
   await form.locator('input').nth(0).fill('Oberst Voigt');
   await form.locator('input').nth(1).fill('127.0.0.1');
   await form.locator('input').nth(2).fill(String(PORT));
-  await form.locator('button').click();
+  await form.locator('button.lan-go').click();
 }
 await join(client);
 await waitFor(client.w, () => window.sb.state && window.sb.lanSide === 1 && ['hq', 'lanWait', 'letter'].includes(window.sb.screen.kind), 'client briefing');

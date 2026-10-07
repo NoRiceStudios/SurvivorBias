@@ -135,21 +135,22 @@ export const NATIONS: Record<NationId, Nation> = {
     serial: (n) => `${ALDMERE_LETTERS[n % 20]}${ALDMERE_LETTERS[(n * 7) % 20]}-${100 + ((n * 37) % 900)}`,
     blurb: 'The radar net. Sees the enemy coming and the war more clearly than anyone, but hits back softly.',
     strengths: [
-      'Ground radar and photo reconnaissance from the first week; defenders intercept more often',
+      'Ground radar and photo reconnaissance from the first week; defenders intercept 15% more often',
       'Disciplined leaders: reports stray from the truth a third less',
+      'Photographs of every target: bombs do 10% more damage',
       'Recon aircraft are caught less often, and more lost crews come home',
     ],
     weaknesses: [
-      'Bombers carry 10% less',
+      'Bombers carry 5% less',
       'Short-legged fighters: escorts turn back a sector sooner',
-      'A sceptical Air Ministry: confidence grows only 80% as fast',
+      'A sceptical Air Ministry: confidence grows only 90% as fast',
     ],
     rules: {
       ...CLASSIC,
       research: ['radar', 'photoRecon'],
-      effects: { detection: 0.12, stealth: 0.2, escape: 0.1, payload: -0.1 },
+      effects: { detection: 0.15, stealth: 0.2, escape: 0.1, accuracy: 0.1, payload: -0.05 },
       escort: -1,
-      trustGain: 0.8,
+      trustGain: 0.9,
       bias: 0.67,
       leaders: { braggart: 0.6, pessimist: 1, gloryHunter: 0.7, byTheBook: 1.6, timid: 1 },
     },
@@ -177,6 +178,7 @@ export const NATIONS: Record<NationId, Nation> = {
     strengths: [
       'One more armor plate on every type (two on the heavy bomber), and an armored seat as standard',
       'Fighters and gunners hit 5% more often; gyro sight and cannon at half price',
+      'Stressed-skin airframes carry plate better: 30% less of its weight penalty',
       'Crews learn half as fast again from every operation',
     ],
     weaknesses: [
@@ -188,7 +190,7 @@ export const NATIONS: Record<NationId, Nation> = {
     rules: {
       ...CLASSIC,
       researchCost: { gyroSight: 0.5, cannon: 0.5 },
-      effects: { hits: 0.05, production: -0.15 },
+      effects: { hits: 0.05, production: -0.15, plateWeight: 0.3 },
       stores: 0.65,
       storesCap: 150,
       replacements: 0.7,
@@ -220,9 +222,9 @@ export const NATIONS: Record<NationId, Nation> = {
     serial: (n) => `${VARN_LETTERS[(n * 13) % 20]}-${200 + ((n * 41) % 800)}`,
     blurb: 'Mass and supply. Cheap aircraft by the hundred and convoys from overseas, built in a hurry and flown by braggarts.',
     strengths: [
-      'Works 30% faster, aircraft 20% cheaper, and the heavy bomber from the first week',
+      'Works 15% faster, aircraft 15% cheaper, and the four-engine airframe and assembly lines at half price',
       'Lend-lease: 25 supplies every week, whatever High Command thinks',
-      '40% more replacement aircrew, and a third fighter squadron at the start',
+      '25% more replacement aircrew, and a third fighter squadron at the start',
     ],
     weaknesses: [
       'Hurried building: more hidden defects at every inspection standard',
@@ -232,11 +234,11 @@ export const NATIONS: Record<NationId, Nation> = {
     ],
     rules: {
       ...CLASSIC,
-      research: ['heavyAirframe'],
-      effects: { production: 0.3, training: -0.06 },
+      researchCost: { heavyAirframe: 0.5, assembly1: 0.5, assembly2: 0.5 },
+      effects: { production: 0.15, training: -0.06 },
       lendLease: 25,
-      replacements: 1.4,
-      aircraftCost: 0.8,
+      replacements: 1.25,
+      aircraftCost: 0.85,
       armor: { fighter: -1, medium: -1, heavy: -1 },
       leaders: { braggart: 1.8, pessimist: 0.7, gloryHunter: 1.6, byTheBook: 0.5, timid: 0.8 },
       lethality: { fuel: 1.2 },
