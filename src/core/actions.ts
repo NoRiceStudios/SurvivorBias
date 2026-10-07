@@ -1,5 +1,5 @@
 import { tech } from './tech';
-import { AIRCRAFT, MAX_ARMOR_PER_ZONE, MAX_EFFORT, RESEARCH } from './data';
+import { AIRCRAFT, MAX_ARMOR_PER_ZONE, MAX_EFFORT, RESEARCH, TURRET_FITS, TURRET_REFIT_COST } from './data';
 import { flyable } from './sim';
 import { bomberRange, depthFor, frontSector, syncFacilities } from './theaters';
 import type {
@@ -13,6 +13,7 @@ import type {
   Squadron,
   TrainingFocus,
   TurnPlan,
+  TurretFit,
   ZoneId,
 } from './types';
 import { ZONES } from './types';
@@ -86,6 +87,19 @@ export function setDoctrine(side: SideState, sqId: string, d: Partial<Doctrine>)
   if (d.formation !== undefined) sq.doctrine.formation = clamp(d.formation);
   if (d.altitude !== undefined) sq.doctrine.altitude = clamp(d.altitude);
   if (d.breakOff !== undefined) sq.doctrine.breakOff = clamp(d.breakOff, 0.1, 1);
+  return ok;
+}
+
+/** Move a bomber squadron's guns to another turret layout. */
+export function setTurrets(side: SideState, sqId: string, fit: TurretFit): ActionResult {
+  const sq = side.squadrons.find((s) => s.id === sqId);
+  if (!sq) return fail('No such squadron');
+  if (sq.kind !== 'medium' && sq.kind !== 'heavy') return fail('Only bombers carry turrets');
+  if (!TURRET_FITS[fit]) return fail('No such layout');
+  if ((sq.turrets ?? 'standard') === fit) return ok;
+  if (side.resources.supplies < TURRET_REFIT_COST) return fail('Not enough supplies');
+  side.resources.supplies -= TURRET_REFIT_COST;
+  sq.turrets = fit;
   return ok;
 }
 

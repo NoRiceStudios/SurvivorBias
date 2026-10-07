@@ -26,6 +26,8 @@ export type TargetId = FacilityType | 'support' | 'sweep' | 'feint';
 export type Weather = 'clear' | 'cloud' | 'storm';
 export type TrainingFocus = 'balanced' | 'gunnery' | 'evasion' | 'reporting';
 export type QcPolicy = 'rushed' | 'standard' | 'strict';
+/** Where a bomber squadron's defensive guns are concentrated. */
+export type TurretFit = 'standard' | 'tail' | 'nose';
 
 export interface Doctrine {
   /** 0 = preserve aircraft, 1 = press every attack. */
@@ -111,6 +113,8 @@ export interface Squadron {
   leader: Leader;
   doctrine: Doctrine;
   armor: ZoneMap<number>;
+  /** Bombers: where the defensive guns are concentrated. Absent means standard. */
+  turrets?: TurretFit;
   notables: string[];
   insignia: number;
   /** The leader's last remark in a Form 541, so he doesn't repeat himself. */
@@ -200,6 +204,8 @@ export interface Perceived {
   photographed: string[];
   /** Army liaison's account of the pressure on the front, + favours this side. */
   front: number;
+  /** Share of enemy bombers seen with each turret layout; fighter pilots can see the guns. */
+  enemyTurrets?: Record<TurretFit, number>;
   /** Believed enemy armor emphasis per zone, from observation. */
   enemyArmorSeen: ZoneMap<number>;
   /** Cumulative survivor hits by zone (what the debriefs showed). */

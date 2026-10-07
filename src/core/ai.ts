@@ -1,18 +1,45 @@
-import { buyConvoy, CONVOY, planCost, requestCrews, emergencyRepair, emptyPlan, queueAircraft, REPAIR_COST, setApproach, startResearch, upgradeFactory, upgradeFlak, upgradeTraining, validatePlan } from './actions';
-import { AIRCRAFT, APPROACH_ZONES, MAX_ARMOR_PER_ZONE, RESEARCH, ZONE_AREA } from './data';
+import { buyConvoy, CONVOY, planCost, requestCrews, emergencyRepair, emptyPlan, queueAircraft, REPAIR_COST, setApproach, setTurrets, startResearch, upgradeFactory, upgradeFlak, upgradeTraining, validatePlan } from './actions';
+import { AIRCRAFT, APPROACH_ZONES, MAX_ARMOR_PER_ZONE, RESEARCH, TURRET_FITS, TURRET_REFIT_COST, ZONE_AREA } from './data';
 import { Rng } from './rng';
 import { fitPlanToStores } from './plans';
 import { flyable } from './sim';
 import { bomberRange, countedSites, depthFor, escortRange, facilityCondition, frontSector, reachableSites, sectorAtDepth, theaterMods } from './theaters';
 import { CRIPPLED } from './effects';
 import { act } from './turn';
-import type { GameState, SideId, SideState, Squadron, TargetId, TurnPlan, ZoneId } from './types';
+import type { FighterApproach, GameState, SideId, SideState, Squadron, TargetId, TurnPlan, TurretFit, ZoneId } from './types';
 import { ZONES } from './types';
 
 /**
  * Lay out armor from what the commander has seen on returning aircraft.
  * A naive commander plates the holes; an insightful one plates the gaps.
  */
+/**
+ * Pick the turret layout that would have met the attacks the gunners report,
+ * with a margin so the wing doesn't refit over every week's noise.
+ */
+export function chooseTurrets(side: SideState, sq: Squadron): TurretFit {
+  const seen = side.perceived.enemyApproach;
+  const score = (f: TurretFit) => (Object.keys(seen) as FighterApproach[]).reduce((a, k) => a + seen[k] * TURRET_FITS[f].coverage[k], 0);
+  const now = sq.turrets ?? 'standard';
+  let best = now;
+  for (const f of Object.keys(TURRET_FITS) as TurretFit[]) if (score(f) > score(best) + 0.06) best = f;
+  return best;
+}
+
+/** Update and return what this side's pilots believe about the enemy bombers' turrets. */
+function enemyTurrets(state: GameState, id: SideId): Record<TurretFit, number> {
+  const p = state.sides[id].perceived;
+  const bombers = state.sides[(1 - id) as SideId].squadrons.filter((q) => q.kind === 'medium' || q.kind === 'heavy');
+  const n = bombers.reduce((a, q) => a + q.airframes.length, 0);
+  const prev = p.enemyTurrets ?? { standard: 1, tail: 0, nose: 0 };
+  if (!n) return prev;
+  const next = { standard: 0, tail: 0, nose: 0 };
+  for (const q of bombers) next[q.turrets ?? 'standard'] += q.airframes.length / n;
+  // Word spreads slowly: about a third of the way each week.
+  p.enemyTurrets = { standard: prev.standard * 0.65 + next.standard * 0.35, tail: prev.tail * 0.65 + next.tail * 0.35, nose: prev.nose * 0.65 + next.nose * 0.35 };
+  return p.enemyTurrets;
+}
+
 export function chooseArmor(side: SideState, sq: Squadron): Record<ZoneId, number> {
   // Use this type's own survey once there is enough of it.
   const own = side.perceived.survivorHitsByKind?.[sq.kind];
@@ -131,6 +158,13 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
       }
     }
   }
+  // Move the guns to where the gunners say the fighters come from.
+  // A sharper enemy reads its gunners' reports sooner; on Green it rarely bothers.
+  for (const sq of bomberSqs) {
+    if (!rng.chance(side.insight * 0.5)) continue;
+    const fit = chooseTurrets(side, sq);
+    if (fit !== (sq.turrets ?? 'standard') && side.resources.supplies > TURRET_REFIT_COST + 60) setTurrets(side, sq.id, fit);
+  }
   // Aircraft waiting for crews and supplies to spare: ask the Ministry.
   if (side.resources.supplies > 220) requestCrews(side, 3);
   // Live-fire practice at the school only while the depots can spare it.
@@ -165,7 +199,11 @@ export function aiPlan(state: GameState, id: SideId): TurnPlan {
 
   // --- Tactics: adapt interceptor approach to what pilots report. ---
   // As the war goes on the AI discovers head-on attacks; imperfectly.
-  const headOn = Math.min(0.6, 0.1 + 0.15 * (a - 1) + rng.range(-0.05, 0.1));
+  // Pilots also see the enemy's turrets, and over a few weeks go round the guns:
+  // head-on against a wall of fire astern, back astern once a chin turret appears.
+  const seen = enemyTurrets(state, id);
+  const turn = 0.35 * seen.tail - 0.3 * seen.nose;
+  const headOn = Math.max(0.05, Math.min(0.75, 0.1 + 0.15 * (a - 1) + turn + rng.range(-0.05, 0.1)));
   setApproach(side, { tail: Math.max(0.15, 0.7 - headOn), headOn, beam: 0.3 });
 
   // --- Operations ---

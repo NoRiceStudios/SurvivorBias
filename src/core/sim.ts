@@ -5,6 +5,7 @@ import {
   ARMOR_FACTOR_ALLOY,
   CALLSIGNS,
   MAX_EFFORT,
+  TURRET_FITS,
   ZONE_AREA,
   ZONE_DAMAGE,
 } from './data';
@@ -284,7 +285,7 @@ function bomberPass(ctx: RaidContext, fighter: Flier, bomber: Flier, bombers: Fl
   // Defensive fire from the formation at the attacking fighter.
   const formation = bomber.sq.doctrine.formation;
   const guns = AIRCRAFT[bomber.af.kind].guns;
-  const coverage = approach === 'tail' ? 1.25 : approach === 'beam' ? 0.95 : 0.4;
+  const coverage = TURRET_FITS[bomber.sq.turrets ?? 'standard'].coverage[approach];
   const defLambda = 0.3 * (guns / 4) * skillMult(bomber) * (0.6 + formation * 0.9) * coverage * (1 + tech(bomber.side, 'turrets'));
   const defHits = rng.poisson(defLambda);
   for (let i = 0; i < defHits; i++) {
