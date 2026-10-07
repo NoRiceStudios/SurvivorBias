@@ -6,6 +6,8 @@ import type { App } from './app';
 import { sfxClick, sfxStamp } from './audio';
 import { h } from './dom';
 import { DEFAULT_PORT, LanSession } from './lan';
+import { topBar } from './hq';
+import { ordersOverview } from './orders';
 
 let connecting = false;
 
@@ -88,16 +90,25 @@ export function renderLanWait(app: App, side: SideId): HTMLElement {
   const st = app.state!;
   const other = st.sides[(1 - side) as SideId];
   const lan = app.lan;
-  return h('div', { class: 'handover' },
-    h('div', { class: 'handover-card paper' },
-      h('div', { class: 'stamp big' }, 'ORDERS SEALED'),
-      h('h1', null, `Week ${st.turn}`),
-      h('p', null, lan?.connected
-        ? `Waiting for ${other.commander} to seal their orders. The week will be fought as soon as they do.`
-        : lan?.role === 'host'
-          ? `Waiting for the other commander to connect${lan.addresses.length ? ` to ${lan.addresses.join(' or ')}:${lan.port}` : ''}.`
-          : 'The connection to the host has been lost. Return to the menu and join again; your sealed orders are safe with the host.'),
-      lan?.status ? h('p', { class: 'muted small' }, lan.status) : null,
+  const canAmend = !!lan && (lan.role === 'host' || (lan.connected && !lan.unsealing));
+  return h('div', { class: 'hq sealed-screen' },
+    topBar(app, st.sides[side]),
+    h('main', { class: 'content sealed-body', 'data-keep-scroll': 'lanwait' },
+      h('section', { class: 'paper panel' },
+        h('div', { class: 'sealed-title' }, h('span', { class: 'stamp big' }, 'ORDERS SEALED'), h('h1', null, `Week ${st.turn}: your orders`)),
+        h('p', { class: 'handwritten' }, lan?.unsealing
+          ? 'Asking the host to return your orders…'
+          : lan?.connected
+            ? `Waiting for ${other.commander} to seal their orders. The week will be fought as soon as they do; until then you can still amend yours.`
+            : lan?.role === 'host'
+              ? `Waiting for the other commander to connect${lan.addresses.length ? ` to ${lan.addresses.join(' or ')}:${lan.port}` : ''}.`
+              : 'The connection to the host has been lost. Return to the menu and join again; your sealed orders are safe with the host.'),
+        lan?.status ? h('p', { class: 'muted small' }, lan.status) : null,
+        ordersOverview(app, side),
+      ),
+    ),
+    h('div', { class: 'launchbar' },
+      h('div', { class: 'launch-summary' }, h('button', { class: 'btn', disabled: !canAmend, onclick: () => { sfxClick(); app.unseal(side); } }, '◂ Amend orders')),
       h('button', { class: 'btn small', onclick: () => { void app.save().then(() => { app.endLan(); app.go({ kind: 'title' }); }); } }, 'Main Menu'),
     ),
   );

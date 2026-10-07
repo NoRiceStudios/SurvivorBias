@@ -1,11 +1,11 @@
 import { AIRCRAFT, ZONE_LABEL } from '../core/data';
 import { KINDS } from '../core/lethality';
 import { SECTORS, THEATERS } from '../core/theaters';
-import type { AircraftKind, Hit, Outcome, SideId } from '../core/types';
+import type { AircraftKind, GameState, Hit, Outcome, SideId } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
-import { sfxClick } from './audio';
-import { h, plural } from './dom';
+import { sfxClick, sfxKey } from './audio';
+import { countUp, h, plural } from './dom';
 import { aircraftCanvas } from './sprites';
 
 const OUTCOME_TEXT: Record<Outcome, [string, string]> = {
@@ -29,7 +29,7 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
       h('button', { class: `tab ${tab === id ? 'active' : ''}`, onclick: () => { sfxClick(); app.go({ kind: 'end', side: sideId, tab: id }); } }, label)),
     st.mode !== 'single' ? h('button', { class: 'tab', onclick: () => app.go({ kind: 'end', side: other, tab }) }, `View ${st.sides[other].short}`) : null,
     h('div', { class: 'tabs-spacer' }),
-    h('button', { class: 'tab small', onclick: () => { app.endLan(); app.go({ kind: 'title' }); } }, 'Main Menu'),
+    h('div', { class: 'quiet-links' }, h('button', { class: 'quiet-link', onclick: () => { app.endLan(); app.go({ kind: 'title' }); } }, 'Leave')),
   );
   const trueLost = st.archive.reduce((a, e) => a + e.trueLosses[sideId], 0);
   const trueKills = st.archive.reduce((a, e) => a + e.trueKills[sideId], 0);
@@ -55,9 +55,9 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
           i === 0 ? h('div', { class: 'stamp big declass-stamp' }, 'DECLASSIFIED') : null,
           h('h2', null, `Where our ${NAMES[k]} were hit — ${AIRCRAFT[k].name[sideId]}`),
           h('div', { class: 'composite-row three' },
-            h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: sv, dots: true }, scale), h('figcaption', null, `What you saw: ${plural(sv.length, 'hole')} on aircraft that returned.`)),
-            h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: ls, dots: true, dotColor: '#5a5040' }, scale), h('figcaption', null, `What you never saw: ${plural(ls.length, 'hole')} on aircraft that did not return.`)),
-            h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: fatal, dots: true, dotColor: '#d02020' }, scale), h('figcaption', null, `The ${fatal.length} hits that brought them down.`)),
+            h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: sv, dots: true }, scale)), h('figcaption', null, `What you saw: ${plural(sv.length, 'hole')} on aircraft that returned.`)),
+            h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: ls, dots: true, dotColor: '#e3ebf2' }, scale)), h('figcaption', null, `What you never saw: ${plural(ls.length, 'hole')} on aircraft that did not return.`)),
+            h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: fatal, dots: true, dotColor: '#ff3b30' }, scale)), h('figcaption', null, `The ${fatal.length} hits that brought them down.`)),
           ),
           h('h3', null, `This war's ${AIRCRAFT[k].name[sideId]}: chance that one hit brings her down (unarmored)`),
           ZONES.map((z) => h('div', { class: 'bar-row' }, h('span', null, ZONE_LABEL[z]), h('span', { class: 'bar red' }, h('i', { style: `width:${Math.round((leth[z] / maxL) * 100)}%` })), h('span', null, `${Math.round(leth[z] * 100)}%`))),
@@ -99,33 +99,128 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
       ),
     );
   } else if (tab === 'ledger') {
+    // Grouped by theater with a subtotal each; runs of quiet weeks folded into one row.
+    const rows: HTMLElement[] = [];
+    const held = (e: (typeof st.archive)[number]) => (sideId === 0 ? e.sectors0 : SECTORS - e.sectors0);
+    const truthCell = (kills: number, claimedN: number) => h('td', { class: kills < claimedN ? 'truth' : '' }, String(kills));
+    for (const [ti, th] of THEATERS.entries()) {
+      const weeks = st.archive.filter((e) => e.theater === ti);
+      if (!weeks.length) continue;
+      rows.push(h('tr', { class: 'grp-row' }, h('td', { colspan: '6' }, th.name)));
+      for (let i = 0; i < weeks.length; i++) {
+        const e = weeks[i];
+        const quiet = (x: typeof e) => x.claimed[sideId] === 0 && x.trueKills[sideId] === 0 && x.trueLosses[sideId] === 0;
+        if (quiet(e)) {
+          let j = i;
+          while (j + 1 < weeks.length && quiet(weeks[j + 1])) j++;
+          if (j > i) {
+            rows.push(h('tr', { class: 'quiet' }, h('td', null, `${e.turn}–${weeks[j].turn}`), h('td', { colspan: '4', class: 'muted' }, 'No claims, no losses'), h('td', null, `${held(weeks[j])} / ${SECTORS}`)));
+            i = j;
+            continue;
+          }
+        }
+        rows.push(h('tr', null, h('td', null, String(e.turn)), h('td', null, String(e.claimed[sideId])), h('td', null, String(e.reportedToHq[sideId])),
+          truthCell(e.trueKills[sideId], e.claimed[sideId]), h('td', null, String(e.trueLosses[sideId])), h('td', null, `${held(e)} / ${SECTORS}`)));
+      }
+      const sum = (f: (x: (typeof weeks)[number]) => number) => weeks.reduce((a, x) => a + f(x), 0);
+      rows.push(h('tr', { class: 'sub-row' }, h('td', null, 'Total'), h('td', null, String(sum((x) => x.claimed[sideId]))), h('td', null, String(sum((x) => x.reportedToHq[sideId]))),
+        truthCell(sum((x) => x.trueKills[sideId]), sum((x) => x.claimed[sideId])), h('td', null, String(sum((x) => x.trueLosses[sideId]))), h('td', null, '')));
+    }
     body = h('section', { class: 'paper panel' },
       h('h2', null, 'Claims against the truth, week by week'),
+      ledgerChart(st.archive, sideId),
       h('table', { class: 'ledger' },
-        h('thead', null, h('tr', null, ['Week', 'Theater', 'Crews claimed', 'Reported to HQ', 'Actually destroyed', 'Our losses', 'Sectors held'].map((x) => h('th', null, x)))),
-        h('tbody', null, st.archive.map((e) => h('tr', null,
-          h('td', null, String(e.turn)), h('td', null, THEATERS[e.theater].name), h('td', null, String(e.claimed[sideId])), h('td', null, String(e.reportedToHq[sideId])),
-          h('td', { class: 'truth' }, String(e.trueKills[sideId])), h('td', null, String(e.trueLosses[sideId])),
-          h('td', null, `${sideId === 0 ? e.sectors0 : SECTORS - e.sectors0} / ${SECTORS}`),
-        ))),
-      ),
+        h('thead', null, h('tr', null, ['Week', 'Crews claimed', 'Reported to HQ', 'Actually destroyed', 'Our losses', 'Sectors held'].map((x) => h('th', null, x)))),
+        h('tbody', null, rows)),
     );
   } else {
     body = h('section', { class: 'paper panel end-summary' },
       h('div', { class: `stamp big outcome ${outcome}` }, title),
       h('p', { class: 'typed big' }, text),
-      h('div', { class: 'stats' },
-        h('div', null, h('span', null, 'Weeks of operations'), h('b', null, String(st.archive.length))),
-        h('div', null, h('span', null, 'Aircraft lost'), h('b', null, String(trueLost))),
-        h('div', null, h('span', null, 'Enemy aircraft claimed by crews'), h('b', null, String(claimed))),
-        h('div', null, h('span', null, 'Enemy aircraft reported to High Command'), h('b', null, String(toHq))),
-        h('div', null, h('span', null, 'Enemy aircraft actually destroyed'), h('b', { class: 'truth' }, String(trueKills))),
+      h('div', { class: 'reveal' },
+        reveal('Claimed by our crews', claimed, 0),
+        reveal('Reported to High Command', toHq, 250),
+        reveal('Actually destroyed', trueKills, 500, 'truth'),
       ),
+      h('p', { class: 'muted' }, `${st.archive.length} weeks of operations. ${trueLost} of our aircraft lost.`),
       h('div', { class: 'theater-record end-record' }, st.theaterResults.map((r) =>
         h('div', { class: `theater-step ${r.winner === sideId ? 'won' : r.winner === null ? 'drawn' : 'lost'}` },
           h('b', null, r.name), h('span', null, `${r.weeks} weeks`), h('span', { class: 'step-label' }, r.winner === null ? 'DRAWN' : r.winner === sideId ? (r.decisive ? 'BROKE THROUGH' : 'WON') : r.decisive ? 'BROKEN' : 'LOST')))),
-      h('p', { class: 'muted' }, 'The archives are open. See "Declassified" for what your returning aircraft could never tell you.'),
+      (() => {
+        // The most-flown type, as a preview of the archives: what you saw, what you never saw, what killed them.
+        const surv = st.archive.flatMap((e) => e.survivorHits[sideId]);
+        const lostH = st.archive.flatMap((e) => e.lostHits[sideId]);
+        const kinds = KINDS.map((k) => [k, surv.filter((x) => (x.kind ?? 'medium') === k).length + lostH.filter((x) => (x.kind ?? 'medium') === k).length] as const).sort((a, b) => b[1] - a[1]);
+        const k = kinds[0]?.[1] ? kinds[0][0] : null;
+        if (!k) return null;
+        const of = (hs: Hit[]) => hs.filter((x) => (x.kind ?? 'medium') === k);
+        return h('div', { class: 'preview-strip' },
+          h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: of(surv), dots: true }, 3)), h('figcaption', null, 'What you saw')),
+          h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: of(lostH), dots: true, dotColor: '#e3ebf2' }, 3)), h('figcaption', null, 'What you never saw')),
+          h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: of(lostH).filter((x) => x.lethal), dots: true, dotColor: '#ff3b30' }, 3)), h('figcaption', null, 'What brought them down')));
+      })(),
+      h('button', { class: 'btn primary launch', onclick: () => { sfxClick(); app.go({ kind: 'end', side: sideId, tab: 'archive' }); } }, 'Open the archives ▸'),
     );
   }
   return h('div', { class: 'hq end' }, h('div', { class: 'hq-body' }, nav, h('main', { class: 'content' }, body)));
+}
+
+/** A big figure that counts up after a delay, then gets stamped. */
+function reveal(label: string, value: number, delay: number, cls = ''): HTMLElement {
+  const el: HTMLElement = h('div', { class: `reveal-item ${cls}` }, countUp(value, 200 + delay, '', 550, () => {
+    el.classList.add('done');
+    // The truth lands: the red pencil goes through what was claimed and reported.
+    if (cls === 'truth') el.parentElement?.querySelectorAll('.reveal-item:not(.truth)').forEach((x, i) => setTimeout(() => { x.classList.add('struck'); sfxKey(); }, 150 + i * 300));
+  }), h('span', null, label));
+  return el;
+}
+
+/** Claims, returns to HQ and the truth per week, as lines; weeks a sector was lost shaded. */
+function ledgerChart(archive: GameState['archive'], side: SideId): HTMLElement {
+  const W = 900;
+  const H = 180;
+  const n = archive.length;
+  const max = Math.max(4, ...archive.flatMap((e) => [e.claimed[side], e.reportedToHq[side], e.trueKills[side]]));
+  const x = (i: number) => 30 + (i / Math.max(1, n - 1)) * (W - 40);
+  const y = (v: number) => H - 20 - (v / max) * (H - 40);
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('class', 'ledger-chart');
+  const add = (tag: string, attrs: Record<string, string | number>, text?: string) => {
+    const e = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+    if (text) e.textContent = text;
+    svg.append(e);
+    return e;
+  };
+  archive.forEach((e, i) => {
+    const prev = archive[i - 1];
+    const held = (a: typeof e) => (side === 0 ? a.sectors0 : SECTORS - a.sectors0);
+    if (prev && prev.theater === e.theater && held(e) < held(prev)) add('rect', { x: x(i) - 8, y: 10, width: 16, height: H - 30, fill: 'rgba(168,53,42,0.15)' });
+  });
+  // A band per theater, labelled.
+  for (let ti = 0; ti < THEATERS.length; ti++) {
+    const idx = archive.map((e, i) => (e.theater === ti ? i : -1)).filter((i) => i >= 0);
+    if (!idx.length) continue;
+    const x0 = x(idx[0]) - 6;
+    const x1 = x(idx[idx.length - 1]) + 6;
+    add('rect', { x: x0, y: 24, width: x1 - x0, height: H - 44, fill: ti % 2 ? 'rgba(95,111,71,0.08)' : 'rgba(42,38,32,0.05)' });
+    add('text', { x: (x0 + x1) / 2, y: H - 4, fill: '#5e5546', 'font-size': 14, 'text-anchor': 'middle' }, THEATERS[ti].name);
+  }
+  // Value ticks.
+  for (const v of [0, Math.round(max / 2), max]) {
+    add('line', { x1: 26, y1: y(v), x2: W - 10, y2: y(v), stroke: 'rgba(42,38,32,0.15)', 'stroke-width': 1 });
+    add('text', { x: 4, y: y(v) + 4, fill: '#5e5546', 'font-size': 14 }, String(v));
+  }
+  add('line', { x1: 30, y1: H - 20, x2: W - 10, y2: H - 20, stroke: '#5e5546', 'stroke-width': 1 });
+  const line = (f: (e: (typeof archive)[number]) => number, color: string, dash = '') =>
+    add('polyline', { points: archive.map((e, i) => `${x(i)},${y(f(e))}`).join(' '), fill: 'none', stroke: color, 'stroke-width': 3, 'stroke-dasharray': dash });
+  line((e) => e.claimed[side], '#5e5546', '6 4');
+  line((e) => e.reportedToHq[side], '#2f4a7a', '2 3');
+  line((e) => e.trueKills[side], '#a8352a');
+  const key = (cls: string, label: string) => h('span', { class: `lk lk-${cls}` }, h('i', null), label);
+  return h('div', { class: 'ledger-chart-wrap' },
+    h('div', { class: 'ledger-key' }, key('claimed', 'claimed by crews'), key('hq', 'reported to HQ'), key('truth', 'actually destroyed'), key('lost', 'week a sector was lost')),
+    svg as unknown as HTMLElement);
 }

@@ -30,7 +30,13 @@ export interface Dispatch {
   persist?: boolean;
   /** Label of the last page's button (default "Understood"). */
   doneLabel?: string;
+  /** Take the whole screen. High Command always does, unless told otherwise. */
+  fullscreen?: boolean;
+  /** Heading above a fullscreen card, e.g. "Signal from High Command". */
+  heading?: string;
 }
+
+const isFullscreen = (d: Dispatch) => d.fullscreen ?? d.speaker === 'general';
 
 /** Anything with a `covered` flag (the App): keys are ignored while the hotseat cover is up. */
 interface Host {
@@ -156,7 +162,8 @@ function build() {
   const plateText = c.d.speaker === 'adjutant' ? 'ADJUTANT' : c.d.speaker === 'ministry' ? 'MINISTRY' : 'HIGH COMMAND';
   const plate = h('div', { class: 'dispatch-plate' }, plateText);
   const photo = h('div', { class: 'dispatch-photo' });
-  card = h('div', { class: `dispatch paper side${side} speaker-${c.d.speaker}`, role: 'dialog', 'aria-live': 'polite', onclick: () => advance() },
+  const full = isFullscreen(c.d);
+  const inner = h('div', { class: `dispatch paper side${side} speaker-${c.d.speaker}${full ? ' full' : ''}`, role: 'dialog', 'aria-live': 'polite', onclick: full ? undefined : () => advance() },
     h('div', { class: 'dispatch-portrait' }, canvas, photo, plate),
     h('div', { class: 'dispatch-main' },
       h('div', { class: 'dispatch-head' }, h('div', { class: 'dispatch-name' }, c.d.name), h('div', { class: 'dispatch-title' }, c.d.title)),
@@ -166,6 +173,12 @@ function build() {
     ),
   );
   els = { text, meta, page, btn, canvas, photo, plate, plateText };
+  // Fullscreen: the card sits alone on a darkened desk, with a heading above it.
+  card = full
+    ? h('div', { class: `dispatch-veil side${side}`, onclick: () => advance() },
+      c.d.heading ? h('div', { class: 'dispatch-heading' }, c.d.heading) : null,
+      inner)
+    : inner;
   document.body.append(card);
   animateFace(canvas, LOOKS[c.d.speaker][side]);
 }
@@ -1202,8 +1215,8 @@ export function summarise(m: Memo, max = 150): string {
   return out;
 }
 
-/** This week's important memos for a side as one dispatch, or null if there are none. */
-export function memoDispatch(side: SideState, turn: number, maxPages = 4): Dispatch | null {
+/** The memos High Command reads out this week (most important first), or [] if nothing weighty came. */
+export function letterMemos(side: SideState, turn: number, max = 6): Memo[] {
   // Memos arrive newest first. Everything filed since last week's delivery note is new,
   // including a theater briefing that is dated the week it was decided.
   const fresh: Memo[] = [];
@@ -1215,24 +1228,30 @@ export function memoDispatch(side: SideState, turn: number, maxPages = 4): Dispa
   // The general only comes in person for something that matters: new orders, praise or blame,
   // and news of the wing's own men. Routine intelligence stays on the briefing.
   const weighty = memos.some((m) => m.kind === 'order' || m.kind === 'reprimand' || m.kind === 'commendation' || leaderInMemo(side, m) || m.from === 'International Red Cross');
-  if (!memos.length || !weighty) return null;
+  if (!memos.length || !weighty) return [];
   // News of the wing's own leaders ranks just above routine intelligence.
   const rank = (m: Memo) => (leaderInMemo(side, m) ? PRIORITY.indexOf('intel') - 0.5 : PRIORITY.indexOf(m.kind));
-  memos.sort((a, b) => rank(a) - rank(b));
+  return memos.sort((a, b) => rank(a) - rank(b)).slice(0, max);
+}
+
+/** This week's important memos for a side as one dispatch, or null if there are none. */
+export function memoDispatch(side: SideState, turn: number, maxPages = 4): Dispatch | null {
+  const memos = letterMemos(side, turn, maxPages);
+  if (!memos.length) return null;
   const hc = HIGH_COMMAND[side.id];
   return {
     speaker: 'general',
     side: side.id,
     name: hc.name,
     title: hc.title,
-    lines: memos.slice(0, maxPages).map((m) => {
+    lines: memos.map((m) => {
       const who = leaderInMemo(side, m);
       return {
         stamp: STAMP[m.kind],
         kind: m.kind,
         from: `${m.from} — ${m.subject}`,
-        // An obituary is read out in full: it is the last word on a man.
-        text: summarise(m, m.subject.startsWith('In memoriam') ? 600 : 150),
+        // Obituaries, directives and intelligence are read in full: they are the last word on a man, or something to act on.
+        text: summarise(m, m.subject.startsWith('In memoriam') || m.kind === 'order' || m.kind === 'intel' ? 600 : 150),
         ...(who ? { portrait: leaderPortrait(who, side.id, 3), caption: `${who.rank} ${who.name.split(' ').slice(-1)[0]}`.toUpperCase(), mourning: /memoriam|presumed killed/i.test(m.subject) } : {}),
       };
     }),

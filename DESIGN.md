@@ -64,10 +64,32 @@ Each turn is one **sortie cycle**, roughly a few days of in-game time.
    - the airframes that came back, with **accurate** damage overlays (the survivor sample);
    - squadron reports on claims, enemy strength and types, and what was seen, **distorted** by each squadron's bias and trauma;
    - an updated war-theatre estimate (front line, enemy production), also distorted.
-6. **High Command.** New orders, supply deliveries and memos. How much you get
-   depends on **Command Trust**, which is based on the results you *reported*,
-   and not on what actually happened.
+
+   The debrief has two sheets. *The Returns* shows the week in big figures,
+   the damage board (holes stamped onto the type's plot over the faint holes
+   of earlier weeks, beside "no record" ghosts of the aircraft that did not
+   return and their last words) and the telegrams. *Reports & Front* holds
+   the Form 541s, each with the adjutant's note on how its leader reports,
+   and the front gauge swinging from last week's figure.
+6. **High Command.** Filing the reports brings High Command's answer as one
+   full-screen letter: the directives first ("You are to…"), the signal on
+   your returns, then the week's memos, with the change in confidence stamped. How much you
+   get depends on **Command Trust**, which is based on the results you
+   *reported*, and not on what actually happened.
 7. Repeat until the war ends or you lose.
+
+### Art direction: the ops room desk
+
+Every screen is an object on the commander's desk in a blacked-out operations
+room: the HQ is an open manila folder with index tabs, the theater map lies on
+baize under a brass edge, orders are typed on a clipboard, armor and damage
+are drawn on blueprints (Wald's diagram), the R/T log is a teleprinter strip,
+and High Command writes on letterhead. A lamp lights the desk: warm in the
+evening while planning, near dark in the radio room, cool at dawn for the
+debrief. Three type voices have fixed jobs: stencil (Silkscreen) for titles,
+stamps and the one primary action; typewriter (VT323) for documents, data and
+every control; handwriting (Pixelify) only for people speaking or annotating.
+Aircraft fly only on the title screen; after that the war is paper.
 
 In PvP both players do steps 1–3 at the same time, the simulation resolves both
 sides' sorties against each other, and each player gets their own distorted debrief.
@@ -501,7 +523,10 @@ their own distorted debrief.
   redeployment phase, naming the commander it is for. Esc (or "Close folder")
   hides the screen at any time. The first commander's sealed orders are saved
   with the game, so a save made between the two planning phases resumes with
-  the second commander. After the war, a **Both War Diaries** view puts each
+  the second commander. Sealing shows each commander an overview of their
+  orders (tasks, doctrine, the route on the map, this week's changes); they can
+  go back and amend them until the folder is passed on (or, for the second
+  commander, until the week is fought). After the war, a **Both War Diaries** view puts each
   side's claims, its returns to High Command and the truth side by side, week
   by week.
 - **LAN / direct IP** *(implemented)*: one player hosts and commands Aldmere;
@@ -522,6 +547,10 @@ their own distorted debrief.
     and the host replays them under the same rules, so it never has to trust
     the joiner's copy of the game. If a replay fails, the joiner gets a fresh
     state and plans again.
+  - **Amending sealed orders:** while waiting, either commander sees an
+    overview of their sealed orders and can take them back (`unseal`) until
+    the other has sealed too. A seal carries only the commands made since the
+    previous seal, so nothing the host has already replayed is applied twice.
   - **Resilience:** the host autosaves to its own slot. A joining player who
     drops out (even after sealing) rejoins and continues; their sealed orders
     are safe with the host. Loading a LAN save reopens the port.

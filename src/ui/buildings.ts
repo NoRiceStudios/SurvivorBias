@@ -760,7 +760,7 @@ export function schoolScene(side: SideState): HTMLElement {
     h('b', null, `Training school · level ${lv} of 5`),
     h('span', null, `${t.inTraining ? `${t.inTraining} pupils` : 'No pupils'} · syllabus: ${focus}`),
   ];
-  return sceneEl(`school side${side.id}`, label, def);
+  return sceneEl(`bscene-school side${side.id}`, label, def);
 }
 
 /* ======================================================================
@@ -1072,5 +1072,5 @@ export function worksScene(side: SideState): HTMLElement {
     h('b', null, `Aircraft works · level ${lv} of 5`),
     h('span', null, `${queue.length ? `${queue.length} on the line` : 'Line idle'} · QC ${f.qc} · condition ${Math.round(cond)}%`),
   ];
-  return sceneEl(`works side${side.id}`, label, def);
+  return sceneEl(`bscene-works side${side.id}`, label, def);
 }

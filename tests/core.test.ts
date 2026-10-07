@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  COSTS,
+  doctrineEffects,
+  doctrineKeys,
+  type DoctrineEffect,
   aiPlan,
   aiIntent,
   applyCommands,
@@ -187,6 +191,34 @@ describe('survivorship bias', () => {
 });
 
 describe('actions', () => {
+  it('copies an armor layout across a type, all or nothing', () => {
+    const s = startCampaign({ seed: 'copy' });
+    const side = s.sides[0];
+    const kind = (['fighter', 'medium', 'heavy'] as const).find((k) => side.squadrons.filter((q) => q.kind === k).length >= 2)!;
+    const [a, b] = side.squadrons.filter((q) => q.kind === kind);
+    for (const z of ZONES) { a.armor[z] = 0; b.armor[z] = 0; }
+    a.armor.cockpit = 1;
+    a.armor.engines = 1;
+    side.resources.supplies = 7;
+    expect(applyCommand(s, 0, { k: 'armorAll', sq: a.id }).ok).toBe(false);
+    expect(b.armor.cockpit).toBe(0);
+    side.resources.supplies = 20;
+    expect(applyCommand(s, 0, { k: 'armorAll', sq: a.id }).ok).toBe(true);
+    expect(ZONES.every((z) => b.armor[z] === a.armor[z])).toBe(true);
+    expect(side.resources.supplies).toBe(20 - 2 * COSTS.armorChange);
+  });
+
+  it('explains doctrine with the sim\'s own trade-offs', () => {
+    const low = doctrineEffects('medium', { aggression: 0.5, formation: 0.2, altitude: 0.1, breakOff: 0.5 });
+    const high = doctrineEffects('medium', { aggression: 0.5, formation: 0.9, altitude: 0.9, breakOff: 0.5 });
+    const get = (e: DoctrineEffect[], label: string) => e.find((x) => x.label === label)!.raw;
+    expect(get(high, 'Flak hits over the target')).toBeLessThan(get(low, 'Flak hits over the target'));
+    expect(get(high, 'Bombing accuracy')).toBeLessThan(get(low, 'Bombing accuracy'));
+    expect(get(high, 'Return fire from the gunners')).toBeGreaterThan(get(low, 'Return fire from the gunners'));
+    expect(doctrineKeys('fighter')).not.toContain('formation');
+    expect(doctrineEffects('medium', { aggression: 0.5, formation: 0.5, altitude: 0.5, breakOff: 0.5 }).find((x) => x.label === 'Flak hits over the target')!.value).toBe('+0%');
+  });
+
   it('enforces the armor budget', () => {
     const s = startCampaign({ seed: 'a' });
     const sq = s.sides[0].squadrons.find((q) => q.kind === 'fighter')!;

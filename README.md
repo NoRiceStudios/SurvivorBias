@@ -14,7 +14,7 @@ The war is fought across three theaters: the Narrow Sea, the Kessel Basin and th
 
 - **Windows:** run `npm run package:win`, then unzip `release/SurvivorBias-win32-x64.zip` and run `SurvivorBias.exe`. Saves are stored in `%APPDATA%/survivor-bias/saves`.
 - **From source:** run `npm install`, then `npm start` (Electron).
-- **Modes:** single player against an AI commander (three difficulty levels, set by how well the enemy understands survivorship bias), or two named commanders in hotseat mode. In hotseat, each commander plans behind a closed folder (Esc hides the screen) and the week is fought once both orders are sealed. **LAN / Direct IP:** one player hosts (Aldmere) and the other joins with the host's address and port (default 41414; forward it on the router to play over the internet). Both plan at the same time; the host's game is the authoritative one and the joining player only ever receives what their own side may know.
+- **Modes:** single player against an AI commander (three difficulty levels, set by how well the enemy understands survivorship bias), or two named commanders in hotseat mode. In hotseat, each commander plans behind a closed folder (Esc hides the screen) and the week is fought once both orders are sealed. After sealing, each commander sees an overview of their orders and can go back to amend them until the week is fought. **LAN / Direct IP:** one player hosts (Aldmere) and the other joins with the host's address and port (default 41414; forward it on the router to play over the internet). Both plan at the same time; the host's game is the authoritative one and the joining player only ever receives what their own side may know.
 
 ## Development
 
@@ -33,6 +33,9 @@ The war is fought across three theaters: the Narrow Sea, the Kessel Basin and th
 | `npm run balance -- 40 --mirror` | AI against AI with symmetric rules: theater results and length |
 
 ### Layout
+
+The HQ has four tabs: **War Room** (map, orders, in-tray), **Squadrons** (roster and dossiers: doctrine, armor over the evidence, aircraft), **Works** (factory, school, development) and **Intelligence**. A readiness bar at the foot lists what still needs attention; F1 opens the Field Manual.
+
 
 - `src/core/`: pure, deterministic game logic with no DOM. Covers the seeded battle sim, the distortion pipeline that turns truth into reports, the economy, High Command, the AI commander and save/load.
 - `src/ui/`: renderer in plain TypeScript and DOM. Aircraft sprites are rasterised procedurally from shapes tagged with hit zones, so every bullet hole lands on the part of the airframe it actually hit. Sound effects are procedural WebAudio.

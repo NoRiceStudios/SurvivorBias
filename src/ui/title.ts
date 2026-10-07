@@ -1,7 +1,7 @@
 import type { App } from './app';
 import { AUTOSAVE } from './app';
 import { isMuted, setMuted, sfxClick } from './audio';
-import { h } from './dom';
+import { animOn, h, setAnim } from './dom';
 import { titleScene } from './scene';
 import { storage } from './storage';
 
@@ -51,15 +51,17 @@ export function renderTitle(app: App): HTMLElement {
       items.push(btn('Back', () => { menu = 'main'; refresh(); }, 'small'));
       return items;
     }
+    const hasSave = saves.some((s) => s.slot === AUTOSAVE);
     const items = [
+      btn('New Campaign', () => { menu = 'new'; refresh(); }, hasSave ? '' : 'primary'),
       btn('Tutorial', () => { menu = 'main'; app.newTutorial(); }),
-      btn('New Campaign', () => { menu = 'new'; refresh(); }),
-      btn('Two Commanders (Hotseat)', () => { menu = 'hotseat'; refresh(); }),
-      btn('Two Commanders (LAN / Direct IP)', () => app.go({ kind: 'lanSetup' })),
+      btn('Hotseat: two commanders', () => { menu = 'hotseat'; refresh(); }),
+      btn('LAN / Direct IP', () => app.go({ kind: 'lanSetup' })),
     ];
-    if (saves.some((s) => s.slot === AUTOSAVE)) items.unshift(btn('Continue', () => void app.loadSlot(AUTOSAVE), 'primary'));
+    if (hasSave) items.unshift(btn('Continue', () => void app.loadSlot(AUTOSAVE), 'primary'));
     items.push(btn('Load Campaign', () => { menu = 'load'; refresh(); }));
     items.push(btn(isMuted() ? 'Sound: Off' : 'Sound: On', () => { setMuted(!isMuted()); refresh(); }, 'small'));
+    items.push(btn(animOn() ? 'Animations: On' : 'Animations: Off', () => { setAnim(!animOn()); refresh(); }, 'small'));
     if (window.sbNative) items.push(btn('Quit to Desktop', () => window.sbNative!.quit(), 'small'));
     return items;
   };
@@ -75,12 +77,13 @@ export function renderTitle(app: App): HTMLElement {
     { class: 'title-screen' },
     scene,
     h('div', { class: 'title-overlay' },
-      h('div', { class: 'logo' },
-        h('div', { class: 'logo-small' }, 'A war fought on paper'),
-        h('h1', { class: 'logo-main' }, 'SURVIVOR', h('br'), 'BIAS'),
-        h('div', { class: 'logo-quote' }, '"Armor the places where the returning aircraft were not hit."'),
-      ),
-      panel,
+      h('div', { class: 'title-col' },
+        h('div', { class: 'logo' },
+          h('div', { class: 'logo-small' }, 'A war fought on paper'),
+          h('h1', { class: 'logo-main' }, 'SURVIVOR', h('br'), 'BIAS'),
+          h('div', { class: 'logo-quote' }, '"Armor the places where the returning aircraft were not hit."'),
+        ),
+        panel),
     ),
     h('div', { class: 'title-foot' }, 'v0.1 · NoRiceStudios · F11 fullscreen'),
   );

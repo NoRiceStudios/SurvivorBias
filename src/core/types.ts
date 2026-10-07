@@ -385,6 +385,9 @@ export interface Debrief {
   hqResponse: string[];
   /** Station life: a scene or two from our own airfield. */
   station?: string[];
+  /** High Command's confidence and the reported front pressure before this week (for showing the change). */
+  trustBefore?: number;
+  frontBefore?: number;
   /** Army liaison's rough account of what moved the front this week (words, not numbers). */
   pressure?: { label: string; effect: string; sign: number }[];
 }
