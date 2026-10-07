@@ -4,7 +4,8 @@
  * the target, every squadron's task and the returns policy; the in-tray under
  * the map holds requests, standing orders and this week's mail.
  */
-import { AIRCRAFT, APPROACH_LABEL, ARCHETYPE_INFO, TARGETS } from '../core/data';
+import { AIRCRAFT, APPROACH_LABEL, ARCHETYPE_INFO, MAX_EFFORT, TARGETS } from '../core/data';
+import { tech } from '../core/tech';
 import { flyable } from '../core/sim';
 import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS } from '../core/theaters';
 import type { FighterApproach, Memo, SideId, SideState, Site, Squadron, TargetId } from '../core/types';
@@ -80,7 +81,9 @@ function planner(app: App, side: SideState) {
     if (!plan.raid || ids.length === 0) {
       ids = side.squadrons.filter((q) => (target === 'sweep' ? q.kind === 'fighter' && !plan.defense.includes(q.id) : q.kind === 'medium' || q.kind === 'heavy') && flyable(q).length > 0 && !plan.feint?.squadronIds.includes(q.id)).map((q) => q.id);
     }
-    plan.raid = { target, siteId, squadronIds: target === 'sweep' ? ids.filter((id) => side.squadrons.find((q) => q.id === id)?.kind === 'fighter') : ids };
+    // A sweep carries no bombs: maximum effort is for strikes and close support.
+    const maxEffort = target !== 'sweep' && plan.raid?.maxEffort ? true : undefined;
+    plan.raid = { target, siteId, squadronIds: target === 'sweep' ? ids.filter((id) => side.squadrons.find((q) => q.id === id)?.kind === 'fighter') : ids, maxEffort };
   });
   const mainSector = plan.raid ? (plan.raid.siteId ? t.sites.find((x) => x.id === plan.raid!.siteId)?.sector : frontSector(t, side.id)) : undefined;
   const feintSectors = [1, 2].map((d) => sectorAtDepth(t.held0, (1 - side.id) as SideId, d)).filter((sec) => sec >= 0 && sec < SECTORS);
@@ -209,6 +212,22 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
     target = h('div', { class: 'target-box' }, h('div', { class: 'small muted' }, 'No operation this week. Bombers rest; fighters may still defend. Click a site on the map to strike it.'));
   }
 
+  // Bomb load: the standard load, or maximum effort at half as many stores again for the raid.
+  let load: HTMLElement | null = null;
+  if (plan.raid && (mission === 'strike' || mission === 'support')) {
+    const raidStores = Math.round(plan.raid.squadronIds.reduce((a, id) => {
+      const q = side.squadrons.find((x) => x.id === id);
+      return a + (q ? flyable(q).length * AIRCRAFT[q.kind].storesCost : 0);
+    }, 0) * (1 - tech(side, 'economy')));
+    const extra = Math.round(raidStores * (MAX_EFFORT.stores - 1));
+    load = h('div', { class: 'policy-row load-row' },
+      h('span', { class: 'small', ...tip({ head: 'Bomb load', text: 'Maximum effort: every bay full to the last rack and extra ammunition for the escort. The bombs do more damage, but the whole raid uses half as many stores again.' }) }, 'Bomb load'),
+      seg<number>([
+        { value: 0, label: 'Standard', tip: 'The normal load.' },
+        { value: 1, label: 'Maximum effort', tip: { text: `Bombers carry ${Math.round(MAX_EFFORT.payload * 100)}% more.`, effect: `− ${extra} more stores` } },
+      ], plan.raid.maxEffort ? 1 : 0, (v) => app.act(() => { if (plan.raid) plan.raid.maxEffort = v === 1 || undefined; }), 'mini'));
+  }
+
   const ownSectors = Array.from({ length: SECTORS }, (_, i) => i).filter((i) => (i < t.held0 ? 0 : 1) === side.id)
     .sort((a, b) => depthFor(t.held0, (1 - side.id) as SideId, a) - depthFor(t.held0, (1 - side.id) as SideId, b)).slice(0, 3);
   const rows = side.squadrons.filter((q) => q.airframes.length > 0).map((sq) => {
@@ -265,6 +284,7 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
     h('h2', null, 'Orders for the week'),
     missionSeg,
     target,
+    load,
     h('div', { class: 'sq-rows' }, rows),
     h('div', { class: 'policy-row' },
       h('span', { class: 'small', ...tip({ head: 'Returns policy', text: 'How your adjutant presents results to High Command. Optimistic returns raise confidence, until someone checks: photographs and the observers can catch you out.' }) }, 'Returns to HQ'),

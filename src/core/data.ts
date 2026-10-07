@@ -147,6 +147,9 @@ export const AIRCRAFT: Record<AircraftKind, AircraftSpec> = {
   },
 };
 
+/** Maximum effort: the raid's squadrons use this many times the stores, and the bombers carry this much more. */
+export const MAX_EFFORT = { stores: 1.5, payload: 0.35 };
+
 export const MAX_ARMOR_PER_ZONE = 3;
 /** Each armor point on a zone multiplies lethality by this. */
 export const ARMOR_FACTOR = 0.45;

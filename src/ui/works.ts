@@ -4,7 +4,7 @@
  */
 import { canBuild, COSTS, crewNeed, crewPrice, researchTurns } from '../core/actions';
 import { AIRCRAFT, BRANCHES, RESEARCH } from '../core/data';
-import { crewShortfall } from '../core/turn';
+import { crewShortfall, LIVE_FIRE_STORES } from '../core/turn';
 import type { AircraftKind, SideState, TrainingFocus } from '../core/types';
 import type { App } from './app';
 import { schoolScene, worksScene } from './buildings';
@@ -89,6 +89,12 @@ function schoolCol(app: App, side: SideState): HTMLElement {
     h('h3', tip('Crews follow the aircraft: the Ministry posts aircrew, and the school takes pupils, only for aircraft the wing has or has on order.'), 'Syllabus'),
     seg(focus.map((f) => ({ value: f.value, label: f.label, tip: f.tip })), t.focus, (v) => app.cmd(side.id, { k: 'focus', v }), 'mini'),
     h('div', { class: 'small muted' }, focus.find((f) => f.value === t.focus)?.tip),
+    h('h3', tip('Pupils fly with live ammunition and real fuel. Their graduates start more skilled, but every pupil uses stores each week. If the depots cannot spare them, the class trains on the ground.'), 'Live-fire practice'),
+    seg<number>([
+      { value: 0, label: 'Ground school', tip: 'No stores used.' },
+      { value: 1, label: 'Live fire', tip: { text: 'Graduates start noticeably more skilled.', effect: `− ${LIVE_FIRE_STORES} stores a week per pupil (up to ${(1 + t.level * 2) * LIVE_FIRE_STORES})` } },
+    ], t.liveFire ? 1 : 0, (v) => app.cmd(side.id, { k: 'liveFire', on: v === 1 }), 'mini'),
+    t.liveFire && t.inTraining > 0 ? h('div', { class: 'small muted' }, t.liveFireClass ? `This class is on live fire (${t.inTraining * LIVE_FIRE_STORES} stores paid).` : 'This class trains on the ground: the depots could not spare the stores.') : null,
   );
 }
 

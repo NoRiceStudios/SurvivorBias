@@ -17,6 +17,9 @@ import {
   crewShortfall,
   facilityEffects,
   fitPlanToStores,
+  storesRation,
+  STORES_CAP,
+  LIVE_FIRE_STORES,
   planCost,
   tech,
   obituary,
@@ -403,12 +406,12 @@ describe('hotseat missions', () => {
     delete old.lethality;
     for (const side of old.sides as { resources: Record<string, number> }[]) {
       delete side.resources.stores;
-      side.resources.fuel = 140;
-      side.resources.munitions = 90;
+      side.resources.fuel = 100;
+      side.resources.munitions = 60;
     }
     const loaded = deserialize(JSON.stringify(old));
     expect(loaded.version).toBe(5);
-    expect(loaded.sides[0].resources.stores).toBe(173);
+    expect(loaded.sides[0].resources.stores).toBe(120);
     expect('fuel' in loaded.sides[0].resources).toBe(false);
     expect(loaded.lethality.medium.cockpit).toBeGreaterThan(0);
     expect(loaded.sealed).toEqual([null, null]);
@@ -1073,5 +1076,71 @@ describe('designer decisions after round 2', () => {
     for (const q of s.sides[1].squadrons) if (q.kind === 'medium' || q.kind === 'heavy') q.airframes = [];
     endTurnSingle(s, playerPlan(s));
     expect(s.sides[0].perceived.warning?.text).toContain('no bomber force');
+  });
+});
+
+describe('scarce stores (playtest feedback: stores no longer limit)', () => {
+  it('the ration follows the wing\'s strength and trust, and the depots hold two weeks', () => {
+    const s = startCampaign({ seed: 'ration' });
+    const side = s.sides[0];
+    const full = storesRation(side);
+    side.trust = 100;
+    expect(storesRation(side)).toBeGreaterThan(full);
+    side.trust = 60;
+    for (const q of side.squadrons) q.airframes = q.airframes.slice(0, Math.ceil(q.airframes.length / 2));
+    expect(storesRation(side)).toBeLessThan(full * 0.6);
+    side.resources.stores = STORES_CAP;
+    endTurnSingle(s, emptyPlan());
+    expect(side.resources.stores).toBeLessThanOrEqual(STORES_CAP);
+  });
+
+  it('maximum effort costs half as many stores again for the raid and drops first when fitting', () => {
+    const s = startCampaign({ seed: 'maxeffort' });
+    const side = s.sides[0];
+    const plan = playerPlan(s);
+    const raidOnly = { ...plan, defense: [], cover: {} };
+    const base = planCost(side, raidOnly).stores;
+    plan.raid!.maxEffort = true;
+    expect(planCost(side, { ...plan, defense: [], cover: {} }).stores).toBe(Math.round(base * 1.5));
+    side.resources.stores = planCost(side, plan).stores - 1;
+    fitPlanToStores(s, 0, plan);
+    expect(plan.raid?.maxEffort).toBeFalsy();
+    expect(plan.raid?.squadronIds.length).toBe(playerPlan(s).raid!.squadronIds.length);
+  });
+
+  it('maximum effort does more damage on the same raid', () => {
+    let std = 0;
+    let max = 0;
+    for (let g = 0; g < 20; g++) {
+      for (const m of [false, true]) {
+        const s = startCampaign({ seed: `maxdmg${g}` });
+        const plan = playerPlan(s);
+        plan.raid!.maxEffort = m;
+        const r = resolveRaid(new Rng({ s: 7 + g }), s, s.sides[0], s.sides[1], plan.raid, emptyPlan());
+        if (m) max += r?.damage ?? 0;
+        else std += r?.damage ?? 0;
+      }
+    }
+    expect(max).toBeGreaterThan(std * 1.2);
+  });
+
+  it('live-fire practice uses stores per pupil and turns out better crews', () => {
+    const a = startCampaign({ seed: 'livefire' });
+    // Aircraft waiting for crews keep the school busy.
+    for (const q of a.sides[0].squadrons) q.crews = Math.max(1, q.crews - 3);
+    a.sides[0].resources.replacements = 10;
+    const b = deserialize(serialize(a));
+    expect(applyCommand(b, 0, { k: 'liveFire', on: true }).ok).toBe(true);
+    endTurnSingle(a, emptyPlan());
+    endTurnSingle(b, emptyPlan());
+    const pupils = b.sides[0].training.inTraining;
+    expect(pupils).toBeGreaterThan(0);
+    expect(b.sides[0].training.liveFireClass).toBe(true);
+    expect(b.sides[0].resources.stores).toBe(a.sides[0].resources.stores - pupils * LIVE_FIRE_STORES);
+    // The class graduates next week, live fire against ground school.
+    endTurnSingle(a, emptyPlan());
+    endTurnSingle(b, emptyPlan());
+    const skill = (st: GameState) => st.sides[0].squadrons.reduce((x, q) => x + q.skill * q.crews, 0) / st.sides[0].squadrons.reduce((x, q) => x + q.crews, 0);
+    expect(skill(b)).toBeGreaterThan(skill(a));
   });
 });

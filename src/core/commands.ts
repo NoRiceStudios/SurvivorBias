@@ -19,6 +19,7 @@ import {
   setDoctrine,
   setQc,
   setTrainingFocus,
+  setLiveFire,
   startResearch,
   upgradeFactory,
   upgradeFlak,
@@ -47,6 +48,7 @@ export type Command =
   | { k: 'upgrade'; what: 'factory' | 'training' | 'flak' }
   | { k: 'qc'; v: QcPolicy }
   | { k: 'focus'; v: TrainingFocus }
+  | { k: 'liveFire'; on: boolean }
   | { k: 'build'; kind: AircraftKind }
   | { k: 'cancel'; i: number }
   | { k: 'research'; id: string }
@@ -82,6 +84,7 @@ export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?
     case 'upgrade': return c.what === 'factory' ? upgradeFactory(side) : c.what === 'training' ? upgradeTraining(side) : upgradeFlak(side);
     case 'qc': return setQc(side, c.v);
     case 'focus': return setTrainingFocus(side, c.v);
+    case 'liveFire': return setLiveFire(side, c.on);
     case 'build': return queueAircraft(side, c.kind);
     case 'cancel': return cancelQueued(side, c.i);
     case 'research': return startResearch(side, c.id);

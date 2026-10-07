@@ -1,5 +1,5 @@
 import { tech } from './tech';
-import { AIRCRAFT, MAX_ARMOR_PER_ZONE, RESEARCH } from './data';
+import { AIRCRAFT, MAX_ARMOR_PER_ZONE, MAX_EFFORT, RESEARCH } from './data';
 import { flyable } from './sim';
 import { bomberRange, depthFor, frontSector, syncFacilities } from './theaters';
 import type {
@@ -131,6 +131,12 @@ export function setQc(side: SideState, qc: QcPolicy): ActionResult {
 
 export function setTrainingFocus(side: SideState, focus: TrainingFocus): ActionResult {
   side.training.focus = focus;
+  return ok;
+}
+
+/** Live-fire practice at the school: better graduates, paid in stores each week. */
+export function setLiveFire(side: SideState, on: boolean): ActionResult {
+  side.training.liveFire = on;
   return ok;
 }
 
@@ -309,7 +315,8 @@ export function planCost(side: SideState, plan: TurnPlan): { stores: number } {
     const sq = side.squadrons.find((s) => s.id === id);
     if (!sq) continue;
     const n = flyable(sq).length;
-    stores += n * AIRCRAFT[sq.kind].storesCost;
+    const max = plan.raid?.maxEffort && plan.raid.squadronIds.includes(id) ? MAX_EFFORT.stores : 1;
+    stores += n * AIRCRAFT[sq.kind].storesCost * max;
   }
   if (plan.recon) stores += AIRCRAFT.recon.storesCost;
   return { stores: Math.round(stores * (1 - tech(side, 'economy'))) };

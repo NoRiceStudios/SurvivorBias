@@ -58,8 +58,30 @@ function memo(side: SideState, turn: number, kind: Memo['kind'], subject: string
   if (side.memos.length > 40) side.memos.length = 40;
 }
 
-/** Depots hold at most this much fuel and munitions. */
-export const STORES_CAP = 240;
+/** Depots hold at most this much fuel and munitions: about two weeks of a full effort. */
+export const STORES_CAP = 150;
+
+/** Stores a full effort by every aircraft the wing holds would use, before fuel-saving research. */
+export function establishmentStores(side: SideState): number {
+  return side.squadrons.reduce((a, q) => a + q.airframes.length * AIRCRAFT[q.kind].storesCost, 0);
+}
+
+/**
+ * The week's stores ration. The Ministry rations by the wing's strength, not a fixed
+ * allowance: about two thirds of what a full effort by every aircraft held would use,
+ * more for a commander it trusts. A small wing
+ * gets a small ration, so stores stay short all war.
+ */
+export function storesRation(side: SideState, bonus = 1): number {
+  const trustF = 0.4 + side.trust / 100;
+  const share = 0.45 + 0.2 * trustF;
+  return Math.round(Math.max(20, establishmentStores(side) * share) * facilityEffects(side.facilities).stores * bonus);
+}
+
+/** Live-fire training: stores per pupil at the school each week. */
+export const LIVE_FIRE_STORES = 3;
+/** Live-fire training: added starting skill of its graduates. */
+export const LIVE_FIRE_SKILL = 0.08;
 
 /** Production points per week. */
 export function factoryRate(side: SideState): number {
@@ -446,8 +468,10 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   const trustF = 0.4 + side.trust / 100;
   const bonus = side.isAI ? aiBonus(state, side) : 1;
   const sup = Math.round((45 + 45 * trustF) * (0.55 + 0.45 * Math.min(1.2, side.facilities.industry / 100)) * bonus);
-  // Stores are rationed: a full effort every week burns more than arrives, and wrecked fuel depots cut deliveries.
-  const stores = Math.round((26 + 28 * trustF) * facilityEffects(side.facilities).stores * bonus);
+  // Stores are rationed by the wing's strength: a full effort every week burns more than arrives,
+  // and wrecked fuel depots cut deliveries.
+  // Difficulty bends the enemy's stores only half as much as its other deliveries: a starved enemy cannot fly at all.
+  const stores = storesRation(side, side.isAI ? 0.5 + 0.5 * bonus : 1);
   // Aircrew are posted only for aircraft the wing has or has on order.
   const rep = Math.min(Math.max(0, crewShortfall(side) - r.replacements), Math.round((2 + 3 * trustF) * bonus));
   r.supplies += sup;
@@ -493,7 +517,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   const graduates = t.inTraining;
   t.inTraining = 0;
   let pool = graduates;
-  const gradSkill = 0.25 + t.level * 0.07 + tech(side, 'training') + (t.focus === 'gunnery' || t.focus === 'evasion' ? 0.06 : 0) - (t.focus === 'reporting' ? 0.04 : 0);
+  const gradSkill = 0.25 + t.level * 0.07 + tech(side, 'training') + (t.focus === 'gunnery' || t.focus === 'evasion' ? 0.06 : 0) - (t.focus === 'reporting' ? 0.04 : 0) + (t.liveFireClass ? LIVE_FIRE_SKILL : 0);
   // Squadrons with no crew at all come first (a new recon flight must not wait for weeks), then the most short-handed.
   const needy = [...side.squadrons].sort((a, b) => (a.crews <= 0 ? -100 : 0) - (b.crews <= 0 ? -100 : 0) || a.crews - a.airframes.length - (b.crews - b.airframes.length));
   side.arrived = [];
@@ -527,6 +551,11 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   const intake = Math.min(capacity, r.replacements, crewShortfall(side));
   r.replacements -= intake;
   t.inTraining = intake;
+  // Live-fire training burns fuel and ammunition for every pupil; with too little in the depots the class trains dry.
+  const liveCost = intake * LIVE_FIRE_STORES;
+  t.liveFireClass = !!t.liveFire && intake > 0 && r.stores >= liveCost;
+  if (t.liveFireClass) r.stores -= liveCost;
+  else if (t.liveFire && intake > 0) memo(side, state.turn + 1, 'notice', 'Live-fire training cancelled', `The school needed ${liveCost} stores for live-fire practice and the depots could not spare them. This class trains on the ground.`, 'Training School');
 
   // Repairs at the airfield.
   const repairCap = Math.round((4 + 8 * side.facilities.airfield / 100) * (1 + tech(side, 'repair')));

@@ -147,6 +147,10 @@ export interface Training {
   focus: TrainingFocus;
   /** Crews in the pipeline, graduate next turn. */
   inTraining: number;
+  /** Pupils fly live-fire practice: better graduates, at stores per pupil each week. */
+  liveFire?: boolean;
+  /** The class now in training had its live-fire practice. */
+  liveFireClass?: boolean;
 }
 
 export interface Facilities {
@@ -268,6 +272,8 @@ export interface RaidPlan {
   /** For strikes: the specific site attacked. */
   siteId?: string;
   squadronIds: string[];
+  /** Maximum effort: full bomb bays and extra ammunition, at half as many stores again. */
+  maxEffort?: boolean;
 }
 
 export interface TurnPlan {
