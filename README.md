@@ -32,6 +32,7 @@ The war is fought across three theaters: the Narrow Sea, the Kessel Basin and th
 | `xvfb-run -a node scripts/lan-smoke.mjs` | Two desktop instances play over TCP: redaction, command replay, several weeks, disconnect and rejoin |
 | `npm run balance -- 40 --mirror` | AI against AI with symmetric rules: theater results and length |
 | `npm run balance -- 200 --matrix` | AI against AI for every pairing of nations, with equal resources: theaters won by each side |
+| `npm run balance -- 200 --profiles` | What each nation's AI profile is worth: the AI with its nation's profile and with the classic one, against a classic opponent |
 
 ### Layout
 

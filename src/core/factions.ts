@@ -50,7 +50,65 @@ export interface NationRules {
   flak: number;
   /** The wing at the start of the war. */
   squadrons: [AircraftKind, number][];
+  /** How the AI commands this nation (see `AiProfile`). */
+  ai: AiProfile;
 }
+
+/**
+ * How an AI commander plays a nation to its strengths: what it develops first,
+ * how large a wing it keeps, how it spends and how it fights.
+ */
+export interface AiProfile {
+  /** Developments pursued first, in order; anything else open follows, cheapest first. */
+  research: string[];
+  /** Fighters kept before bombers are bought, in the first act (two more each act). */
+  fighters: number;
+  /** Bombers wanted once the fighters are in hand. */
+  bombers: number;
+  /** Aircraft ordered in a week, at most. */
+  orders: number;
+  /** Supplies held back from aircraft orders. */
+  reserve: number;
+  /** Chance a bomber order is a heavy, once the four-engine airframe is in hand. */
+  heavy: number;
+  /** Supplies on hand before the works are enlarged. */
+  factoryAt: number;
+  /** Supplies on hand before the home flak is strengthened. */
+  flakAt: number;
+  /** Weeks between re-plating the squadrons. */
+  replate: number;
+  /** Share of the depot below which a convoy is bought. */
+  convoyAt: number;
+  /** Chance a recon sortie flies in a week. */
+  recon: number;
+  /** Multiplier on the chance the bombers go to close support rather than a strike. */
+  support: number;
+  /** Multiplier on strikes on the enemy's works (industry and fuel) when choosing a site. */
+  works: number;
+  /** Chance a second fighter squadron patrols over a site the enemy may strike. */
+  cover: number;
+  /** Added to every squadron's aggression. */
+  aggression: number;
+}
+
+/** The AI as it played before nations: a balanced wing, the classic research order. */
+export const CLASSIC_AI: AiProfile = {
+  research: ['radar', 'gunneryManual', 'dropTanks', 'selfSealing', 'powerTurrets', 'gunCameras', 'photoRecon', 'gyroSight', 'engineTuning', 'armorAlloy', 'assembly1', 'radios', 'extinguishers', 'bombsight2', 'intelOfficer', 'radarChain', 'heavyAirframe'],
+  fighters: 14,
+  bombers: 12,
+  orders: 4,
+  reserve: 90,
+  heavy: 0.5,
+  factoryAt: 260,
+  flakAt: 240,
+  replate: 3,
+  convoyAt: 0.4,
+  recon: 0.6,
+  support: 1,
+  works: 1,
+  cover: 0.65,
+  aggression: 0,
+};
 
 export interface Nation {
   id: NationId;
@@ -108,6 +166,7 @@ export const CLASSIC: NationRules = {
   experience: 1,
   flak: 0.5,
   squadrons: [['fighter', 8], ['fighter', 8], ['medium', 6], ['medium', 6]],
+  ai: CLASSIC_AI,
 };
 
 const ALDMERE_LETTERS = 'ABCDEFGHJKLMNPRSTVWX';
@@ -153,6 +212,18 @@ export const NATIONS: Record<NationId, Nation> = {
       trustGain: 0.9,
       bias: 0.67,
       leaders: { braggart: 0.6, pessimist: 1, gloryHunter: 0.7, byTheBook: 1.6, timid: 1 },
+      // Builds on the radar net and the cameras: meets raids over the target it expects,
+      // photographs what it hits and goes after the enemy's works with accurate bombing
+      // rather than the front. Crews that come home can be asked to press a little harder.
+      ai: {
+        ...CLASSIC_AI,
+        research: ['gunneryManual', 'dropTanks', 'selfSealing', 'powerTurrets', 'bombsight2', 'gunCameras', 'gyroSight', 'radarChain', 'engineTuning', 'armorAlloy', 'assembly1', 'radios', 'extinguishers', 'targetMarkers', 'intelOfficer', 'heavyAirframe'],
+        recon: 0.9,
+        cover: 0.9,
+        support: 0.6,
+        works: 1.6,
+        aggression: 0.15,
+      },
     },
   },
   directorate: {
@@ -199,6 +270,21 @@ export const NATIONS: Record<NationId, Nation> = {
       trustSwing: 1.5,
       lethality: { cockpit: 0.7 },
       experience: 1.5,
+      // A small wing of dear, heavily plated aircraft whose crews are worth keeping alive:
+      // guns and plate first, few orders, regular re-plating, and every drop of fuel watched.
+      ai: {
+        ...CLASSIC_AI,
+        research: ['gunneryManual', 'gyroSight', 'cannon', 'fuelEconomy', 'armorAlloy', 'selfSealing', 'powerTurrets', 'pooledStores', 'dropTanks', 'escapeHatches', 'radar', 'heavyAirframe'],
+        fighters: 12,
+        bombers: 10,
+        orders: 2,
+        reserve: 120,
+        heavy: 0.3,
+        factoryAt: 320,
+        replate: 2,
+        convoyAt: 0.5,
+        aggression: 0.05,
+      },
     },
   },
   varn: {
@@ -245,6 +331,19 @@ export const NATIONS: Record<NationId, Nation> = {
       defects: 2,
       flak: 0.4,
       squadrons: [['fighter', 8], ['fighter', 8], ['fighter', 6], ['medium', 6], ['medium', 6]],
+      // Numbers: assembly lines and the four-engine airframe first, the works enlarged early
+      // and losses replaced fast, and crews that are expected to press home. Plate is thin, so
+      // it is seldom moved; fire is its killer, so tanks and extinguishers come early.
+      ai: {
+        ...CLASSIC_AI,
+        research: ['assembly1', 'heavyAirframe', 'assembly2', 'selfSealing', 'extinguishers', 'gunneryManual', 'dropTanks', 'groundCrews', 'radar', 'powerTurrets', 'dispersal'],
+        orders: 5,
+        heavy: 0.6,
+        factoryAt: 200,
+        flakAt: 300,
+        replate: 6,
+        aggression: 0.2,
+      },
     },
   },
 };
@@ -284,6 +383,11 @@ export function aircraftLabel(side: SideRef, kind: AircraftKind): string {
 
 export function researchCost(side: SideRef, item: Pick<ResearchItem, 'id' | 'cost'>): number {
   return Math.round(item.cost * (rulesOf(side).researchCost[item.id] ?? 1));
+}
+
+/** How the AI commands this side. */
+export function aiProfile(side: SideRef): AiProfile {
+  return rulesOf(side).ai;
 }
 
 export function storesCap(side: SideRef): number {

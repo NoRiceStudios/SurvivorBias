@@ -388,6 +388,21 @@ every pairing ends between 44% and 56% of decisive theaters, counting both
 seats together. The classic, symmetric war sits at 56% for the same measure,
 so that is the noise floor of the method rather than a nation's edge.
 
+The AI commands each nation by its own `AiProfile` (`rules.ai` in
+`core/factions.ts`): what it develops first, how many aircraft it orders and
+what it holds back, when it enlarges the works, how often it re-plates, how
+early it buys a convoy, how often it flies recon and patrols over threatened
+sites, how much it prefers close support or the enemy's works, and how hard its
+squadrons press. Aldmere builds on its eyes: patrols over the sites it expects
+to be hit, photographs every target and strikes the enemy's works rather than
+the front. The Directorate goes for guns and plate, orders few of its dear
+aircraft, re-plates often and watches its fuel. Varn builds assembly lines and
+the four-engine airframe first, enlarges the works early and presses home. A
+classic war plays `CLASSIC_AI`, the AI as it was before nations. `npm run balance -- 200
+--profiles` measures what each profile is worth: against an opponent on the
+classic profile, every nation wins 12 to 27 points more of its decisive
+theaters with its own profile than with the classic one.
+
 ## 7. Doctrine (behaviour settings per squadron)
 
 - **Aggression:** press the attack ↔ preserve the aircraft.
