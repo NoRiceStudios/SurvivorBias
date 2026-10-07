@@ -569,6 +569,20 @@ describe('LAN: redaction and command replay', () => {
     expect(v.sides[1]).toEqual(s.sides[1]);
   });
 
+  it('a decided theater\'s last map is kept, and redacted like the live one', () => {
+    const s = startCampaign({ seed: 'lan-theater', mode: 'lan' });
+    for (let w = 0; w < 14 && !s.outcome && s.theaterResults.length === 0; w++) resolveTurn(s, [playerPlan(s), aiPlan(s, 1)]);
+    const end = s.theaterResults[0]?.end;
+    expect(end).toBeDefined();
+    expect(end!.sites.length).toBeGreaterThan(0);
+    expect(s.theater.index).toBe(1);
+    const v = redactFor(s, 1).theaterResults[0].end!;
+    for (const site of v.sites.filter((x) => x.owner === 0)) expect(site.condition).toBe(end!.believed[1][site.id] ?? 100);
+    expect(v.believed[0]).toEqual({});
+    expect(v.front[0]).toBe(0);
+    expect(v.believed[1]).toEqual(end!.believed[1]);
+  });
+
   it('at the end of the war the archives open', () => {
     const s = played();
     s.outcome = ['victory', 'defeat'];
@@ -808,7 +822,9 @@ describe('designer decisions after round 2', () => {
     const lines = Array.from({ length: 200 }, (_, i) => ({ t: i, side: 0 as const, callsign: `Able ${i}`, text: 'Bandits three o\'clock high, here they come.', heardBy: 0 as const }));
     lines.push({ t: 300, side: 0, callsign: 'Tower', text: '5 of 6 back.', heardBy: 0 });
     const hf = reception(new Rng({ s: 7 }), s.sides[0], lines);
-    expect(hf.length).toBeLessThan(150);
+    expect(hf.filter((l) => !l.lost).length).toBeLessThan(150);
+    // Some of the lost calls are heard as static, with nothing to tell whose they were.
+    expect(hf.some((l) => l.lost && l.callsign === '' && l.text === '[static]')).toBe(true);
     expect(hf.some((l) => l.callsign === 'Tower')).toBe(true);
     s.sides[0].research.push('radios');
     expect(reception(new Rng({ s: 7 }), s.sides[0], lines)).toHaveLength(201);

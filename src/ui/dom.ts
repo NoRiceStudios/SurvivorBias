@@ -119,3 +119,53 @@ export function countUp(value: number, delay = 300, cls = '', duration = 550, on
   requestAnimationFrame(frame);
   return b;
 }
+
+/** Which option each segmented control had picked, keyed by its options (and their order on the page). */
+export type SegMarks = Map<string, number>;
+
+function segKeys(root: ParentNode): [string, HTMLElement, HTMLElement[]][] {
+  const seen = new Map<string, number>();
+  return [...root.querySelectorAll<HTMLElement>('.seg')].map((seg) => {
+    const btns = [...seg.children].filter((b): b is HTMLElement => b.classList.contains('seg-btn'));
+    const base = btns.map((b) => b.textContent).join('|');
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return [`${base}#${n}`, seg, btns];
+  });
+}
+
+export function segMarks(root: ParentNode): SegMarks {
+  return new Map(segKeys(root).map(([k, , btns]) => [k, btns.findIndex((b) => b.classList.contains('on'))]));
+}
+
+/** After a re-render, the pick in a segmented control slides over from the option it left. */
+export function slideSegs(root: ParentNode, before: SegMarks): void {
+  if (!animOn()) return;
+  for (const [k, seg, btns] of segKeys(root)) {
+    const was = before.get(k);
+    const now = btns.findIndex((b) => b.classList.contains('on'));
+    if (was === undefined || was < 0 || now < 0 || was === now || !btns[was]) continue;
+    const from = btns[was];
+    const to = btns[now];
+    const box = (b: HTMLElement) => `left:${b.offsetLeft}px;top:${b.offsetTop}px;width:${b.offsetWidth}px;height:${b.offsetHeight}px`;
+    const ind = h('i', { class: 'seg-ind', style: box(from) });
+    seg.append(ind);
+    to.classList.add('arriving');
+    requestAnimationFrame(() => { ind.style.cssText = box(to); });
+    setTimeout(() => { ind.remove(); to.classList.remove('arriving'); }, 130);
+  }
+}
+
+/** A copy of an element for a parting animation; canvases keep their pictures. */
+export function cloneWithCanvases<T extends HTMLElement>(el: T): T {
+  const clone = el.cloneNode(true) as T;
+  const from = el.querySelectorAll('canvas');
+  const to = clone.querySelectorAll('canvas');
+  from.forEach((c, i) => {
+    const d = to[i] as HTMLCanvasElement;
+    d.width = c.width;
+    d.height = c.height;
+    d.getContext('2d')?.drawImage(c, 0, 0);
+  });
+  return clone;
+}

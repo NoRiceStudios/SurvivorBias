@@ -70,6 +70,21 @@ export interface MapOpts {
   onSite?: (site: Site) => void;
   /** Screen pixels per map pixel (the map also shrinks to fit its column). */
   scale?: number;
+  /** Draw a decided theater as it stood at the end, with the line it started from. */
+  final?: TheaterResult;
+}
+
+/** The game as it stood when a theater was decided, as far as the map needs it. */
+function finalState(st: GameState, res: TheaterResult): GameState {
+  const end = res.end!;
+  return {
+    ...st,
+    theater: { ...st.theater, index: res.index, held0: end.held0, start0: end.start0, sites: end.sites, objectives: [] },
+    sides: [0, 1].map((i) => {
+      const s = st.sides[i];
+      return { ...s, perceived: { ...s.perceived, front: end.front[i], sites: end.believed[i], photographed: [] } };
+    }) as unknown as GameState['sides'],
+  };
 }
 
 /** Believed condition the viewer has for a site (truth for own sites). */
@@ -240,7 +255,8 @@ function terrainImage(g: CanvasRenderingContext2D, index: number, viewer: SideId
 
 const imageCache = new Map<string, ImageData>();
 
-export function theaterMap(state: GameState, opts: MapOpts): HTMLCanvasElement {
+export function theaterMap(current: GameState, opts: MapOpts): HTMLCanvasElement {
+  const state = opts.final?.end ? finalState(current, opts.final) : current;
   const t = state.theater;
   const def = THEATERS[t.index];
   const c = document.createElement('canvas');
@@ -275,6 +291,13 @@ export function theaterMap(state: GameState, opts: MapOpts): HTMLCanvasElement {
   g.fillStyle = 'rgba(42,38,32,0.45)';
   for (let b = 1; b < SECTORS; b++)
     for (let y = 0; y < H; y += 3) g.fillRect(X(boundaryX(b, y)), y, 1, 2);
+
+  // A decided theater: where the line started, dashed in ink.
+  if (opts.final && t.start0 !== t.held0) {
+    g.fillStyle = '#2a2620';
+    for (let y = 18; y < H - 14; y += 5) g.fillRect(X(boundaryX(t.start0, y)) - 1, y, 2, 3);
+    label(g, 'LINE AT START', X(boundaryX(t.start0, 34)), 36, '#2a2620');
+  }
 
   // How far our aircraft reach past the front.
   for (const r of opts.rangeLines ?? []) {
@@ -343,6 +366,7 @@ export function theaterMap(state: GameState, opts: MapOpts): HTMLCanvasElement {
     g.fillRect(fx(y) - 1, y, 3, 1);
     if (y % 10 < 4) g.fillRect(fx(y) + toward * (2 + (y % 10 < 2 ? y % 10 : 3 - (y % 10))), y, 2, 1);
   }
+  if (opts.final) label(g, t.start0 === t.held0 ? 'THE LINE HELD HERE' : 'LINE AT THE END', fx(H - 40), H - 36, '#b0302a');
   // Pressure arrow at the top of the line.
   const dir = (press >= 0 ? 1 : -1) * (v === 0 ? 1 : 1);
   const ax = fx(12);
@@ -515,10 +539,14 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
             : 'Neither air force could break the other. The armies dig in where they stand.'
           : won ? (res.decisive ? 'The enemy front has broken. The Army is through.' : 'The season ends with the advantage ours.')
           : res.decisive ? 'Our front has broken. The Army is falling back.' : 'The season ends with the advantage theirs.'),
-        h('div', { class: 'tc-kpis' },
-          big(lost, 'our aircraft lost', lost ? 'bad' : ''),
-          big(claimed, 'enemy claimed by our crews', '', 900),
-          big(Math.max(0, (side === 0 ? 1 : -1) * (res.gain ?? 0)), 'sectors taken', (res.gain ?? 0) * (side === 0 ? 1 : -1) > 0 ? 'good' : '', 1500)),
+        h('div', { class: `tc-front ${res.end ? 'with-map' : ''}` },
+          res.end ? h('figure', { class: 'tc-map' },
+            theaterMap(st, { viewer: side, final: res, scale: 1 }),
+            h('figcaption', null, frontCaption(res, side))) : null,
+          h('div', { class: 'tc-kpis' },
+            big(lost, 'our aircraft lost', lost ? 'bad' : ''),
+            big(claimed, 'enemy claimed by our crews', '', 900),
+            big(Math.max(0, (side === 0 ? 1 : -1) * (res.gain ?? 0)), 'sectors taken', (res.gain ?? 0) * (side === 0 ? 1 : -1) > 0 ? 'good' : '', 1500))),
         generalVerdict(st, side, res),
         roll.length ? h('div', { class: 'roll' },
           h('h3', null, `Roll of the missing (${roll.length})`),
@@ -537,6 +565,14 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
         h('div', { class: 'tc-foot' }, h('button', { class: 'btn primary launch', onclick: () => { sfxStamp(); const go = app.continueAfterTheater; app.continueAfterTheater = null; go?.(); } }, nextDef ? 'Take command ▸' : 'Continue ▸'))),
     ),
   );
+}
+
+/** "Where the line stood: one sector taken." */
+function frontCaption(res: TheaterResult, side: SideId): string {
+  const g = (side === 0 ? 1 : -1) * (res.gain ?? 0);
+  const n = Math.abs(g);
+  const moved = g > 0 ? `${n} sector${n > 1 ? 's' : ''} taken; the dashed line is where we started` : g < 0 ? `${n} sector${n > 1 ? 's' : ''} lost; the dashed line is where we started` : 'no sector changed hands';
+  return `Where the line stood when the theater was decided: ${moved}.`;
 }
 
 /** The commander's own general gives the verdict and the cost, in person, on the redeployment card. */

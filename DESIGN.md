@@ -83,13 +83,16 @@ Each turn is one **sortie cycle**, roughly a few days of in-game time.
 Every screen is an object on the commander's desk in a blacked-out operations
 room: the HQ is an open manila folder with index tabs, the theater map lies on
 baize under a brass edge, orders are typed on a clipboard, armor and damage
-are drawn on blueprints (Wald's diagram), the R/T log is a teleprinter strip,
+are drawn on blueprints (Wald's diagram), the R/T log is a teleprinter strip
+(calls lost in the static print as a broken line with no call sign),
+Intelligence is a cork board of pinned summaries with charts on graph paper,
 and High Command writes on letterhead. A lamp lights the desk: warm in the
 evening while planning, near dark in the radio room, cool at dawn for the
 debrief. Three type voices have fixed jobs: stencil (Silkscreen) for titles,
 stamps and the one primary action; typewriter (VT323) for documents, data and
 every control; handwriting (Pixelify) only for people speaking or annotating.
-Aircraft fly only on the title screen; after that the war is paper.
+Aircraft fly only on the title screen, seen through the ops room window over
+the desk; after that the war is paper.
 
 In PvP both players do steps 1–3 at the same time, the simulation resolves both
 sides' sorties against each other, and each player gets their own distorted debrief.
@@ -339,7 +342,10 @@ condition (production, repair, fuel income) is the sum of the sites it holds.
 theater (stated in the theater orders, and the Army liaison's estimate starts
 from it), +15 trust and 100 supplies, and the loser loses 12 trust. Aircraft in
 repair are made serviceable during the move and squadrons are rested. A
-redeployment briefing shows the result, the new map and the new objective.
+redeployment briefing shows the result, the old theater's map as it stood when
+it was decided (the final front, and dashed where the line started), the new
+map and the new objective. That last map is kept with the theater's result and,
+like the live map, shows enemy sites only as each commander believed them.
 
 What you see of a theater is mostly true: sector ownership and your own sites.
 The **condition of enemy sites** and the **pressure on the front** are beliefs,

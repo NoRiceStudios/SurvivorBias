@@ -76,6 +76,9 @@ export function renderTitle(app: App): HTMLElement {
     'div',
     { class: 'title-screen' },
     scene,
+    // The ops room window at night: the last time you will see them fly.
+    h('div', { class: 'title-window' }, h('i', { class: 'tw-sash' }), h('i', { class: 'tw-curtain left' }), h('i', { class: 'tw-curtain right' })),
+    h('div', { class: 'title-desk' }),
     h('div', { class: 'title-overlay' },
       h('div', { class: 'title-col' },
         h('div', { class: 'logo' },

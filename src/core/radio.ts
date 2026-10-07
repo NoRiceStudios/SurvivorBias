@@ -216,7 +216,11 @@ export function reception(rng: Rng, side: SideState, lines: RadioLine[]): RadioL
       out.push(l);
       continue;
     }
-    if (!rng.chance(0.55)) continue;
+    if (!rng.chance(0.55)) {
+      // Some lost calls are still heard as a burst of static, without a voice or a call sign.
+      if ((l.t * 7 + l.callsign.length) % 3 === 0) out.push({ ...l, callsign: '', text: '[static]', lost: true });
+      continue;
+    }
     const words = l.text.split(' ');
     if (words.length > 3 && rng.chance(0.6)) {
       const at = rng.int(1, words.length - 2);

@@ -125,7 +125,15 @@ client = await open('client2');
 await join(client);
 await waitFor(client.w, () => window.sb.screen.kind === 'lanWait', 'rejoined client waits on its sealed orders');
 await host.w.evaluate(() => (window.sb.fitToStores(0), window.sb.launch(0)));
-await waitFor(client.w, () => window.sb.screen.kind === 'radio', 'rejoined client receives the results');
+// A random campaign can leave the host's raid unfit to fly this week: then it flies defence only.
+if (await host.w.evaluate(() => window.sb.screen.kind !== 'radio')) {
+  console.log('host plan refused:', await host.w.evaluate(() => document.getElementById('toast')?.textContent ?? '?'));
+  await host.w.evaluate(() => { window.sb.plans[0].raid = null; return window.sb.launch(0); });
+}
+if (!(await waitFor(client.w, () => window.sb.screen.kind === 'radio', 'rejoined client receives the results'))) {
+  console.log('host:', await host.w.evaluate(() => JSON.stringify({ screen: window.sb.screen.kind, sealed: window.sb.state.sealed.map(Boolean), connected: window.sb.lan?.connected, turn: window.sb.state.turn })));
+  console.log('client:', await client.w.evaluate(() => JSON.stringify({ screen: window.sb.screen.kind, connected: window.sb.lan?.connected, turn: window.sb.state?.turn })));
+}
 await host.w.screenshot({ path: 'screenshots/lan-host-radio.png' });
 
 await host.app.close();

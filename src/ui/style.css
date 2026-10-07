@@ -36,7 +36,7 @@
   --carbon: #2c4672;
   --chinagraph: #e2b33c;
   --hole: #ff6a3c;
-  --sheet-shadow: 0 1px 0 rgba(255,255,255,0.3) inset, 0 2px 0 rgba(0,0,0,0.25), 0 14px 28px -10px rgba(0,0,0,0.8);
+  --sheet-shadow: 0 1px 0 rgba(255,255,255,0.3) inset, inset 0 0 0 1px rgba(110,85,45,0.2), inset 0 0 16px rgba(120,90,40,0.12), 0 2px 0 rgba(0,0,0,0.25), 0 14px 28px -10px rgba(0,0,0,0.8);
   --slip-shadow: 0 1px 0 rgba(0,0,0,0.2), 0 6px 12px -6px rgba(0,0,0,0.6);
 }
 
@@ -608,9 +608,8 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .seg { display: inline-flex; flex-wrap: wrap; box-shadow: inset 0 0 0 1px var(--ink-3); background: rgba(0, 0, 0, 0.05); }
 .seg-btn { font-family: 'VT323'; font-size: 20px; line-height: 1; color: var(--ink-2); background: transparent; border: none; padding: 4px 10px 3px; cursor: pointer; box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.12); white-space: nowrap; }
 .seg-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.35); color: var(--ink); }
-.seg-btn.on { background: var(--index); color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); animation: seg-pick 90ms steps(3); }
+.seg-btn.on { background: var(--index); color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); }
 .seg-btn.on::before { content: '✓'; color: var(--carbon); font-family: 'Pixelify'; margin-right: 4px; }
-@keyframes seg-pick { from { transform: scale(0.94); } to { transform: none; } }
 .seg-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .seg.mini .seg-btn { font-size: 18px; padding: 2px 7px 1px; }
 .launchbar .seg, .radio-screen .seg { background: #241e16; box-shadow: inset 0 0 0 1px #6b6450; }
@@ -1335,3 +1334,63 @@ body[data-phase=dawn] .content .paper { filter: saturate(0.9) brightness(1.02); 
 /* Sealed: the task beside its squadron, top-aligned */
 .orders-table .sq-row { align-items: start; }
 .orders-table .task { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+
+/* Theater verdict: the old theater as it stood at the end. */
+.tc-front { align-self: stretch; }
+.tc-map { margin: 4px 0 2px; }
+.tc-map .theater-map { display: block; width: 100%; max-width: none !important; box-shadow: 0 0 0 2px var(--ink-3), 0 3px 0 rgba(0, 0, 0, 0.25); }
+.tc-map figcaption { font-size: 16px; line-height: 1.15; color: var(--ink-2); margin-top: 5px; }
+/* However long the roll of the missing, the way on stays in view. */
+.tc .tc-foot { position: sticky; bottom: -22px; padding-bottom: 6px; }
+
+/* Segmented controls: the picked card slides across to the new option. */
+.seg { position: relative; }
+.seg-btn { position: relative; z-index: 1; }
+.seg-ind { position: absolute; z-index: 0; background: var(--index); box-shadow: inset 0 0 0 2px var(--ink); pointer-events: none; transition: left 90ms steps(3), top 90ms steps(3), width 90ms steps(3), height 90ms steps(3); }
+.seg-btn.on.arriving { background: transparent; box-shadow: none; }
+
+/* Intelligence: a cork board in the folder, typed summaries pinned to it, charts on graph paper. */
+.cork-board { background-color: #8f6d47; background-image: var(--tex-cork); padding: 20px 18px 6px; gap: 6px 22px; box-shadow: inset 0 0 0 5px #3b2a1a, inset 0 0 0 7px #241a10, inset 0 0 36px rgba(0, 0, 0, 0.45), 0 2px 0 rgba(0, 0, 0, 0.3); }
+.cork-board .panel { position: relative; margin: 12px 2px 18px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 2px 4px 0 rgba(0, 0, 0, 0.32), 0 10px 16px -8px rgba(0, 0, 0, 0.6); }
+.cork-board .col > .panel:nth-child(odd) { transform: rotate(-0.35deg); }
+.cork-board .col > .panel:nth-child(even) { transform: rotate(0.3deg); }
+.cork-board .panel::before { content: ''; position: absolute; top: -4px; left: 50%; margin-left: -5px; width: 10px; height: 10px; background: radial-gradient(circle at 35% 35%, #f0a090, #a8322a 60%, #5a1a14); box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.4); z-index: 2; }
+.cork-board .col > .panel:nth-child(3n+2)::before { background: radial-gradient(circle at 35% 35%, #d8e4f0, #2c4672 60%, #16243a); }
+.cork-board .chart, .cork-board .bar-row .bar { background-color: #f4efe0; background-image: linear-gradient(rgba(47, 74, 122, 0.16) 1px, transparent 1px), linear-gradient(90deg, rgba(47, 74, 122, 0.16) 1px, transparent 1px); background-size: 8px 8px; }
+.cork-board .chart { padding: 10px 6px 0; box-shadow: inset 0 0 0 1px rgba(47, 74, 122, 0.35); }
+
+/* The leader's photograph is clipped to the dossier. */
+.dossier-head .leader-photo { position: relative; }
+.dossier-head .leader-photo::before, .dossier-head .leader-photo::after { content: ''; position: absolute; border: 2px solid #9aa1a6; border-radius: 6px; transform: rotate(-6deg); pointer-events: none; }
+.dossier-head .leader-photo::before { top: -12px; left: 16px; width: 9px; height: 34px; box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.35); }
+.dossier-head .leader-photo::after { top: -7px; left: 19px; width: 3px; height: 24px; border-color: #b9c0c4; }
+
+/* Title: the bombers seen through the ops room window, over the desk. */
+.title-window { position: absolute; inset: 0 0 12vh 0; pointer-events: none; box-shadow: inset 0 0 0 16px #1c150f, inset 0 0 0 18px #0b0806, inset 0 0 0 20px #3a2c1f, inset 0 0 60px 30px rgba(0, 0, 0, 0.55); }
+.tw-sash { position: absolute; inset: 0; background:
+  linear-gradient(90deg, transparent calc(64% - 7px), #0b0806 calc(64% - 7px), #2a2018 calc(64% - 5px), #1c150f calc(64% + 5px), #0b0806 calc(64% + 7px), transparent calc(64% + 7px)),
+  linear-gradient(180deg, transparent calc(50% - 7px), #0b0806 calc(50% - 7px), #2a2018 calc(50% - 5px), #1c150f calc(50% + 5px), #0b0806 calc(50% + 7px), transparent calc(50% + 7px));
+  -webkit-mask: linear-gradient(90deg, #000 0 100%); }
+.tw-curtain { position: absolute; top: 0; bottom: 0; width: 7vw; background: repeating-linear-gradient(90deg, #15100c 0 14px, #1f1812 14px 24px, #120d09 24px 30px); box-shadow: 0 0 30px 10px rgba(0, 0, 0, 0.6); }
+.tw-curtain.left { left: 0; }
+.tw-curtain.right { right: 0; }
+.title-desk { position: absolute; left: 0; right: 0; bottom: 0; height: 12vh; background-color: #241d15; background-image: linear-gradient(180deg, #3a2e22 0 3px, #120d09 3px 6px, transparent 6px), radial-gradient(ellipse 50% 140% at 30% 0%, rgba(255, 214, 140, 0.12), transparent 70%), var(--tex-wood); box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.6); }
+.title-screen .title-overlay { background: linear-gradient(90deg, rgba(10, 10, 12, 0.55), rgba(10, 10, 12, 0) 55%); }
+.title-screen .title-col { background: none; box-shadow: none; }
+.title-screen .title-overlay { padding-bottom: 5vh; background: linear-gradient(90deg, rgba(10, 10, 12, 0.7), rgba(10, 10, 12, 0.35) 35%, rgba(10, 10, 12, 0) 58%); }
+.title-screen .title-menu { box-shadow: var(--slip-shadow), 0 14px 24px rgba(0, 0, 0, 0.7); }
+.radio-line.lost .tx { color: var(--ink-3); letter-spacing: 1px; }
+/* The sheet put away: it drops and goes as the next one rises. */
+.content.parting { position: fixed; margin: 0; z-index: 50; pointer-events: none; overflow: hidden; animation: sheet-part 120ms steps(3) both; }
+@keyframes sheet-part { to { transform: translateY(16px); opacity: 0; } }
+/* Dispersal: click a pan to pin the aircraft's card beside it. */
+.dispersal-wrap { position: relative; }
+.pan-slip { position: absolute; z-index: 3; transform: translate(-50%, -100%) rotate(-0.6deg); width: 280px; padding: 8px 12px 10px; background: var(--index); color: var(--ink); font-size: 18px; line-height: 1.15; box-shadow: var(--slip-shadow), 0 0 0 1px rgba(0, 0, 0, 0.25); }
+.pan-slip b { display: block; font-family: 'Silkscreen'; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; font-weight: 400; }
+.pan-slip.lost b { color: var(--stamp); }
+.pan-slip[hidden] { display: none; }
+/* Manual art at a size that fills its frame. */
+.manual-art img.icon { width: 72px; height: 72px; }
+.manual-art .art-pips { zoom: 1.5; }
+.manual-art .art-row > .trait { zoom: 1.6; }
+.manual-art > .seg { zoom: 1.3; }

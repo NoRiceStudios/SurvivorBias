@@ -46,7 +46,7 @@ export function installTextures() {
     for (let y = 0; y < 96; y++)
       for (let x = 0; x < 96; x++) {
         const v = n(x, y);
-        px(g, x, y, v > 0.93 ? '#3e2c1c' : v > 0.7 ? '#7a5b3c' : v > 0.35 ? '#6b4f33' : '#614629');
+        px(g, x, y, v > 0.93 ? '#4a3420' : v > 0.7 ? '#a27e53' : v > 0.35 ? '#94724a' : '#866641');
       }
   })})`);
   // Paper grain: a light speckle laid over any paper colour.

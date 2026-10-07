@@ -58,6 +58,13 @@ export function redactFor(full: GameState, viewer: SideId): GameState {
   // Enemy sites are shown at their believed condition.
   for (const site of s.theater.sites) if (site.owner !== viewer) site.condition = me.perceived.sites[site.id] ?? 100;
   s.theater.objectives = s.theater.objectives.filter((o) => o.side === viewer);
+  // Decided theaters keep their last map, again as this commander believed it.
+  for (const r of s.theaterResults) {
+    if (!r.end) continue;
+    for (const site of r.end.sites) if (site.owner !== viewer) site.condition = r.end.believed[viewer][site.id] ?? 100;
+    r.end.believed[enemy] = {};
+    r.end.front[enemy] = 0;
+  }
   s.lastDebriefs[enemy] = null;
   s.sealed[enemy] = null;
   // The archive keeps only what this commander saw: own claims, own losses, survivor damage.

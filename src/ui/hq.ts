@@ -146,7 +146,7 @@ function intel(app: App, side: SideState): HTMLElement {
   const app2 = p.enemyApproach;
   const claims = st.archive.map((e) => e.claimed[side.id]);
   const maxC = Math.max(1, ...claims);
-  return h('div', { class: 'grid2' },
+  return h('div', { class: 'grid2 cork-board' },
     h('div', { class: 'col' },
       panel('Enemy order of battle (our estimate)',
         h('div', { class: 'kv' },

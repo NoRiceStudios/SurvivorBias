@@ -55,9 +55,12 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
   const addLine = (i: number, instant: boolean) => {
     const l = lines[i];
     const isOther = l.callsign === 'Ground' || l.t >= 200;
-    const dead = /no further|carrier wave|static\]|cry/.test(l.text);
+    const dead = /no further|carrier wave|then static\]|cry/.test(l.text);
+    // A call lost in the static prints as a broken line on the teleprinter.
+    const lostCall = !!l.lost || /^(\[(static|unreadable|fading)\]|—crackle—|—…—)$/.test(l.text);
+    const text = lostCall ? `— — — ${l.text.replace(/^—(.*)—$/, '[$1]')} — — —` : l.text;
     const trouble = /going down|gone in|blew up|falling out|burning|on fire|won't answer|coming off|spinning|no further|carrier/.test(l.text);
-    calls++;
+    if (!lostCall) calls++;
     if (trouble) {
       lastTrouble = true;
       troubles++;
@@ -66,16 +69,16 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
       groups.find((g) => l.callsign.startsWith(`${g.cs} `))?.aborted.add(l.callsign);
     }
     paintTally();
-    const row = h('div', { class: `radio-line ${isOther ? 'home' : ''} ${dead ? 'dead' : ''} ${trouble ? 'trouble' : ''}` },
+    const row = h('div', { class: `radio-line ${isOther ? 'home' : ''} ${dead && !lostCall ? 'dead' : ''} ${lostCall ? 'lost' : ''} ${trouble ? 'trouble' : ''}` },
       h('span', { class: 'rt' }, l.t >= 200 ? `HOME` : `T+${String(l.t).padStart(3, '0')}`),
       h('span', { class: 'cs' }, l.callsign),
       h('span', { class: 'tx' }),
     );
     log.append(row);
     const tx = row.querySelector('.tx')! as HTMLElement;
-    map.mark(l.t >= 200 ? -1 : l.t, trouble, l.callsign);
+    if (!lostCall) map.mark(l.t >= 200 ? -1 : l.t, trouble, l.callsign);
     if (instant) {
-      tx.textContent = l.text;
+      tx.textContent = text;
       return Promise.resolve();
     }
     sfxStatic(0.18);
@@ -83,15 +86,15 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
       let k = 0;
       const step = () => {
         if (done) {
-          tx.textContent = l.text;
+          tx.textContent = text;
           res();
           return;
         }
         k += 2 * speed;
-        tx.textContent = l.text.slice(0, k);
+        tx.textContent = text.slice(0, k);
         if (k % 6 === 0) sfxKey();
         log.scrollTop = log.scrollHeight;
-        if (k < l.text.length) setTimeout(step, 22);
+        if (k < text.length) setTimeout(step, 22);
         else res();
       };
       setTimeout(step, 250 / speed);
@@ -518,20 +521,46 @@ function dispersal(app: App, d: Debrief, landing: boolean): HTMLElement {
   };
   draw(start);
   if (anim) requestAnimationFrame(draw);
-  // Hover a pan for the aircraft in it (or the one that should be).
-  c.addEventListener('mousemove', (e) => {
+  // Hover a pan for the aircraft in it (or the one that should be); click to pin its card.
+  const panAt = (e: MouseEvent) => {
     const r = c.getBoundingClientRect();
     const mx = ((e.clientX - r.left) / r.width) * W;
     const my = ((e.clientY - r.top) / r.height) * H;
-    const p = pans.find((q) => Math.abs(q.x - mx) < spriteDef(q.kind).w / 2 + 4 && Math.abs(q.y - my) < 24);
-    if (!p) return setTip(c, null);
+    return pans.find((q) => Math.abs(q.x - mx) < spriteDef(q.kind).w / 2 + 4 && Math.abs(q.y - my) < 24);
+  };
+  const about = (p: Pan): { head: string; text: string; source?: string } => {
     const sqn = side.squadrons.find((q) => q.id === p.sq)?.name ?? 'Disbanded';
-    if (p.lost) return setTip(c, { head: `${p.serial} · did not return`, text: `${sqn}. ${p.lost.captain ? `${p.lost.captain}. ` : ''}${p.lost.lastWords ? `Last heard: "${p.lost.lastWords}"` : 'Nothing heard.'}`, source: 'there is nothing left to inspect' });
+    if (p.lost) return { head: `${p.serial} · did not return`, text: `${sqn}. ${p.lost.captain ? `${p.lost.captain}. ` : ''}${p.lost.lastWords ? `Last heard: "${p.lost.lastWords}"` : 'Nothing heard.'}`, source: 'there is nothing left to inspect' };
     const af = side.squadrons.flatMap((q) => q.airframes).find((a) => a.id === p.back!.airframeId);
-    const fate = p.back!.fate === 'crashed' ? 'Written off on landing.' : p.back!.fate === 'aborted' ? 'Turned back early.' : p.back!.hits.length ? `${p.back!.hits.length} holes.` : 'Not a mark on her.';
-    setTip(c, { head: `${p.serial} · ${sqn}`, text: `${p.back!.role}. ${fate}${af ? af.status === 'repair' ? ` In repair for ${af.repairTurns} week${af.repairTurns > 1 ? 's' : ''}.` : ' Serviceable.' : ''}` });
+    const hits = p.back!.hits;
+    const zones = Object.entries(hits.reduce<Record<string, number>>((a, x) => ({ ...a, [x.zone]: (a[x.zone] ?? 0) + 1 }), {}))
+      .sort((a, b) => b[1] - a[1]).map(([z, n]) => `${ZONE_LABEL[z as ZoneId].toLowerCase()} ${n}`).join(', ');
+    const fate = p.back!.fate === 'crashed' ? 'Written off on landing.' : p.back!.fate === 'aborted' ? 'Turned back early.' : hits.length ? `${hits.length} holes: ${zones}.` : 'Not a mark on her.';
+    const role = p.back!.role.charAt(0).toUpperCase() + p.back!.role.slice(1);
+    return { head: `${p.serial} · ${sqn}`, text: `${role}. ${fate}${af ? af.status === 'repair' ? ` In repair for ${af.repairTurns} week${af.repairTurns > 1 ? 's' : ''}.` : ' Serviceable.' : ''}` };
+  };
+  c.addEventListener('mousemove', (e) => {
+    const p = panAt(e);
+    setTip(c, p && p !== pinned ? about(p) : null);
+    c.style.cursor = p ? 'pointer' : '';
   });
-  return c;
+  const slip = h('div', { class: 'pan-slip', hidden: true });
+  let pinned: Pan | undefined;
+  c.addEventListener('click', (e) => {
+    const p = panAt(e);
+    pinned = p && p !== pinned ? p : undefined;
+    slip.hidden = !pinned;
+    if (!pinned) return;
+    setTip(c, null);
+    const a = about(pinned);
+    slip.replaceChildren(h('b', null, a.head), h('div', null, a.text), ...(a.source ? [h('div', { class: 'small muted' }, a.source)] : []));
+    // Above the pan, kept inside the strip.
+    const w = c.clientWidth;
+    slip.style.left = `${Math.min(w - 150, Math.max(150, (pinned.x / W) * w))}px`;
+    slip.style.top = `${((pinned.y - 26) / H) * c.clientHeight}px`;
+    slip.classList.toggle('lost', !!pinned.lost);
+  });
+  return h('div', { class: 'dispersal-wrap' }, c, slip);
 }
 
 /* ---------- Sheet 2: reports and the front ---------- */

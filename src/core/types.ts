@@ -326,6 +326,8 @@ export interface RadioLine {
   heardBy: SideId;
   /** A crew's last call (already subject to radio range when generated). */
   final?: boolean;
+  /** A call that did not get through: only static was heard. */
+  lost?: boolean;
 }
 
 export interface RaidResult {
@@ -493,6 +495,17 @@ export interface TheaterResult {
   decisive: boolean;
   /** Sectors side 0 gained in the theater (negative: lost). */
   gain?: number;
+  /** The map as it stood when the theater was decided, for the redeployment card. */
+  end?: TheaterEnd;
+}
+
+export interface TheaterEnd {
+  held0: number;
+  start0: number;
+  sites: Site[];
+  /** Each side's last estimate of the front and of the enemy's sites. */
+  front: [number, number];
+  believed: [Record<string, number>, Record<string, number>];
 }
 
 /** --- Squadron leaders' requests --- */

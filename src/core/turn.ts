@@ -1186,7 +1186,14 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   const decision = theaterDecision(state);
   if (decision) {
     const def = theaterDef(state);
-    state.theaterResults.push({ index: t.index, name: def.name, winner: decision.winner, weeks: t.week, decisive: decision.decisive, gain: t.held0 - t.start0 });
+    state.theaterResults.push({
+      index: t.index, name: def.name, winner: decision.winner, weeks: t.week, decisive: decision.decisive, gain: t.held0 - t.start0,
+      end: {
+        held0: t.held0, start0: t.start0, sites: t.sites.map((x) => ({ ...x })),
+        front: [s0.perceived.front, s1.perceived.front],
+        believed: [{ ...s0.perceived.sites }, { ...s1.perceived.sites }],
+      },
+    });
     for (const id of [0, 1] as SideId[]) {
       const side = state.sides[id];
       const won = decision.winner === id;

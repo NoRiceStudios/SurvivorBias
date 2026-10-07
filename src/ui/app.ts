@@ -6,7 +6,7 @@ import { applyCommand, type Command } from '../core/commands';
 import { carryPlan, defaultPlan, fitPlanToStores } from '../core/plans';
 import type { GameState, SideId, TurnPlan } from '../core/types';
 import { sfxClick, sfxPaper, sfxStamp, sfxStatic, stopDrone } from './audio';
-import { animOn, clear, h } from './dom';
+import { animOn, clear, cloneWithCanvases, h, segMarks, slideSegs } from './dom';
 import { clearDispatches, memoDispatch, showDispatch, type Dispatch } from './general';
 import { renderEnd } from './end';
 import { renderHq, TAB_ALIAS } from './hq';
@@ -113,6 +113,10 @@ export class App {
 
   render() {
     const scrollers = [...this.root.querySelectorAll<HTMLElement>('[data-keep-scroll]')].map((e) => [e.dataset.keepScroll!, e.scrollTop] as const);
+    const segs = segMarks(this.root);
+    // The sheet being put away, when another takes its place in the folder.
+    const oldSheet = this.entering && animOn() ? this.root.querySelector<HTMLElement>('main.content') : null;
+    const parting = oldSheet ? { el: cloneWithCanvases(oldSheet), rect: oldSheet.getBoundingClientRect(), top: oldSheet.scrollTop } : null;
     clear(this.root);
     const s = this.screen;
     let view: HTMLElement;
@@ -152,9 +156,19 @@ export class App {
         break;
     }
     this.root.append(view);
+    if (!this.entering) slideSegs(view, segs);
     // A new sheet is laid on the desk: it rises into place with the sound of paper.
     if (this.entering) {
       view.classList.add('entering');
+      if (parting && view.querySelector('main.content')) {
+        const { el, rect, top } = parting;
+        el.classList.add('parting');
+        el.removeAttribute('data-keep-scroll');
+        el.style.cssText = `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`;
+        document.body.append(el);
+        el.scrollTop = top;
+        window.setTimeout(() => el.remove(), 140);
+      }
       if (s.kind === 'hq' || s.kind === 'debrief' || s.kind === 'end') sfxPaper();
       this.entering = false;
     }
@@ -320,16 +334,7 @@ export class App {
   ordersIssued() {
     const view = this.root.firstElementChild as HTMLElement | null;
     if (!view || !animOn()) return;
-    const clone = view.cloneNode(true) as HTMLElement;
-    // A cloned canvas comes without its picture: copy the pixels over.
-    const from = view.querySelectorAll('canvas');
-    const to = clone.querySelectorAll('canvas');
-    from.forEach((c, i) => {
-      const d = to[i] as HTMLCanvasElement;
-      d.width = c.width;
-      d.height = c.height;
-      d.getContext('2d')?.drawImage(c, 0, 0);
-    });
+    const clone = cloneWithCanvases(view);
     const sheet = h('div', { class: 'departing', onclick: () => sheet.remove() }, clone, h('div', { class: 'issued-stamp' }, h('span', { class: 'stamp big' }, 'ORDERS ISSUED')));
     document.body.append(sheet);
     sfxStamp();
