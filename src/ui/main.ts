@@ -1,4 +1,5 @@
 import { App } from './app';
+import { bindTips } from './tip';
 
 const root = document.getElementById('app')!;
 const app = new App(root);
@@ -12,3 +13,4 @@ window.addEventListener('keydown', (e) => {
     window.sbNative.toggleFullscreen();
   }
 });
+bindTips();

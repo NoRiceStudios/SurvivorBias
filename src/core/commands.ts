@@ -40,7 +40,7 @@ import type {
 } from './types';
 
 export type Command =
-  | { k: 'armor'; sq: string; zone: ZoneId; value: number }
+  | { k: 'armor'; sq: string; zone: ZoneId; value: number; all?: boolean }
   | { k: 'armorAll'; sq: string }
   | { k: 'doctrine'; sq: string; d: Partial<Doctrine> }
   | { k: 'approach'; w: Record<FighterApproach, number> }
@@ -62,7 +62,20 @@ export type Command =
 export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?: TurnPlan): ActionResult {
   const side = state.sides[sideId];
   switch (c.k) {
-    case 'armor': return setArmor(side, c.sq, c.zone, c.value);
+    case 'armor': {
+      if (!c.all) return setArmor(side, c.sq, c.zone, c.value);
+      // The same refit on every squadron of the type, or on none of them.
+      const kind = side.squadrons.find((q) => q.id === c.sq)?.kind;
+      const before = { supplies: side.resources.supplies, armor: side.squadrons.map((q) => ({ ...q.armor })) };
+      const r = setArmor(side, c.sq, c.zone, c.value);
+      if (!r.ok || !side.squadrons.some((q) => q.id !== c.sq && q.kind === kind)) return r;
+      const r2 = copyArmor(side, c.sq);
+      if (!r2.ok) {
+        side.resources.supplies = before.supplies;
+        side.squadrons.forEach((q, i) => { q.armor = before.armor[i]; });
+      }
+      return r2;
+    }
     case 'armorAll': return copyArmor(side, c.sq);
     case 'doctrine': return setDoctrine(side, c.sq, c.d);
     case 'approach': return setApproach(side, c.w);

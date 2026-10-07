@@ -405,3 +405,11 @@ export function aircraftCanvas(kind: AircraftKind, opts: RenderOpts, scale = 3):
   c.className = 'pix';
   return c;
 }
+
+/** The hit zone under a pixel of a type's sprite (sprite coordinates), or null. */
+export function zoneAt(kind: AircraftKind, x: number, y: number): ZoneId | null {
+  const def = spriteDef(kind);
+  if (x < 0 || y < 0 || x >= def.w || y >= def.h) return null;
+  const zi = def.zone[Math.floor(y) * def.w + Math.floor(x)];
+  return zi >= 0 ? ZONES[zi] : null;
+}

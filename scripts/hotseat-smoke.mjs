@@ -77,9 +77,9 @@ await p.evaluate(() => window.sb.go({ kind: 'debrief', side: 0, tab: 'home' }));
 await shot('h5-debrief-home');
 await p.click('text=File reports');
 await p.waitForTimeout(200);
-check(await p.evaluate(() => !!document.querySelector('.dispatch-veil')), 'High Command answers in full screen');
-await shot('h5b-hq-signal');
-for (let k = 0; k < 12 && (await p.evaluate(() => !!document.querySelector('.dispatch-veil'))); k++) await p.keyboard.press('Enter');
+check(await p.evaluate(() => window.sb.screen.kind === 'letter' && !!document.querySelector('.letter')), 'High Command answers in full screen');
+await shot('h5b-hq-letter');
+await p.click('.letter .btn.primary');
 await p.waitForTimeout(200);
 check(await p.evaluate(() => window.sb.screen.kind === 'handover' || window.sb.screen.kind === 'theater'), 'filing the reports moves on');
 await p.evaluate(() => window.sb.go({ kind: 'debrief', side: 1, tab: 'home' }));
@@ -105,6 +105,7 @@ const result = await p.evaluate(async () => {
     }
     for (const side of [0, 1]) {
       sb.afterDebrief(side); screens.add(sb.screen.kind);
+      if (sb.screen.kind === 'letter') sb.afterDebrief(side);
       if (sb.screen.kind === 'theater') { sb.continueAfterTheater(); screens.add('after:' + sb.screen.kind); }
     }
   }

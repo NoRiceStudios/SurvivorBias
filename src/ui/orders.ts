@@ -14,6 +14,7 @@ import { sfxClick, sfxStamp } from './audio';
 import { h, plural } from './dom';
 import { missionLabel, topBar } from './hq';
 import { mapLegend, theaterMap } from './theaterui';
+import { chipRow, readinessChips } from './readiness';
 
 /** Everything this commander has ordered for the coming week, on one sheet. */
 export function ordersOverview(app: App, sideId: SideId): HTMLElement {
@@ -114,7 +115,8 @@ export function renderSealed(app: App, sideId: SideId): HTMLElement {
     topBar(app, side),
     h('main', { class: 'content sealed-body', 'data-keep-scroll': 'sealed' },
       h('section', { class: 'paper panel' },
-        h('div', { class: 'sealed-title' }, h('span', { class: 'stamp big' }, 'ORDERS SEALED'), h('h1', null, `Week ${st.turn}: your orders`)),
+        h('div', { class: 'sealed-title' }, h('span', { class: 'stamp big drop' }, 'ORDERS SEALED'), h('h1', null, `Week ${st.turn}: your orders`)),
+        (() => { const c = readinessChips(app, side).filter((x) => x.level !== 'block'); return c.length ? h('div', { class: 'sealed-chips' }, h('span', { class: 'small muted' }, 'Still open: '), chipRow(app, sideId, c, 6, true)) : null; })(),
         ordersOverview(app, sideId),
         h('p', { class: 'muted small' }, first
           ? `Nothing is flown until ${other.commander} has sealed their orders too. Until you pass the folder on, you can still amend yours.`

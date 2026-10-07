@@ -3,7 +3,7 @@
  * bottom-right. Cards queue and show one at a time. Only the card itself takes
  * pointer events, so the rest of the screen (and automation) stays usable.
  */
-import type { Debrief, Leader, Memo, SideId, SideState } from '../core/types';
+import type { Leader, Memo, SideId, SideState } from '../core/types';
 import { sfxClick, sfxKey } from './audio';
 import { h } from './dom';
 
@@ -1249,35 +1249,5 @@ export function memoDispatch(side: SideState, turn: number, maxPages = 4): Dispa
         ...(who ? { portrait: leaderPortrait(who, side.id, 3), caption: `${who.rank} ${who.name.split(' ').slice(-1)[0]}`.toUpperCase(), mourning: /memoriam|presumed killed/i.test(m.subject) } : {}),
       };
     }),
-  };
-}
-
-/**
- * High Command's answer to the week's returns, read out in full screen when the
- * commander files the debrief: the signal itself, then the week's weighty memos.
- */
-export function hqSignalDispatch(side: SideState, d: Debrief, turn: number): Dispatch {
-  const hc = HIGH_COMMAND[side.id];
-  const signal = d.hqResponse.length ? d.hqResponse : ['Returns acknowledged. No comment.'];
-  // A page holds two or three sentences; longer signals run over several pages.
-  const pages: string[] = [];
-  for (const line of signal) {
-    const last = pages.length - 1;
-    if (last >= 0 && pages[last].length + line.length < 280) pages[last] += ` ${line}`;
-    else pages.push(line);
-  }
-  const memos = memoDispatch(side, turn, 4);
-  return {
-    speaker: 'general',
-    side: side.id,
-    name: hc.name,
-    title: hc.title,
-    heading: 'Signal from High Command',
-    fullscreen: true,
-    doneLabel: 'Dismissed ▸',
-    lines: [
-      ...pages.map((text, i) => ({ text, stamp: 'SIGNAL', kind: 'notice', from: i === 0 ? `Re: your returns for week ${d.turn} · confidence in you ${side.trust}/100` : `Re: your returns for week ${d.turn}` })),
-      ...(memos?.lines ?? []),
-    ],
   };
 }

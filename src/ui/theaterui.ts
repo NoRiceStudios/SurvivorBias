@@ -10,6 +10,9 @@ import type { FacilityType, GameState, SideId, Site, TargetId, TheaterResult } f
 import type { App } from './app';
 import { sfxStamp } from './audio';
 import { h } from './dom';
+import { setTip, tip as tipAttrs } from './tip';
+
+const FACILITY_WORD: Record<FacilityType, string> = { airfield: 'Airfield', industry: 'Aircraft works', fuel: 'Fuel depot' };
 
 /** Logical size of the map; each logical pixel is drawn as `scale` screen pixels. */
 const W = 480;
@@ -56,6 +59,10 @@ export interface MapOpts {
   feint?: number;
   /** The viewer's operation, drawn as a route from home to the target. */
   raid?: { target: TargetId; siteId?: string };
+  /** Enemy sites our bombers can reach; the others are drawn faded. */
+  inRange?: (site: Site) => boolean;
+  /** Dashed lines across the map: how far a type can reach past the front (in sectors). */
+  rangeLines?: { depth: number; label: string; color: string }[];
   /** Clicking an enemy site calls this (e.g. to choose it as the target). */
   onSite?: (site: Site) => void;
   /** Screen pixels per map pixel (the map also shrinks to fit its column). */
@@ -266,6 +273,15 @@ export function theaterMap(state: GameState, opts: MapOpts): HTMLCanvasElement {
   for (let b = 1; b < SECTORS; b++)
     for (let y = 0; y < H; y += 3) g.fillRect(X(boundaryX(b, y)), y, 1, 2);
 
+  // How far our aircraft reach past the front.
+  for (const r of opts.rangeLines ?? []) {
+    const b = v === 0 ? t.held0 + r.depth : t.held0 - r.depth;
+    if (b <= 0 || b >= SECTORS) continue;
+    g.fillStyle = r.color;
+    for (let y = 18; y < H - 14; y += 4) g.fillRect(X(boundaryX(b, y)) - 1, y, 2, 2);
+    label(g, r.label, X(boundaryX(b, 24)), 26 + (r.depth % 2) * 11, r.color);
+  }
+
   // Patrols: an orbit over the sector.
   for (const s of new Set(opts.patrols ?? [])) {
     const cx = X(s * CELL_W + CELL_W / 2);
@@ -330,6 +346,8 @@ export function theaterMap(state: GameState, opts: MapOpts): HTMLCanvasElement {
   g.fillRect(dir > 0 ? ax : ax - 4, 11, 4, 3);
 
   for (const p of placed) {
+    const faded = p.site.owner !== v && opts.inRange && !opts.inRange(p.site);
+    g.globalAlpha = faded ? 0.4 : 1;
     const cond = believed(state, v, p.site);
     const col = cond > 66 ? '#2a2620' : cond > 33 ? '#8a5a1a' : '#b0302a';
     const x = p.x - 3;
@@ -350,6 +368,7 @@ export function theaterMap(state: GameState, opts: MapOpts): HTMLCanvasElement {
     }
     if (p.site.id === opts.selected) label(g, p.site.name, p.x, p.y + 20, '#b0302a');
   }
+  g.globalAlpha = 1;
 
   // Sector names along the bottom, and the theater's name in a cartouche.
   for (let s = 0; s < SECTORS; s++) label(g, def.sectors[s], X(s * CELL_W + CELL_W / 2), H - 6, '#2a2620');
@@ -378,8 +397,19 @@ export function theaterMap(state: GameState, opts: MapOpts): HTMLCanvasElement {
   };
   c.addEventListener('mousemove', (e) => {
     const p = at(e);
-    c.title = p ? `${p.site.name} · ${def.sectors[p.site.sector]} · ${p.site.owner === v ? 'ours' : 'enemy'} · ${believed(state, v, p.site)}%${p.site.owner === v ? '' : ' (believed)'}` : '';
-    c.style.cursor = p && opts.onSite && p.site.owner !== v ? 'pointer' : '';
+    if (!p) {
+      setTip(c, null);
+      c.style.cursor = '';
+      return;
+    }
+    const ours = p.site.owner === v;
+    const reach = ours || !opts.inRange || opts.inRange(p.site);
+    setTip(c, {
+      head: p.site.name,
+      text: `${FACILITY_WORD[p.site.type]} in ${def.sectors[p.site.sector]} (${ours ? 'ours' : depthLabel(state, v, p.site).toLowerCase()}). Condition ${believed(state, v, p.site)}%.${ours ? '' : reach ? (opts.onSite ? ' Click to strike it.' : '') : ' Out of range of our bombers.'}`,
+      source: ours ? 'our ground staff' : state.sides[v].perceived.photographed.includes(p.site.id) ? 'photographs' : 'crews\' bombing reports',
+    });
+    c.style.cursor = opts.onSite && !ours && reach ? 'pointer' : '';
   });
   if (opts.onSite) c.addEventListener('click', (e) => {
     const p = at(e);
@@ -409,6 +439,26 @@ function label(g: CanvasRenderingContext2D, text: string, x: number, y: number, 
 export function depthLabel(state: GameState, viewer: SideId, site: Site): string {
   const d = depthFor(state.theater.held0, viewer, site.sector);
   return d === 1 ? 'Frontline' : d === 2 ? 'Second line' : 'Rear area';
+}
+
+/**
+ * The front as a tug of war: a needle between -SECTOR_PRESSURE (a sector lost)
+ * and +SECTOR_PRESSURE (a sector taken). With `from`, the needle swings there first.
+ */
+export function pressureGauge(value: number, opts: { from?: number; band?: [number, number]; label?: string } = {}): HTMLElement {
+  const P = SECTOR_PRESSURE;
+  const at = (x: number) => `${50 + (Math.max(-P * 1.2, Math.min(P * 1.2, x)) / (P * 1.2)) * 50}%`;
+  const needle = h('i', { class: 'gauge-needle', style: `left:${at(opts.from ?? value)}` });
+  const g = h('div', { class: 'gauge', ...tipAttrs({ head: 'Pressure on the front', text: `The Army liaison's estimate of who is winning on the ground. A sector falls at about ±${P}, at most one a week. Losses inflicted, close support and damage to enemy works all push it our way.`, source: 'Army liaison (runs a little optimistic)' }) },
+    h('div', { class: 'gauge-track' },
+      h('span', { class: 'gauge-zone lose', style: `left:0;width:${at(-P)}` }),
+      h('span', { class: 'gauge-zone win', style: `left:${at(P)};right:0` }),
+      opts.band ? h('span', { class: 'gauge-band', style: `left:${at(opts.band[0])};width:calc(${at(opts.band[1])} - ${at(opts.band[0])})` }) : null,
+      h('span', { class: 'gauge-mid' }),
+      needle),
+    h('div', { class: 'gauge-scale' }, h('span', null, `◂ sector lost (−${P})`), h('b', { class: value > 0 ? 'good' : value < 0 ? 'bad' : '' }, `${opts.label ?? 'Pressure'} ${value >= 0 ? '+' : ''}${value}`), h('span', null, `sector taken (+${P}) ▸`)));
+  if (opts.from !== undefined && opts.from !== value) setTimeout(() => { needle.style.left = at(value); }, 350);
+  return g;
 }
 
 export function mapLegend(): HTMLElement {

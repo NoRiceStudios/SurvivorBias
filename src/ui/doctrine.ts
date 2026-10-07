@@ -9,6 +9,7 @@ import { flyable } from '../core/sim';
 import type { Doctrine, SideState, Squadron } from '../core/types';
 import type { App } from './app';
 import { h, slider } from './dom';
+import { tip } from './tip';
 
 const LABEL: Record<DoctrineKey, [string, string, string]> = {
   formation: ['Formation', 'Loose', 'Tight box'],
@@ -54,7 +55,7 @@ export function doctrinePanel(app: App, side: SideState, sq: Squadron): HTMLElem
     h('details', { class: 'doc-details', open: true },
       h('summary', null, 'What these settings do'),
       effects,
-      h('p', { class: 'muted small' }, 'Figures are against a middle setting, all else equal. Drag a slider to see what the change would do before you let go; the weather, the enemy and luck still decide the day.')),
+      h('p', { class: 'muted small' }, 'Drag a slider to see the change before you let go. Hover a row for why.')),
   );
 }
 
@@ -63,22 +64,34 @@ function figure(caption: string, c: HTMLCanvasElement): HTMLElement {
 }
 
 function effectsTable(sq: Squadron, now: Doctrine, preview: Doctrine, active: DoctrineKey | null): HTMLElement {
+  const mid = doctrineEffects(sq.kind, { aggression: 0.5, formation: 0.5, altitude: 0.5, breakOff: 0.5 }, sq.skill);
   const a = doctrineEffects(sq.kind, now, sq.skill);
   const b = doctrineEffects(sq.kind, preview, sq.skill);
   const changed = a.some((e, i) => e.value !== b[i].value);
-  const tone = (e: DoctrineEffect, f: DoctrineEffect) => {
-    if (e.good === 0 || f.raw === e.raw) return '';
-    return (f.raw > e.raw) === (e.good > 0) ? 'good' : 'bad';
+  // Each effect as a bar either side of the standard setting: green where it helps us, red where it hurts.
+  const span = (i: number) => Math.max(8, ...[a[i], b[i], mid[i]].map((e) => Math.abs(e.raw - mid[i].raw))) * 1.15;
+  const bar = (e: DoctrineEffect, i: number, ghost?: DoctrineEffect) => {
+    const s = span(i);
+    const pos = (x: number) => 50 + ((x - mid[i].raw) / s) * 50;
+    const helps = (x: number) => (e.good === 0 ? 0 : (x - mid[i].raw) * e.good);
+    const seg = (x: number, cls: string) => {
+      const p = Math.max(0, Math.min(100, pos(x)));
+      const h2 = helps(x);
+      return h('i', { class: `${cls} ${h2 > 0.01 ? 'good' : h2 < -0.01 ? 'bad' : 'neutral'}`, style: `left:${Math.min(50, p)}%;width:${Math.abs(p - 50)}%` });
+    };
+    return h('span', { class: 'div-bar' }, h('span', { class: 'div-mid' }), ghost ? seg(ghost.raw, 'ghost') : null, seg(e.raw, 'val'));
   };
   return h('table', { class: 'doc-table' },
-    h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'Now'), changed ? h('th', null, 'After change') : null)),
+    h('thead', null, h('tr', null, h('th', null, ''), h('th', { class: 'num' }, 'vs. standard'), h('th', null, ''), changed ? h('th', { class: 'num' }, 'after change') : null)),
     h('tbody', null, a.map((e, i) => {
       const f = b[i];
-      const t = tone(e, f);
-      return h('tr', { class: active && e.keys.includes(active) ? 'hot' : '', title: e.why },
-        h('td', null, e.label, h('div', { class: 'small muted' }, e.why)),
+      const better = e.good !== 0 && f.raw !== e.raw && (f.raw > e.raw) === (e.good > 0);
+      const worse = e.good !== 0 && f.raw !== e.raw && !better;
+      return h('tr', { class: active && e.keys.includes(active) ? 'hot' : '', ...tip({ head: e.label, text: e.why }) },
+        h('td', null, e.label),
+        h('td', { class: 'barcell' }, changed ? bar(f, i, e) : bar(e, i)),
         h('td', { class: 'num' }, e.value),
-        changed ? h('td', { class: `num ${t}` }, f.value === e.value ? '—' : `${t === 'good' ? '▲' : t === 'bad' ? '▼' : '•'} ${f.value}`) : null);
+        changed ? h('td', { class: `num ${better ? 'good' : worse ? 'bad' : ''}` }, f.value === e.value ? '—' : `${better ? '▲' : worse ? '▼' : '•'} ${f.value}`) : null);
     })));
 }
 

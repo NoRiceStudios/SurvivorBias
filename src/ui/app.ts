@@ -7,9 +7,11 @@ import { carryPlan, defaultPlan, fitPlanToStores } from '../core/plans';
 import type { GameState, SideId, TurnPlan } from '../core/types';
 import { sfxClick, sfxStamp, stopDrone } from './audio';
 import { clear, h } from './dom';
-import { clearDispatches, hqSignalDispatch, memoDispatch, showDispatch, type Dispatch } from './general';
+import { clearDispatches, memoDispatch, showDispatch, type Dispatch } from './general';
 import { renderEnd } from './end';
-import { renderHq } from './hq';
+import { renderHq, TAB_ALIAS } from './hq';
+import { renderLetter } from './letter';
+import { DEBRIEF_ALIAS } from './battle';
 import { renderDebrief, renderRadio } from './battle';
 import { renderTitle } from './title';
 import { renderTheaterChange } from './theaterui';
@@ -29,7 +31,8 @@ export type Screen =
   | { kind: 'theater'; side: SideId; next: Screen }
   | { kind: 'lanSetup' }
   | { kind: 'lanWait'; side: SideId }
-  | { kind: 'sealed'; side: SideId };
+  | { kind: 'sealed'; side: SideId }
+  | { kind: 'letter'; side: SideId; mode: 'returns' | 'week' };
 
 export const AUTOSAVE = 'autosave';
 
@@ -56,6 +59,10 @@ export class App {
   }
 
   go(screen: Screen) {
+    // Old tab names lead to the tab that now holds them.
+    if (screen.kind === 'hq' && TAB_ALIAS[screen.tab]) screen = { ...screen, tab: TAB_ALIAS[screen.tab] };
+    if (screen.kind === 'debrief' && DEBRIEF_ALIAS[screen.tab]) screen = { ...screen, tab: DEBRIEF_ALIAS[screen.tab] };
+    document.getElementById('toast')?.classList.remove('show', 'bad');
     const prev = this.screen;
     if (prev.kind === 'radio' && screen.kind !== 'radio') stopDrone();
     if (this.covered) this.toggleCover();
@@ -67,7 +74,17 @@ export class App {
     else if (JSON.stringify(prev) !== JSON.stringify(screen)) clearDispatches(true);
     this.screen = screen;
     this.render();
-    if (screen.kind === 'hq' && screen.tab === 'briefing' && prev.kind !== 'hq') this.announceWeek(screen.side);
+    if (screen.kind === 'hq' && screen.tab === 'war' && prev.kind !== 'hq' && prev.kind !== 'letter') this.announceWeek(screen.side);
+  }
+
+  /** Element to pulse after the next render (a readiness chip pointing at a problem). */
+  pulse: string | null = null;
+
+  /** Go to an HQ tab and draw the eye to the thing that needs attention. */
+  jump(side: SideId, tab: string, focus?: string) {
+    sfxClick();
+    this.pulse = focus ?? null;
+    this.go({ kind: 'hq', side, tab });
   }
 
   /** Weeks whose High Command memos were already read out ("seed:side:turn"). */
@@ -80,8 +97,8 @@ export class App {
     // The tutorial's adjutant has the floor in a tutorial campaign.
     if (!st || st.outcome || (st as { tutorial?: number }).tutorial !== undefined || this.announced.has(key)) return;
     this.announced.add(key);
-    const d = memoDispatch(st.sides[side], st.turn);
-    if (d) this.dispatch(d);
+    // High Command writes in person only when there is something weighty: new orders, praise or blame.
+    if (memoDispatch(st.sides[side], st.turn)) this.go({ kind: 'letter', side, mode: 'week' });
   }
 
   /** Show a dispatch card (queued behind any already open). */
@@ -125,11 +142,23 @@ export class App {
       case 'sealed':
         view = renderSealed(this, s.side);
         break;
+      case 'letter':
+        view = renderLetter(this, s.side, s.mode);
+        break;
     }
     this.root.append(view);
     for (const [key, top] of scrollers) {
       const el = this.root.querySelector<HTMLElement>(`[data-keep-scroll="${key}"]`);
       if (el) el.scrollTop = top;
+    }
+    if (this.pulse) {
+      const el = this.root.querySelector<HTMLElement>(this.pulse);
+      this.pulse = null;
+      if (el) {
+        el.scrollIntoView({ block: 'nearest' });
+        el.classList.add('pulse');
+        setTimeout(() => el.classList.remove('pulse'), 1600);
+      }
     }
     renderTutorial(this);
   }
@@ -180,9 +209,9 @@ export class App {
 
   planning(side: SideId) {
     const st = this.state!;
-    if (st.mode !== 'hotseat') return this.go({ kind: 'hq', side, tab: 'briefing' });
+    if (st.mode !== 'hotseat') return this.go({ kind: 'hq', side, tab: 'war' });
     const other = st.sides[(1 - side) as SideId];
-    this.handover(side, { kind: 'hq', side, tab: 'briefing' }, `Week ${st.turn} — Planning`, side === 1 && st.sealed[0] ? `${other.commander} has sealed their orders.` : undefined);
+    this.handover(side, { kind: 'hq', side, tab: 'war' }, `Week ${st.turn} — Planning`, side === 1 && st.sealed[0] ? `${other.commander} has sealed their orders.` : undefined);
   }
 
   newGame(mode: 'single' | 'hotseat', insight = 0.4, commanders?: [string, string]) {
@@ -193,7 +222,7 @@ export class App {
     if (mode === 'hotseat') {
       this.planning(0);
     } else {
-      this.go({ kind: 'hq', side: 0, tab: 'briefing' });
+      this.go({ kind: 'hq', side: 0, tab: 'war' });
     }
   }
 
@@ -201,9 +230,9 @@ export class App {
   newTutorial() {
     this.newGame('single', 0.15);
     this.state!.tutorial = 0;
-    // The adjutant has the floor: the general's week-one dispatch waits for another campaign.
+    // The adjutant has the floor: the general's week-one letter waits for another campaign.
     clearDispatches();
-    this.render();
+    this.go({ kind: 'hq', side: 0, tab: 'war' });
   }
 
   async loadSlot(slot: string) {
@@ -232,13 +261,13 @@ export class App {
       this.endLan();
       this.lan = new LanSession(this, 'host', api);
       if (!(await this.lan.host())) return;
-      this.go(this.state.sealed[0] ? { kind: 'lanWait', side: 0 } : { kind: 'hq', side: 0, tab: 'briefing' });
+      this.go(this.state.sealed[0] ? { kind: 'lanWait', side: 0 } : { kind: 'hq', side: 0, tab: 'war' });
       return;
     }
     if (this.state.outcome) this.go({ kind: 'end', side: 0, tab: 'summary' });
     // A hotseat save made after the first commander sealed their orders resumes with the second.
     else if (this.state.mode === 'hotseat') this.planning(this.state.sealed[0] ? 1 : 0);
-    else this.go({ kind: 'hq', side: 0, tab: 'briefing' });
+    else this.go({ kind: 'hq', side: 0, tab: 'war' });
   }
 
   async save(slot?: string) {
@@ -325,9 +354,9 @@ export class App {
     const st = this.state!;
     const d = st.lastDebriefs[side];
     if (!d) return this.afterDebrief(side);
-    // The signal carries this week's memos; the briefing need not read them out again.
+    // The letter carries this week's memos; the War Room need not read them out again.
     this.announced.add(`${st.seed}:${side}:${st.turn}`);
-    this.dispatch({ ...hqSignalDispatch(st.sides[side], d, st.turn), onClose: () => this.afterDebrief(side) });
+    this.go({ kind: 'letter', side, mode: 'returns' });
   }
 
   /** After a side has read its debrief. */
@@ -349,7 +378,7 @@ export class App {
   afterDebriefContinue(side: SideId) {
     const st = this.state!;
     if (st.mode === 'lan') {
-      this.go(st.outcome ? { kind: 'end', side, tab: 'summary' } : { kind: 'hq', side, tab: 'briefing' });
+      this.go(st.outcome ? { kind: 'end', side, tab: 'summary' } : { kind: 'hq', side, tab: 'war' });
       return;
     }
     if (st.mode === 'hotseat' && side === 0) {
@@ -386,7 +415,7 @@ export class App {
   /** Privacy cover for hotseat: hides the screen until clicked. */
   covered = false;
   toggleCover() {
-    if (!this.state || !['hq', 'debrief', 'radio', 'sealed', 'lanWait'].includes(this.screen.kind)) return;
+    if (!this.state || !['hq', 'debrief', 'radio', 'sealed', 'lanWait', 'letter'].includes(this.screen.kind)) return;
     this.covered = !this.covered;
     let el = document.getElementById('cover');
     if (this.covered) {

@@ -35,7 +35,7 @@ const hostForm = host.w.locator('.lan-forms .col').nth(0);
 await hostForm.locator('input').nth(0).fill('Cdre Ashworth');
 await hostForm.locator('input').nth(1).fill(String(PORT));
 await hostForm.locator('button').click();
-await waitFor(host.w, () => window.sb.screen.kind === 'hq', 'host briefing');
+await waitFor(host.w, () => ['hq', 'letter'].includes(window.sb.screen.kind), 'host briefing');
 
 // Join through the real setup screen.
 let client = await open('client');
@@ -48,7 +48,7 @@ async function join(c) {
   await form.locator('button').click();
 }
 await join(client);
-await waitFor(client.w, () => window.sb.state && window.sb.lanSide === 1 && ['hq', 'lanWait'].includes(window.sb.screen.kind), 'client briefing');
+await waitFor(client.w, () => window.sb.state && window.sb.lanSide === 1 && ['hq', 'lanWait', 'letter'].includes(window.sb.screen.kind), 'client briefing');
 await waitFor(host.w, () => window.sb.state.sides[1].commander === 'Oberst Voigt', 'host learns the opponent name');
 await client.w.screenshot({ path: 'screenshots/lan-client-briefing.png' });
 await host.w.screenshot({ path: 'screenshots/lan-host-briefing.png' });

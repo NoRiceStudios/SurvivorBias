@@ -867,6 +867,9 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   const rng = new Rng(state.rng);
   const battle = rng.fork(`battle-${state.turn}`);
   const [s0, s1] = state.sides;
+  // What each commander believed before the week: the debrief shows how it moved.
+  const trustBefore = [s0.trust, s1.trust];
+  const frontBefore = [s0.perceived.front, s1.perceived.front];
   const t = state.theater;
   // Squadrons ordered up with aircraft ready, to tell the commander if any of them never got off the ground.
   const ordered = ([0, 1] as SideId[]).map((id) => [...(plans[id].raid?.squadronIds ?? []), ...(plans[id].feint?.squadronIds ?? [])]
@@ -1232,6 +1235,13 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     }
   }
   for (const id of [0, 1] as SideId[]) debriefs[id].theaterNews.push(...news[id]);
+  for (const id of [0, 1] as SideId[]) {
+    const d = debriefs[id];
+    if (d) {
+      d.trustBefore = trustBefore[id];
+      d.frontBefore = frontBefore[id];
+    }
+  }
   state.lastDebriefs = debriefs;
   if (!state.outcome) state.outcome = commandFailure(state);
   if (!decision) rollWeather(state, rng);
