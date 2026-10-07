@@ -76,6 +76,15 @@ Each turn is one **sortie cycle**, roughly a few days of in-game time.
    your returns, then the week's memos, with the change in confidence stamped. How much you
    get depends on **Command Trust**, which is based on the results you
    *reported*, and not on what actually happened.
+
+   Under the directives lies the week's **allotment**: three offers from
+   High Command, of which the commander takes one; the others lapse. Each
+   offer is Routine, Priority or Most Secret, and the higher High Command's
+   confidence, the likelier the rarer ones (below 40: 80/18/2 %, 40–74:
+   60/32/8 %, from 75: 40/42/18 %). Some offers come with strings attached
+   (a newsreel visit that tires a squadron, a propaganda campaign that brings
+   another directive, aircraft on loan that cost confidence). The AI takes
+   the rarest offer without strings. The pool lives in `src/core/allotments.ts`.
 7. Repeat until the war ends or you lose.
 
 ### Art direction: the ops room desk

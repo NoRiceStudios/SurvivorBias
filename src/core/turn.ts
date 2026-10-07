@@ -8,6 +8,7 @@ import { AIRCRAFT, ARCHETYPE_INFO, RANKS, REQUEST_SHORT, RESEARCH, SQUADRON_NAME
 import { buildDebrief, updatePerceived } from './reports';
 import { CRIPPLED, facilityEffects } from './effects';
 import { generateRequests } from './requests';
+import { autoChooseAllotment, drawAllotments } from './allotments';
 import { Rng } from './rng';
 import { captainName, makeAirframe, makeLeader, makeSquadron } from './setup';
 import { finishDay, flyable, gatherFliers, newDay, resolveRaid, resolveRecon, type Flier } from './sim';
@@ -585,7 +586,7 @@ function pressureLedger(parts: Record<'air' | 'support' | 'strikes' | 'works' | 
   return lines;
 }
 
-function newOrder(rng: Rng, state: GameState, side: SideState, exclude: Order['kind'][] = []): Order | null {
+export function newOrder(rng: Rng, state: GameState, side: SideState, exclude: Order['kind'][] = []): Order | null {
   const a = act(state);
   const t = state.theater;
   const def = theaterDef(state);
@@ -709,8 +710,12 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
     } else if (state.turn >= o.deadline) {
       o.failed = true;
       failedKinds.push(o.kind);
-      trustDelta -= 7;
       hqLines.push(`Order NOT fulfilled: "${o.text}"`);
+      if (side.advocate) {
+        // A friend on the Air Council has a word: this once, the failure is not held against the wing.
+        side.advocate = false;
+        hqLines.push('A member of the Air Council has spoken for you. The matter will not be pursued.');
+      } else trustDelta -= 7;
     }
   }
   // Claims impress less the more HQ already trusts the wing; and its confidence wears off unless orders are met.
@@ -1249,5 +1254,10 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   if (!state.outcome) intelligenceWarnings(state, raids);
   state.sealed = [null, null];
   if (!state.outcome) state.turn++;
+  // High Command's offers for the coming week, drawn on the confidence the wing has now. The AI takes its pick at once.
+  for (const side of state.sides) {
+    side.allotments = state.outcome ? [] : drawAllotments(rng.fork(`allot-${side.id}-${state.turn}`), state, side);
+    if (side.isAI) autoChooseAllotment(state, side);
+  }
   return { raids, feints };
 }

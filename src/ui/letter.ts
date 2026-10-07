@@ -4,9 +4,11 @@
  * finishes the typing), with the change in confidence stamped at the foot and
  * one button to acknowledge it.
  */
-import type { SideId } from '../core/types';
+import { RARITY_LABEL } from '../core/allotments';
+import { applyCommand } from '../core/commands';
+import type { Allotment, SideId } from '../core/types';
 import type { App } from './app';
-import { sfxKey, sfxStamp } from './audio';
+import { sfxClick, sfxKey, sfxStamp } from './audio';
 import { fadeScroll, h } from './dom';
 import { HIGH_COMMAND, memoDispatch, portraitCanvas, type DispatchLine } from './general';
 import { strikeAt } from './warroom';
@@ -41,6 +43,9 @@ export function renderLetter(app: App, sideId: SideId, mode: 'returns' | 'week')
       h('div', { class: 'letter-meta' }, h('span', { class: 'stamp notice' }, 'SIGNAL'), h('span', null, `Re: your returns for week ${d.turn}`)),
       (d.hqResponse.length ? d.hqResponse : ['Returns acknowledged. No comment.']).map((x) => para(x))));
   }
+  // High Command's offers for the coming week, before the background memos: take one, the others lapse.
+  const offers = st.outcome ? [] : side.allotments ?? [];
+  if (offers.length) sections.push(allotmentSection(app, sideId, offers));
   for (const m of memos) {
     const o = typeof m === 'string' ? { text: m } : m;
     // A directive is already in the "You are to" box.
@@ -110,4 +115,34 @@ export function renderLetter(app: App, sideId: SideId, mode: 'returns' | 'week')
   // A long letter says so at the foot: a fade and "more", until the end is read.
   fadeScroll(sheet.querySelector<HTMLElement>('.letter-body')!, sheet);
   return h('div', { class: 'letter-screen' }, sheet);
+}
+
+/** The week's three offers as cards. Taking one stamps it in place, without retyping the letter. */
+function allotmentSection(app: App, sideId: SideId, offers: Allotment[]): HTMLElement {
+  const st = app.state!;
+  const odds = h('span', { class: 'muted small' }, 'The more High Command trusts you, the better the offers.');
+  const box = h('div', { class: 'letter-section allotments' },
+    h('div', { class: 'letter-meta' }, h('span', { class: 'stamp order' }, 'ALLOTMENT'), h('span', null, 'Take one of the following for the coming week. The others lapse.')),
+    h('div', { class: 'allot-row' }, offers.map((a) => {
+      const take = (e: MouseEvent) => {
+        e.stopPropagation();
+        const c = { k: 'allot', id: a.id } as const;
+        const r = applyCommand(st, sideId, c, app.plans[sideId]);
+        if (!r.ok) return app.toast(r.reason, true);
+        app.pendingCommands[sideId].push(c);
+        sfxStamp();
+        const result = st.sides[sideId].memos[0]?.body ?? '';
+        box.replaceChildren(
+          h('div', { class: 'letter-meta' }, h('span', { class: 'stamp notice' }, 'GRANTED'), h('span', null, a.title)),
+          h('p', { class: 'letter-text' }, result));
+      };
+      return h('div', { class: `allot-card ${a.rarity}`, onmouseenter: () => sfxClick() },
+        h('div', { class: 'allot-rarity' }, RARITY_LABEL[a.rarity]),
+        h('b', { class: 'allot-title' }, a.title),
+        h('p', { class: 'allot-text' }, a.text),
+        a.catch ? h('p', { class: 'allot-catch' }, `But: ${a.catch}`) : null,
+        h('button', { class: 'btn small', onclick: take }, 'Take this ▸'));
+    })),
+    odds);
+  return box;
 }

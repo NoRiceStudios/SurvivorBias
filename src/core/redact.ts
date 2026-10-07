@@ -39,6 +39,8 @@ function blankSide(s: SideState): SideState {
     arrived: [],
     repaired: undefined,
     intent: undefined,
+    allotments: [],
+    advocate: undefined,
   };
 }
 

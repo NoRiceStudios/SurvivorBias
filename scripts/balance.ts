@@ -2,7 +2,7 @@
  * Headless balance runner: plays many campaigns with a scripted player against
  * the AI and prints outcome statistics.  Usage: npm run balance -- [games]
  */
-import { aiPlan, endTurnSingle, reachableSites, startCampaign, validatePlan, type GameState, type TurnPlan } from '../src/core';
+import { aiPlan, autoChooseAllotment, endTurnSingle, reachableSites, startCampaign, validatePlan, type GameState, type TurnPlan } from '../src/core';
 
 function scriptedPlan(state: GameState): TurnPlan {
   const side = state.sides[0];
@@ -41,6 +41,8 @@ const verbose = games === 1;
 for (let g = 0; g < games; g++) {
   const s = startCampaign({ seed: `bal${g}` });
   while (!s.outcome) {
+    // --no-allot: the scripted player ignores High Command's weekly offers (for comparison).
+    if (!process.argv.includes('--no-allot')) autoChooseAllotment(s, s.sides[0]);
     endTurnSingle(s, mirror ? aiPlan(s, 0) : scriptedPlan(s));
     if (verbose) {
       const e = s.archive[s.archive.length - 1];

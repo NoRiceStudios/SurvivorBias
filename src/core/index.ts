@@ -20,3 +20,4 @@ export * from './tech';
 export * from './leaders';
 export * from './vignettes';
 export * from './doctrine';
+export * from './allotments';
