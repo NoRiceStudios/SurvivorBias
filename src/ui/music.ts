@@ -1,10 +1,13 @@
 /**
  * Procedural score, written note by note and played through WebAudio. Nothing is sampled
- * or recorded: the "orchestra" is oscillators and filtered noise, so the game still ships
- * without audio assets or licences.
+ * or recorded: the "band" is oscillators and filtered noise, so the game still ships
+ * without audio assets or licences. All tunes are original.
  *
- * Each mood is a short piece in bars; a scheduler queues the next bar a little ahead of
- * time and moods crossfade when the screen changes.
+ * The music is a military band that takes itself far too seriously: drums that never
+ * stop, oom-pah tubas, brass, a fife and a glockenspiel cheerfully doubling the tune
+ * while the wing loses a third of its crews. Each mood is a short march in bars; a
+ * scheduler queues the next bar a little ahead of time and moods crossfade when the
+ * screen changes.
  */
 import { musicOut, musicVolume, onAudioWake } from './audio';
 
@@ -20,104 +23,138 @@ interface Rig {
 
 // ——— Instruments ———
 
-/** Bowed strings: two detuned saws per note through a soft filter, slow to speak. */
-function strings(r: Rig, notes: number[], t: number, dur: number, vol: number, bright = 1300) {
-  const { c } = r;
-  const lp = c.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.value = bright;
-  lp.Q.value = 0.5;
-  const g = c.createGain();
-  const a = Math.min(0.9, dur * 0.3);
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.linearRampToValueAtTime(vol, t + a);
-  g.gain.setValueAtTime(vol, t + dur - 0.1);
-  g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.9);
-  lp.connect(g).connect(r.out);
-  for (const m of notes) {
-    for (const det of [-7, 6]) {
-      const o = c.createOscillator();
-      o.type = 'sawtooth';
-      o.frequency.value = hz(m);
-      o.detune.value = det;
-      o.connect(lp);
-      o.start(t);
-      o.stop(t + dur + 1);
-    }
-  }
+function osc(r: Rig, type: OscillatorType, f: number, t: number, end: number, into: AudioNode, detune = 0): OscillatorNode {
+  const o = r.c.createOscillator();
+  o.type = type;
+  o.frequency.value = f;
+  o.detune.value = detune;
+  o.connect(into);
+  o.start(t);
+  o.stop(end);
+  return o;
 }
 
-/** A muted brass voice for melodies, with vibrato that arrives once the note is held. */
-function horn(r: Rig, m: number, t: number, dur: number, vol: number) {
+function gainEnv(r: Rig, t: number, a: number, peak: number, hold: number, rel: number): GainNode {
+  const g = r.c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(peak, t + a);
+  g.gain.setValueAtTime(peak, t + a + hold);
+  g.gain.linearRampToValueAtTime(0.0001, t + a + hold + rel);
+  return g;
+}
+
+/** Band brass (cornet, trumpet): two bright saws, the filter opening on each note's blare. */
+function brass(r: Rig, m: number, t: number, dur: number, vol: number) {
   const { c } = r;
-  const o = c.createOscillator();
-  o.type = 'sawtooth';
-  o.frequency.value = hz(m);
-  const vib = c.createOscillator();
-  vib.frequency.value = 5.2;
-  const vd = c.createGain();
-  vd.gain.setValueAtTime(0, t);
-  vd.gain.linearRampToValueAtTime(0, t + Math.min(0.35, dur * 0.4));
-  vd.gain.linearRampToValueAtTime(9, t + Math.min(0.8, dur));
-  vib.connect(vd).connect(o.detune);
+  const g = gainEnv(r, t, 0.025, vol, Math.max(0.02, dur - 0.06), 0.08);
   const lp = c.createBiquadFilter();
   lp.type = 'lowpass';
-  lp.Q.value = 1;
+  lp.Q.value = 2;
   lp.frequency.setValueAtTime(500, t);
-  lp.frequency.linearRampToValueAtTime(1500, t + 0.12);
-  lp.frequency.linearRampToValueAtTime(1100, t + dur);
-  const g = c.createGain();
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.linearRampToValueAtTime(vol, t + 0.08);
-  g.gain.setValueAtTime(vol * 0.85, t + Math.max(0.1, dur - 0.08));
-  g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.25);
-  o.connect(lp).connect(g).connect(r.out);
-  o.start(t);
-  vib.start(t);
-  o.stop(t + dur + 0.3);
-  vib.stop(t + dur + 0.3);
-}
-
-/** An upright piano in the mess: a struck tone that dies away. */
-function piano(r: Rig, m: number, t: number, vol: number, len = 2.4) {
-  const { c } = r;
-  const g = c.createGain();
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol, t + 0.006);
-  g.gain.exponentialRampToValueAtTime(vol * 0.35, t + 0.25);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-  const lp = c.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.setValueAtTime(3200, t);
-  lp.frequency.exponentialRampToValueAtTime(900, t + 0.6);
+  lp.frequency.linearRampToValueAtTime(3200, t + 0.04);
+  lp.frequency.exponentialRampToValueAtTime(1600, t + Math.max(0.1, dur));
   lp.connect(g).connect(r.out);
-  for (const [mul, type, lvl] of [[1, 'triangle', 1], [2, 'sine', 0.35], [3, 'sine', 0.12]] as const) {
-    const o = c.createOscillator();
-    o.type = type;
-    o.frequency.value = hz(m) * mul;
-    // A slightly out-of-tune piano, as every piano in a mess hut is.
-    o.detune.value = (Math.random() - 0.5) * 8;
-    const og = c.createGain();
-    og.gain.value = lvl;
-    o.connect(og).connect(lp);
-    o.start(t);
-    o.stop(t + len + 0.05);
+  const end = t + dur + 0.12;
+  const a = osc(r, 'sawtooth', hz(m), t, end, lp, -5);
+  const b = osc(r, 'sawtooth', hz(m), t, end, lp, 5);
+  // A held note gets a little vibrato, as a bandsman would give it.
+  if (dur > 0.5) {
+    const vib = c.createOscillator();
+    vib.frequency.value = 5.5;
+    const vd = c.createGain();
+    vd.gain.setValueAtTime(0, t);
+    vd.gain.linearRampToValueAtTime(0, t + 0.3);
+    vd.gain.linearRampToValueAtTime(10, t + dur);
+    vib.connect(vd);
+    vd.connect(a.detune);
+    vd.connect(b.detune);
+    vib.start(t);
+    vib.stop(end);
   }
 }
 
-function bass(r: Rig, m: number, t: number, dur: number, vol: number) {
+/** The off-beat "pah": a short chord from the horns. */
+function stab(r: Rig, chord: number[], t: number, vol: number) {
   const { c } = r;
-  const o = c.createOscillator();
-  o.type = 'triangle';
-  o.frequency.value = hz(m);
-  const g = c.createGain();
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.linearRampToValueAtTime(vol, t + 0.05);
-  g.gain.setValueAtTime(vol, t + dur * 0.8);
-  g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.2);
-  o.connect(g).connect(r.out);
-  o.start(t);
-  o.stop(t + dur + 0.25);
+  const g = gainEnv(r, t, 0.012, vol, 0.07, 0.08);
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 1300;
+  lp.connect(g).connect(r.out);
+  for (const m of chord) osc(r, 'sawtooth', hz(m), t, t + 0.2, lp);
+}
+
+/** The tuba's "oom". */
+function tuba(r: Rig, m: number, t: number, dur: number, vol: number) {
+  const { c } = r;
+  const g = gainEnv(r, t, 0.02, vol, Math.max(0.02, dur - 0.08), 0.08);
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(900, t);
+  lp.frequency.exponentialRampToValueAtTime(380, t + 0.15);
+  lp.connect(g).connect(r.out);
+  osc(r, 'sawtooth', hz(m), t, t + dur + 0.1, lp);
+  osc(r, 'sine', hz(m), t, t + dur + 0.1, g);
+}
+
+/** The fife: a breathy, slightly sharp little flute. */
+function fife(r: Rig, m: number, t: number, dur: number, vol: number) {
+  const { c } = r;
+  const g = gainEnv(r, t, 0.02, vol, Math.max(0.02, dur - 0.05), 0.05);
+  g.connect(r.out);
+  const o = osc(r, 'triangle', hz(m), t, t + dur + 0.08, g, 8);
+  const vib = c.createOscillator();
+  vib.frequency.value = 6.5;
+  const vd = c.createGain();
+  vd.gain.value = 12;
+  vib.connect(vd).connect(o.detune);
+  vib.start(t);
+  vib.stop(t + dur + 0.08);
+  // The chiff of breath at the start of each note.
+  const n = c.createBufferSource();
+  n.buffer = noiseBuf(c);
+  const bp = c.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = hz(m) * 2;
+  bp.Q.value = 4;
+  const ng = gainEnv(r, t, 0.005, vol * 0.5, 0.01, 0.04);
+  n.connect(bp).connect(ng).connect(r.out);
+  n.start(t, Math.random() * 0.5, 0.08);
+}
+
+/** Glockenspiel: a bright struck bar with an inharmonic overtone. */
+function glock(r: Rig, m: number, t: number, vol: number) {
+  const { c } = r;
+  for (const [mul, lvl, len] of [[1, 1, 0.9], [2.76, 0.3, 0.3], [5.4, 0.1, 0.12]] as const) {
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol * lvl, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    g.connect(r.out);
+    osc(r, 'sine', hz(m) * mul, t, t + len + 0.02, g);
+  }
+}
+
+/** Short bowed strings (spiccato) for the radio room's running eighths. */
+function spic(r: Rig, notes: number[], t: number, vol: number) {
+  const { c } = r;
+  const g = gainEnv(r, t, 0.01, vol, 0.06, 0.1);
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 1000;
+  lp.connect(g).connect(r.out);
+  for (const m of notes) osc(r, 'sawtooth', hz(m), t, t + 0.2, lp, (Math.random() - 0.5) * 10);
+}
+
+/** Held low strings under the radio room. */
+function pad(r: Rig, notes: number[], t: number, dur: number, vol: number) {
+  const { c } = r;
+  const g = gainEnv(r, t, Math.min(0.6, dur * 0.3), vol, dur * 0.6, 0.6);
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 600;
+  lp.connect(g).connect(r.out);
+  for (const m of notes) for (const d of [-7, 6]) osc(r, 'sawtooth', hz(m), t, t + dur + 0.7, lp, d);
 }
 
 let noise: AudioBuffer | null = null;
@@ -129,105 +166,146 @@ function noiseBuf(c: AudioContext): AudioBuffer {
   return noise;
 }
 
-/** Timpani: a tuned drum with a soft mallet. */
-function timp(r: Rig, m: number, t: number, vol: number) {
+function hiss(r: Rig, t: number, type: BiquadFilterType, f: number, q: number, vol: number, len: number) {
   const { c } = r;
-  const o = c.createOscillator();
-  o.type = 'sine';
-  o.frequency.setValueAtTime(hz(m) * 1.04, t);
-  o.frequency.exponentialRampToValueAtTime(hz(m), t + 0.08);
-  const g = c.createGain();
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
-  o.connect(g).connect(r.out);
-  o.start(t);
-  o.stop(t + 1.7);
   const n = c.createBufferSource();
   n.buffer = noiseBuf(c);
-  const lp = c.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.value = 400;
-  const ng = c.createGain();
-  ng.gain.setValueAtTime(0.0001, t);
-  ng.gain.exponentialRampToValueAtTime(vol * 0.5, t + 0.004);
-  ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-  n.connect(lp).connect(ng).connect(r.out);
-  n.start(t, Math.random() * 0.5, 0.15);
+  const flt = c.createBiquadFilter();
+  flt.type = type;
+  flt.frequency.value = f;
+  flt.Q.value = q;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  n.connect(flt).connect(g).connect(r.out);
+  n.start(t, Math.random() * 0.4, len + 0.02);
 }
 
-/** A field drum played with brushes, far back. */
+/** Field snare: the rattle of the wires and the skin's crack. */
 function snare(r: Rig, t: number, vol: number) {
-  const { c } = r;
-  const n = c.createBufferSource();
-  n.buffer = noiseBuf(c);
-  const bp = c.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.value = 2200;
-  bp.Q.value = 0.6;
-  const g = c.createGain();
+  if (vol <= 0) return;
+  hiss(r, t, 'bandpass', 3000, 0.7, vol, 0.13);
+  const g = r.c.createGain();
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol, t + 0.003);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
-  n.connect(bp).connect(g).connect(r.out);
-  n.start(t, Math.random() * 0.5, 0.13);
+  g.gain.exponentialRampToValueAtTime(vol * 0.6, t + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+  g.connect(r.out);
+  osc(r, 'triangle', 200, t, t + 0.07, g);
+}
+
+/** A press roll from `v0` to `v1`, in thirty-seconds. */
+function roll(r: Rig, t: number, dur: number, b: number, v0: number, v1: number) {
+  const step = b / 8;
+  const n = Math.round(dur / step);
+  for (let k = 0; k < n; k++) snare(r, t + k * step, v0 + ((v1 - v0) * k) / n);
+}
+
+function bassDrum(r: Rig, t: number, vol: number) {
+  const g = r.c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+  g.connect(r.out);
+  const o = osc(r, 'sine', 95, t, t + 0.4, g);
+  o.frequency.setValueAtTime(95, t);
+  o.frequency.exponentialRampToValueAtTime(48, t + 0.12);
+}
+
+function cymbal(r: Rig, t: number, vol: number) {
+  hiss(r, t, 'highpass', 6000, 0.5, vol, 1.6);
+  hiss(r, t, 'bandpass', 3500, 2, vol * 0.5, 0.8);
+}
+
+/** Timpani for the radio room. */
+function timp(r: Rig, m: number, t: number, vol: number) {
+  const g = r.c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 1.2);
+  g.connect(r.out);
+  const o = osc(r, 'sine', hz(m) * 1.04, t, t + 1.3, g);
+  o.frequency.exponentialRampToValueAtTime(hz(m), t + 0.08);
+  hiss(r, t, 'lowpass', 400, 0.7, vol * 0.4, 0.1);
 }
 
 // ——— The pieces ———
 
-/** Bar contents: chord for the strings (MIDI), bass note, melody as [note, beats] (0 = rest). */
-type Bar = { chord: number[]; bass: number; tune?: [number, number][] };
+/** A melody: [MIDI note, beats]; 0 is a rest. */
+type Tune = [number, number][];
+type Bar = { chord: number[]; root: number; fifth: number; tune: Tune };
 
-// D minor. D4 = 62.
-/** "Those who came back": a slow hymn for the title and the end of a theatre. */
-const HYMN: Bar[] = [
-  { chord: [50, 57, 62, 65], bass: 38, tune: [[69, 2], [74, 1], [72, 1]] },
-  { chord: [50, 58, 62, 65], bass: 34, tune: [[70, 2], [69, 1], [67, 1]] },
-  { chord: [48, 57, 60, 65], bass: 41, tune: [[69, 3], [65, 1]] },
-  { chord: [48, 55, 60, 64], bass: 36, tune: [[67, 2], [64, 1], [72, 1]] },
-  { chord: [50, 55, 58, 62], bass: 43, tune: [[70, 2], [74, 1], [70, 1]] },
-  { chord: [50, 57, 62, 65], bass: 45, tune: [[69, 2], [65, 1], [64, 1]] },
-  { chord: [49, 57, 61, 64], bass: 45, tune: [[64, 1], [69, 1], [73, 2]] },
-  { chord: [50, 57, 62, 65], bass: 38, tune: [[74, 4]] },
+function play(tune: Tune, t: number, b: number, f: (m: number, at: number, dur: number) => void) {
+  let at = t;
+  for (const [m, beats] of tune) {
+    if (m) f(m, at, beats * b);
+    at += beats * b;
+  }
+}
+
+/** The march's engine: tuba on the beat, horns on the off-beat. */
+function oomPah(r: Rig, bar: Bar, t: number, b: number, tubaVol: number, stabVol: number) {
+  for (let k = 0; k < 4; k++) {
+    if (k % 2 === 0) tuba(r, k === 0 ? bar.root : bar.fifth, t + k * b, b * 0.7, tubaVol);
+    else stab(r, bar.chord, t + k * b, stabVol);
+  }
+}
+
+/** One bar of a snare cadence: sixteen sixteenths, each a velocity (0 = silent). */
+function cadence(r: Rig, pattern: number[], t: number, b: number, vol: number) {
+  pattern.forEach((v, k) => snare(r, t + (k * b) / 4, v * vol));
+}
+
+// Chords in D. D4 = 62.
+const D = [62, 66, 69], G = [62, 67, 71], A = [61, 64, 69], A7 = [61, 67, 69], Bm = [62, 66, 71];
+const Dm = [62, 65, 69], C = [60, 64, 67], Bb = [62, 65, 70], AM = [61, 64, 69];
+
+/** "Forward, Regardless": the title march. Dotted rhythms, full of itself. */
+const FORWARD: Bar[] = [
+  { chord: D, root: 38, fifth: 45, tune: [[69, 0.75], [69, 0.25], [74, 1], [78, 1], [74, 1]] },
+  { chord: D, root: 38, fifth: 45, tune: [[69, 0.75], [69, 0.25], [74, 1], [78, 1.5], [76, 0.5]] },
+  { chord: G, root: 43, fifth: 38, tune: [[74, 1], [71, 1], [67, 1], [71, 1]] },
+  { chord: A, root: 45, fifth: 40, tune: [[69, 2], [76, 1], [73, 1]] },
+  { chord: D, root: 38, fifth: 45, tune: [[74, 0.75], [74, 0.25], [78, 1], [81, 1], [78, 1]] },
+  { chord: Bm, root: 47, fifth: 42, tune: [[79, 0.75], [78, 0.25], [76, 1], [74, 1], [71, 1]] },
+  { chord: A7, root: 45, fifth: 40, tune: [[69, 0.75], [71, 0.25], [73, 1], [76, 1], [73, 1]] },
+  { chord: D, root: 38, fifth: 45, tune: [[74, 1], [69, 1], [62, 1], [0, 1]] },
+];
+const MARCH_SNARE = [1, 0, 0.35, 0.35, 0.7, 0, 0.35, 0, 1, 0, 0.35, 0.35, 0.7, 0.35, 0.35, 0.35];
+
+/** "Requisition Form B": fife and drums for planning, a little too jaunty. */
+const REQUISITION: Bar[] = [
+  { chord: Dm, root: 38, fifth: 45, tune: [[74, 0.5], [77, 0.5], [81, 1], [81, 0.5], [79, 0.5], [77, 1]] },
+  { chord: Dm, root: 38, fifth: 45, tune: [[76, 0.5], [77, 0.5], [74, 1], [69, 2]] },
+  { chord: C, root: 36, fifth: 43, tune: [[79, 0.5], [76, 0.5], [72, 1], [76, 0.5], [79, 0.5], [84, 1]] },
+  { chord: Dm, root: 38, fifth: 45, tune: [[81, 1.5], [77, 0.5], [74, 2]] },
+  { chord: Bb, root: 34, fifth: 41, tune: [[77, 0.5], [77, 0.5], [82, 1], [81, 0.5], [79, 0.5], [77, 1]] },
+  { chord: C, root: 36, fifth: 43, tune: [[76, 0.5], [76, 0.5], [79, 1], [77, 0.5], [76, 0.5], [74, 1]] },
+  { chord: AM, root: 45, fifth: 40, tune: [[73, 0.5], [76, 0.5], [81, 1], [79, 0.5], [77, 0.5], [76, 1]] },
+  { chord: Dm, root: 38, fifth: 45, tune: [[74, 2], [0, 2]] },
+];
+const FIFE_SNARE = [0.9, 0, 0.3, 0, 0.6, 0.3, 0.3, 0, 0.9, 0, 0.3, 0.3, 0.6, 0, 0.3, 0];
+
+/** "Mentioned in Dispatches": the debrief, triumphant whatever the count. */
+const DISPATCHES: Bar[] = [
+  { chord: D, root: 38, fifth: 45, tune: [[74, 1.5], [74, 0.5], [78, 1], [81, 1]] },
+  { chord: G, root: 43, fifth: 38, tune: [[83, 2], [81, 1], [79, 1]] },
+  { chord: D, root: 38, fifth: 45, tune: [[78, 1.5], [76, 0.5], [74, 1], [78, 1]] },
+  { chord: A, root: 45, fifth: 40, tune: [[76, 3], [0, 1]] },
+  { chord: Bm, root: 47, fifth: 42, tune: [[74, 1.5], [73, 0.5], [71, 1], [74, 1]] },
+  { chord: G, root: 43, fifth: 38, tune: [[79, 2], [78, 1], [76, 1]] },
+  { chord: A7, root: 45, fifth: 40, tune: [[69, 1], [73, 1], [76, 1], [79, 1]] },
+  { chord: D, root: 38, fifth: 45, tune: [[78, 1], [74, 3]] },
 ];
 
-/** Planning: the same key, opened out; a piano thinking aloud over held strings. */
-const STUDY: Bar[] = [
-  { chord: [50, 57, 64, 65], bass: 38 },
-  { chord: [46, 53, 57, 62], bass: 34 },
-  { chord: [43, 53, 58, 62], bass: 43 },
-  { chord: [45, 52, 57, 62], bass: 45 },
-  { chord: [50, 57, 60, 65], bass: 38 },
-  { chord: [48, 55, 60, 64], bass: 36 },
-  { chord: [46, 53, 58, 62], bass: 34 },
-  { chord: [45, 52, 57, 61], bass: 45 },
+/** The radio room: a running ostinato in the low strings, for every chord a bar. */
+const WATCH: { notes: number[]; bass: number }[] = [
+  { notes: [50, 50, 53, 50, 52, 50, 48, 50], bass: 38 },
+  { notes: [46, 46, 50, 46, 48, 46, 45, 46], bass: 34 },
+  { notes: [43, 43, 46, 43, 45, 43, 46, 50], bass: 43 },
+  { notes: [45, 45, 49, 45, 52, 49, 45, 44], bass: 45 },
 ];
-/** A lonely horn call that answers itself every few bars of planning. */
-const CALLS: [number, number][][] = [
-  [[69, 1.5], [67, 0.5], [65, 2]],
-  [[62, 1], [65, 1], [69, 2]],
-  [[72, 1.5], [70, 0.5], [69, 2]],
-];
-
-/** Dawn and the debrief: F major, the relief of the morning and its count. */
-const DAWN: Bar[] = [
-  { chord: [53, 60, 65, 69], bass: 41, tune: [[72, 2], [69, 2]] },
-  { chord: [50, 57, 62, 65], bass: 38, tune: [[70, 1], [69, 1], [67, 2]] },
-  { chord: [46, 53, 58, 62], bass: 34, tune: [[65, 2], [62, 2]] },
-  { chord: [48, 55, 60, 64], bass: 36, tune: [[64, 3], [0, 1]] },
-  { chord: [45, 53, 60, 65], bass: 45, tune: [[69, 2], [72, 2]] },
-  { chord: [43, 55, 58, 62], bass: 43, tune: [[74, 1], [72, 1], [70, 2]] },
-  { chord: [48, 55, 60, 64], bass: 36, tune: [[67, 2], [64, 2]] },
-  { chord: [41, 53, 60, 65], bass: 41, tune: [[65, 4]] },
-];
-
-/** The radio room: low held cluster, a heartbeat on the drum, a pulse in the bass. */
-const VIGIL: Bar[] = [
-  { chord: [38, 45, 50, 51], bass: 26 },
-  { chord: [38, 45, 50, 51], bass: 26 },
-  { chord: [39, 46, 51, 55], bass: 27 },
-  { chord: [37, 44, 49, 52], bass: 25 },
-];
+const WATCH_PAD = [[50, 57], [46, 53], [43, 50], [45, 52]];
 
 interface Piece {
   bpm: number;
@@ -236,82 +314,88 @@ interface Piece {
 
 const PIECES: Record<Exclude<Mood, 'none'>, Piece> = {
   title: {
-    bpm: 58,
+    bpm: 112,
     bar: (r, t, i, b) => {
-      const bar = HYMN[i % HYMN.length];
-      const pass = Math.floor(i / HYMN.length) % 3;
-      strings(r, bar.chord, t, b * 4, 0.022);
-      bass(r, bar.bass, t, b * 4, 0.09);
-      if (pass === 1) {
-        // Second verse: the piano takes the tune, quieter, the horn rests.
-        let at = t;
-        for (const [m, beats] of bar.tune ?? []) {
-          if (m) piano(r, m, at, 0.07);
-          at += beats * b;
-        }
+      const n = i % FORWARD.length;
+      const bar = FORWARD[n];
+      // Verses: full band; fife and drums alone for a trio; full band with the tune low and pompous.
+      const pass = Math.floor(i / FORWARD.length) % 3;
+      if (pass !== 1) oomPah(r, bar, t, b, 0.09, 0.022);
+      else for (let k = 0; k < 4; k += 2) tuba(r, k ? bar.fifth : bar.root, t + k * b, b * 0.5, 0.06);
+      if (n === 3 || n === 7) {
+        cadence(r, MARCH_SNARE.slice(0, 8), t, b, 0.05);
+        roll(r, t + 2 * b, 2 * b, b, 0.02, 0.07);
+      } else cadence(r, MARCH_SNARE, t, b, 0.05);
+      bassDrum(r, t, 0.22);
+      bassDrum(r, t + 2 * b, 0.16);
+      if (n === 0 && pass !== 1) cymbal(r, t, 0.05);
+      if (pass === 0) {
+        play(bar.tune, t, b, (m, at, d) => brass(r, m, at, d * 0.9, 0.032));
+        play(bar.tune, t, b, (m, at) => glock(r, m + 12, at, 0.05));
+      } else if (pass === 1) {
+        play(bar.tune, t, b, (m, at, d) => fife(r, m + 12, at, d * 0.85, 0.035));
       } else {
-        let at = t;
-        for (const [m, beats] of bar.tune ?? []) {
-          if (m) horn(r, pass === 2 ? m - 12 : m, at, beats * b * 0.96, 0.035);
-          at += beats * b;
-        }
+        play(bar.tune, t, b, (m, at, d) => brass(r, m - 12, at, d * 0.9, 0.04));
+        play(bar.tune, t, b, (m, at, d) => fife(r, m + 12, at, d * 0.85, 0.02));
       }
-      if (i % HYMN.length === 0) timp(r, 38, t, 0.22);
-      // The dominant swells into the last bar with a timpani roll.
-      if (i % HYMN.length === 6) for (let k = 0; k < 16; k++) timp(r, 45, t + k * b / 4, 0.03 + k * 0.007);
     },
   },
   plan: {
-    bpm: 66,
+    bpm: 108,
     bar: (r, t, i, b) => {
-      const bar = STUDY[i % STUDY.length];
-      strings(r, bar.chord, t, b * 4, 0.012, 900);
-      bass(r, bar.bass, t, b * 4, 0.06);
-      // The piano picks out the chord, never quite the same way twice.
-      const tones = bar.chord.slice(1).map((m) => m + 12);
-      for (let k = 0; k < 8; k++) {
-        if (Math.random() > (k === 0 ? 0.9 : 0.5)) continue;
-        const m = tones[Math.floor(Math.random() * tones.length)] + (Math.random() < 0.25 ? 12 : 0);
-        piano(r, m, t + k * b / 2 + (Math.random() - 0.5) * 0.02, 0.035 + Math.random() * 0.02);
-      }
-      if (i % 8 === 4) {
-        let at = t + b;
-        for (const [m, beats] of CALLS[Math.floor(i / 8) % CALLS.length]) {
-          horn(r, m, at, beats * b * 0.95, 0.02);
-          at += beats * b;
-        }
-      }
+      const n = i % REQUISITION.length;
+      const bar = REQUISITION[n];
+      // Drums and tuba keep step throughout; the tune comes and goes so a long planning
+      // session is not one endless jingle.
+      const pass = Math.floor(i / REQUISITION.length) % 4;
+      for (let k = 0; k < 4; k++) tuba(r, k % 2 ? bar.fifth : bar.root, t + k * b, b * 0.45, 0.07);
+      cadence(r, FIFE_SNARE, t, b, 0.04);
+      if (n === 7) roll(r, t + 3 * b, b, b, 0.015, 0.05);
+      bassDrum(r, t, 0.14);
+      if (pass === 1) play(bar.tune, t, b, (m, at, d) => fife(r, m + 12, at, d * 0.8, 0.03));
+      else if (pass === 2) {
+        // The tuba has a go at the tune, two octaves down. It is not a tuba's tune.
+        play(bar.tune, t, b, (m, at, d) => tuba(r, m - 24, at, d * 0.8, 0.06));
+        play(bar.tune, t, b, (m, at) => glock(r, m + 12, at, 0.03));
+      } else if (pass === 3) {
+        play(bar.tune, t, b, (m, at, d) => fife(r, m + 12, at, d * 0.8, 0.028));
+        play(bar.tune, t, b, (m, at) => glock(r, m + 12, at, 0.035));
+      } else for (let k = 1; k < 4; k += 2) stab(r, bar.chord, t + k * b, 0.012);
     },
   },
   radio: {
-    bpm: 72,
+    bpm: 126,
     bar: (r, t, i, b) => {
-      const bar = VIGIL[i % VIGIL.length];
-      strings(r, bar.chord, t, b * 4, 0.014, 500);
-      for (let k = 0; k < 8; k++) bass(r, bar.bass + (k === 6 ? 7 : 0), t + k * b / 2, b * 0.3, k % 2 ? 0.035 : 0.06);
-      // Heartbeat.
-      timp(r, 38, t, 0.12);
-      timp(r, 38, t + b * 0.4, 0.07);
-      timp(r, 38, t + b * 2, 0.1);
-      timp(r, 38, t + b * 2.4, 0.06);
-      if (i % 4 === 3) for (let k = 0; k < 4; k++) snare(r, t + b * 3 + k * b / 4, 0.02 + k * 0.006);
+      const n = i % WATCH.length;
+      const w = WATCH[n];
+      pad(r, WATCH_PAD[n], t, b * 4, 0.012);
+      w.notes.forEach((m, k) => spic(r, [m, m + 12], t + (k * b) / 2, k % 2 ? 0.014 : 0.022));
+      timp(r, w.bass, t, 0.14);
+      bassDrum(r, t + 2 * b, 0.1);
+      // A side drum ticking like a clock, and a roll that swells into every fourth bar.
+      for (let k = 0; k < 4; k++) snare(r, t + k * b + b / 2, 0.018);
+      if (n === 3) roll(r, t + 2 * b, 2 * b, b, 0.01, 0.06);
+      if (n === 0 && i % 8 === 0) for (const [k, m] of [[0, 62], [0.75, 62], [1, 65]] as const) brass(r, m, t + k * b, k === 1 ? b * 1.8 : b * 0.2, 0.02);
     },
   },
   dawn: {
-    bpm: 60,
+    bpm: 96,
     bar: (r, t, i, b) => {
-      const bar = DAWN[i % DAWN.length];
-      const pass = Math.floor(i / DAWN.length) % 2;
-      strings(r, bar.chord, t, b * 4, 0.016, 1100);
-      bass(r, bar.bass, t, b * 4, 0.07);
-      let at = t;
-      for (const [m, beats] of bar.tune ?? []) {
-        if (m) {
-          if (pass === 0) piano(r, m, at, 0.06, 3);
-          else horn(r, m, at, beats * b * 0.95, 0.025);
-        }
-        at += beats * b;
+      const n = i % DISPATCHES.length;
+      const bar = DISPATCHES[n];
+      const pass = Math.floor(i / DISPATCHES.length) % 2;
+      oomPah(r, bar, t, b, 0.08, 0.02);
+      cadence(r, MARCH_SNARE, t, b, pass ? 0.045 : 0.03);
+      bassDrum(r, t, 0.18);
+      bassDrum(r, t + 2 * b, 0.12);
+      if (n === 0) cymbal(r, t, 0.05);
+      if (n === 7) {
+        // The big finish, every time.
+        cymbal(r, t, 0.07);
+        roll(r, t + b, 2 * b, b, 0.02, 0.08);
       }
+      play(bar.tune, t, b, (m, at, d) => brass(r, pass ? m : m - 12, at, d * 0.92, 0.035));
+      if (pass) play(bar.tune, t, b, (m, at) => glock(r, m + 12, at, 0.04));
     },
   },
 };
@@ -320,10 +404,10 @@ const PIECES: Record<Exclude<Mood, 'none'>, Piece> = {
 
 let hall: { c: AudioContext; input: GainNode } | null = null;
 
-/** A large hall: generated impulse response, so the strings have somewhere to ring. */
+/** A parade ground with buildings round it: a generated impulse response, so the band rings a little. */
 function hallFor(c: AudioContext, out: GainNode): GainNode {
   if (hall && hall.c === c) return hall.input;
-  const len = Math.floor(c.sampleRate * 2.8);
+  const len = Math.floor(c.sampleRate * 1.8);
   const ir = c.createBuffer(2, len, c.sampleRate);
   for (let ch = 0; ch < 2; ch++) {
     const d = ir.getChannelData(ch);
@@ -335,7 +419,7 @@ function hallFor(c: AudioContext, out: GainNode): GainNode {
   // The voices are written quiet so chords do not stack into clipping; lift the whole band here.
   input.gain.value = 3;
   const wet = c.createGain();
-  wet.gain.value = 0.32;
+  wet.gain.value = 0.2;
   // Old recordings: the top is rolled off.
   const tone = c.createBiquadFilter();
   tone.type = 'lowpass';
