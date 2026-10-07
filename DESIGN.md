@@ -206,7 +206,7 @@ The crew is modelled at squadron level:
 
 | Resource | Used for | Comes from |
 |---|---|---|
-| **Supplies** | Upgrades, R&D, repairs, armor (4 per plate fitted; removal free) | High Command deliveries (scaled by trust and our works) |
+| **Supplies** | Upgrades, R&D, repairs, armor (4 per plate fitted; removal free) | High Command deliveries (scaled by trust and our works), plus a flat +15 each from the Requisition Office and War Economy Board developments; wrecks on our side of the line (written off on landing, or defenders shot down over our country) return 35% of their build cost as salvage |
 | **Stores** (fuel and munitions, merged after playtest round 2) | Each sortie: fighter 3, medium 5, heavy 8, recon 2; flak batteries 20 | Rationed. Deliveries are about 80% of a full effort, so the wing must stand squadrons down from time to time. Depots hold at most 240. Bombing our fuel depots cuts deliveries. A "Fit to stores" button trims a plan that is too big. |
 | **Replacements** | New airmen into training. Trained aircrew can also be asked of the Ministry for supplies (dearer the less it trusts you), but only for aircraft without crews. A squadron down to one or two aircraft can be merged into another of its type. | Posted, and taken into the school, only for aircraft the wing has or has on order. Crews follow aircraft, so none sit idle. |
 
@@ -358,14 +358,14 @@ development.
 | Nation | Strengths | Weaknesses |
 |---|---|---|
 | **Aldmere**, the radar net | Ground radar and photo recon from week 1, +12% interception, recon caught less often, +10% of lost crews home; reports stray a third less from the truth | Bomb load −10%; escorts turn back a sector sooner; confidence rises only 80% as fast |
-| **The Directorate**, the elite | +1 armor plate per type (+2 heavy), armored seat (cockpit lethality ×0.7); +8% hits; gyro sight and cannon at half price; crews learn 1.5× as fast | Stores −35% and depots of 150; aircraft +25% dearer, works −15%; replacements −30%; confidence swings 1.5× both ways |
+| **The Directorate**, the elite | +1 armor plate per type (+2 heavy), armored seat (cockpit lethality ×0.7); +5% hits; gyro sight and cannon at half price; crews learn 1.5× as fast | Stores −35% and depots of 150; aircraft +25% dearer, works −15%; replacements −30%; confidence swings 1.5× both ways |
 | **The League of Varn**, mass and supply | Works +30%, aircraft −20%, heavy bomber from week 1; 25 supplies a week of lend-lease whatever the trust; replacements +40%; a third fighter squadron | Twice the hidden defects; −1 plate per type and tanks that burn (fuel lethality ×1.2); weaker training and flak; more showmen and glory-seekers as leaders |
 
 A war without nations (saves from before version 6, the tutorial, or "Nations:
 off" on the title screen) is the classic one: Aldmere against the Directorate
 with symmetric rules. Both sides must be different nations. Measured with
 `npm run balance -- 200 --matrix` (the AI on both sides, equal resources):
-every pairing ends between 44% and 56% of decisive theaters.
+every pairing ends between 48% and 57% of decisive theaters.
 
 ## 7. Doctrine (behaviour settings per squadron)
 

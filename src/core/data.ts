@@ -142,6 +142,9 @@ export const AIRCRAFT: Record<AircraftKind, AircraftSpec> = {
   },
 };
 
+/** Share of its build cost a wreck on our side of the line returns as salvage. */
+export const SALVAGE = 0.35;
+
 export const MAX_ARMOR_PER_ZONE = 3;
 /** Each armor point on a zone multiplies lethality by this. */
 export const ARMOR_FACTOR = 0.45;
@@ -161,6 +164,7 @@ export type TechKey =
   | 'production' // aircraft works output, +x
   | 'repair' // aircraft repaired per week and site repair, +x
   | 'economy' // stores used per sortie, -x
+  | 'supply' // supplies delivered per week, +x flat (not scaled by trust or works)
   | 'training' // graduates' starting skill, +x
   | 'stealth' // chance the enemy catches our recon aircraft, -x
   | 'payload'; // bomb load, +x
@@ -232,6 +236,8 @@ export const RESEARCH: ResearchItem[] = [
   { id: 'fieldWorkshops', branch: 'industry', name: 'Field Workshops', cost: 90, desc: 'Mobile workshops at every airfield. Repairs and site repair another +25%.', requires: 'groundCrews', effects: { repair: 0.25 } },
   { id: 'fuelEconomy', branch: 'industry', name: 'Fuel Economy', cost: 60, desc: 'Leaner mixture settings and cruise discipline. Each sortie uses 10% fewer stores.', effects: { economy: 0.1 } },
   { id: 'pooledStores', branch: 'industry', name: 'Pooled Stores', cost: 90, desc: 'One supply system for the whole wing. Another 10% fewer stores per sortie.', requires: 'fuelEconomy', effects: { economy: 0.1 } },
+  { id: 'requisition', branch: 'industry', name: 'Requisition Office', cost: 80, desc: 'Our own officers chase deliveries at the depots. +15 supplies every week, whatever the Air Council thinks of us.', effects: { supply: 15 } },
+  { id: 'warEconomy', branch: 'industry', name: 'War Economy Board', cost: 120, desc: 'A seat on the regional production board. Another +15 supplies every week.', requires: 'requisition', effects: { supply: 15 } },
   { id: 'synthTrainer', branch: 'industry', name: 'Synthetic Trainers', cost: 60, desc: 'Link trainers and gunnery simulators at the school. Graduates start more skilled.', effects: { training: 0.04 } },
 ];
 

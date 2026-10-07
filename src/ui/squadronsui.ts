@@ -17,7 +17,7 @@ import { sfxClick } from './audio';
 import { doctrinePanel } from './doctrine';
 import { h, meter, plural } from './dom';
 import { leaderPortrait } from './general';
-import { aircraftCanvas, spriteDef, zoneAt } from './sprites';
+import { aircraftCanvas, spriteDef, zoneAt, zoneCentre } from './sprites';
 import { setTip, tip } from './tip';
 import { pips } from './widgets';
 import { requestCard, sqLabel } from './warroom';
@@ -195,8 +195,14 @@ function armorEditor(app: App, side: SideState, sq: Squadron): HTMLElement {
   });
   c.addEventListener('click', (e) => { const z = zoneUnder(e); if (z) set(z, sq.armor[z] + 1); });
   c.addEventListener('contextmenu', (e) => { e.preventDefault(); const z = zoneUnder(e); if (z) set(z, sq.armor[z] - 1); });
+  // A tag on every plated part, one bar per plate, so the layout reads without counting hatching.
+  const badges = ZONES.filter((z) => sq.armor[z] > 0).map((z) => {
+    const p = zoneCentre(sq.kind, z);
+    return p ? h('span', { class: 'plate-tag', style: `left:${(p.x + 0.5) * scale}px;top:${(p.y + 0.5) * scale}px` },
+      Array.from({ length: sq.armor[z] }, () => h('i'))) : null;
+  });
   const callTotal = calls ? ZONES.reduce((a, z) => a + (calls[z] ?? 0), 0) : 0;
-  const rows = ZONES.map((z) => h('tr', tip(zoneTip(z)),
+  const rows = ZONES.map((z) => h('tr', { class: sq.armor[z] ? 'armored' : '', ...tip(zoneTip(z)) },
     h('td', null, ZONE_LABEL[z]),
     h('td', { class: 'plates' }, Array.from({ length: MAX_ARMOR_PER_ZONE }, (_, i) => h('i', { class: i < sq.armor[z] ? 'on' : '' }))),
     h('td', null,
@@ -209,8 +215,8 @@ function armorEditor(app: App, side: SideState, sq: Squadron): HTMLElement {
     sameType.length ? h('div', { class: 'seg mini scope' },
       h('button', { class: `seg-btn ${all ? 'on' : ''}`, ...tip(`Every change is made on ${[sq, ...sameType].map((q) => q.name).join(', ')} at once.`), onclick: () => { armorWholeType = true; app.render(); } }, `All ${sameType.length + 1} ${nationAt(side.id).aircraft[sq.kind]} squadrons`),
       h('button', { class: `seg-btn ${!all ? 'on' : ''}`, onclick: () => { armorWholeType = false; app.render(); } }, 'This squadron only')) : null,
-    h('div', { class: 'blueprint-wrap' }, c),
-    h('p', { class: 'handwritten fitter' }, comp.length > 30 ? 'Orange crosses: holes on aircraft that came back. White hatching: plate. The holes show where an aircraft can be hit and still come home.' : 'Too few returns yet to see a pattern. Orange marks are holes on aircraft that came back; white hatching is plate.'),
+    h('div', { class: 'blueprint-wrap' }, h('div', { class: 'armor-plot' }, c, badges)),
+    h('p', { class: 'handwritten fitter' }, comp.length > 30 ? 'Orange crosses: holes on aircraft that came back. Pale steel with a tag: plate, one bar per plate. The holes show where an aircraft can be hit and still come home.' : 'Too few returns yet to see a pattern. Orange marks are holes on aircraft that came back; pale steel with a tag is plate, one bar per plate.'),
     h('div', { class: 'weight', ...tip({ head: 'Weight', text: 'Each plate adds weight: a slower aircraft is caught more often and an armored fighter is less nimble.' }) },
       h('span', null, `Plates ${used}/${budget}`),
       h('span', { class: `weight-bar ${used > budget / 2 ? 'heavy' : ''}` }, h('i', { style: `width:${(used / budget) * 100}%` })),

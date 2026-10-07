@@ -176,7 +176,7 @@ export const NATIONS: Record<NationId, Nation> = {
     blurb: 'The elite. Few, superb, heavily armored aircraft, flown by crews who learn fast, on too little fuel.',
     strengths: [
       'One more armor plate on every type (two on the heavy bomber), and an armored seat as standard',
-      'Fighters and gunners hit 8% more often; gyro sight and cannon at half price',
+      'Fighters and gunners hit 5% more often; gyro sight and cannon at half price',
       'Crews learn half as fast again from every operation',
     ],
     weaknesses: [
@@ -188,7 +188,7 @@ export const NATIONS: Record<NationId, Nation> = {
     rules: {
       ...CLASSIC,
       researchCost: { gyroSight: 0.5, cannon: 0.5 },
-      effects: { hits: 0.08, production: -0.15 },
+      effects: { hits: 0.05, production: -0.15 },
       stores: 0.65,
       storesCap: 150,
       replacements: 0.7,
