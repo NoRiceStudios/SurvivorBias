@@ -17,7 +17,7 @@ import { sfxClick } from './audio';
 import { doctrinePanel } from './doctrine';
 import { h, meter, plural } from './dom';
 import { leaderPortrait } from './general';
-import { aircraftCanvas, spriteDef, zoneAt, zoneCentre } from './sprites';
+import { aircraftCanvas, paintAircraft, spriteDef, zoneAt, zoneCentre } from './sprites';
 import { setTip, tip } from './tip';
 import { pips } from './widgets';
 import { requestCard, sqLabel } from './warroom';
@@ -176,33 +176,58 @@ function armorEditor(app: App, side: SideState, sq: Squadron): HTMLElement {
   const all = armorWholeType && sameType.length > 0;
   const set = (z: ZoneId, v: number) => app.cmd(side.id, { k: 'armor', sq: sq.id, zone: z, value: v, all });
 
+  // Two drawings of the same aircraft: the armor fitted, clean, and the holes seen on the ones
+  // that came back. Kept apart so neither hides the other; the zone under the cursor is picked
+  // out in yellow on both.
   const def = spriteDef(sq.kind);
   const scale = Math.max(3, Math.min(9, Math.floor(400 / def.w)));
-  const c = aircraftCanvas(sq.kind, { side: side.id, style: 'blueprint', zonePlates: sq.armor, hits: comp, dots: true, bigDots: true }, scale);
-  c.classList.add('armor-canvas');
-  const zoneUnder = (e: MouseEvent) => {
-    const r = c.getBoundingClientRect();
-    return zoneAt(sq.kind, ((e.clientX - r.left) / r.width) * def.w, ((e.clientY - r.top) / r.height) * def.h);
+  const planOpts = { side: side.id, style: 'blueprint' as const, zonePlates: sq.armor };
+  const holeOpts = { side: side.id, style: 'blueprint' as const, hits: comp, dots: true, bigDots: true };
+  const plan = aircraftCanvas(sq.kind, planOpts, scale);
+  const seen = aircraftCanvas(sq.kind, holeOpts, scale);
+  let picked: ZoneId | null = null;
+  const pick = (z: ZoneId | null) => {
+    if (z === picked) return;
+    picked = z;
+    paintAircraft(plan, sq.kind, { ...planOpts, hover: z });
+    paintAircraft(seen, sq.kind, { ...holeOpts, hover: z, zoneTint: z ? { [z]: '#3d6a9e' } : undefined });
+    for (const tr of rowEls) tr.classList.toggle('picked', tr.dataset.zone === z);
   };
   const zoneTip = (z: ZoneId) => ({
     head: ZONE_LABEL[z],
     text: `${sq.armor[z]} of ${MAX_ARMOR_PER_ZONE} plates. ${holes[z] ?? 0} holes found on returning aircraft${calls?.[z] ? `; ${plural(calls[z], 'crew')} who did not return called it out` : ''}. Click to add a plate, right-click to take one off.`,
   });
-  c.addEventListener('mousemove', (e) => {
-    const z = zoneUnder(e);
-    c.style.cursor = z ? 'pointer' : '';
-    setTip(c, z ? zoneTip(z) : null);
-  });
-  c.addEventListener('click', (e) => { const z = zoneUnder(e); if (z) set(z, sq.armor[z] + 1); });
-  c.addEventListener('contextmenu', (e) => { e.preventDefault(); const z = zoneUnder(e); if (z) set(z, sq.armor[z] - 1); });
-  // A tag on every plated part, one bar per plate, so the layout reads without counting hatching.
-  const badges = ZONES.filter((z) => sq.armor[z] > 0).map((z) => {
+  for (const c of [plan, seen]) {
+    c.classList.add('armor-canvas');
+    const zoneUnder = (e: MouseEvent) => {
+      const r = c.getBoundingClientRect();
+      return zoneAt(sq.kind, ((e.clientX - r.left) / r.width) * def.w, ((e.clientY - r.top) / r.height) * def.h);
+    };
+    c.addEventListener('mousemove', (e) => {
+      const z = zoneUnder(e);
+      c.style.cursor = z ? 'pointer' : '';
+      setTip(c, z ? zoneTip(z) : null);
+      pick(z);
+    });
+    c.addEventListener('mouseleave', () => pick(null));
+    c.addEventListener('click', (e) => { const z = zoneUnder(e); if (z) set(z, sq.armor[z] + 1); });
+    c.addEventListener('contextmenu', (e) => { e.preventDefault(); const z = zoneUnder(e); if (z) set(z, sq.armor[z] - 1); });
+  }
+  // A numbered tag on every plated part, so the layout reads at a glance.
+  const tags = ZONES.filter((z) => sq.armor[z] > 0).map((z) => {
     const p = zoneCentre(sq.kind, z);
-    return p ? h('span', { class: 'plate-tag', style: `left:${(p.x + 0.5) * scale}px;top:${(p.y + 0.5) * scale}px` },
-      Array.from({ length: sq.armor[z] }, () => h('i'))) : null;
+    return p ? h('span', { class: `plate-tag n${sq.armor[z]}`, style: `left:${((p.x + 0.5) / def.w) * 100}%;top:${((p.y + 0.5) / def.h) * 100}%` }, String(sq.armor[z])) : null;
   });
+  const figure = (title: string, c: HTMLCanvasElement, extra: (HTMLElement | null)[], key: HTMLElement) =>
+    h('figure', { class: 'armor-fig' },
+      h('figcaption', null, title),
+      h('div', { class: 'blueprint-wrap' }, h('div', { class: 'armor-plot', style: `max-width:${def.w * scale}px` }, c, extra)),
+      key);
+  const plateKey = h('div', { class: 'plot-key' }, [1, 2, 3].map((n) => h('span', null, h('i', { class: `sw n${n}` }), `${n} plate${n > 1 ? 's' : ''}`)), h('span', null, h('i', { class: 'sw n0' }), 'bare'));
+  const holeKey = h('div', { class: 'plot-key' }, h('span', null, h('i', { class: 'sw hole' }), comp.length ? `${plural(comp.length, 'hole')}, last 10 weeks` : 'no returns yet'));
   const callTotal = calls ? ZONES.reduce((a, z) => a + (calls[z] ?? 0), 0) : 0;
-  const rows = ZONES.map((z) => h('tr', { class: sq.armor[z] ? 'armored' : '', ...tip(zoneTip(z)) },
+  const rowEls: HTMLElement[] = [];
+  const rows = ZONES.map((z) => h('tr', { class: sq.armor[z] ? 'armored' : '', 'data-zone': z, onmouseenter: () => pick(z), onmouseleave: () => pick(null), ...tip(zoneTip(z)) },
     h('td', null, ZONE_LABEL[z]),
     h('td', { class: 'plates' }, Array.from({ length: MAX_ARMOR_PER_ZONE }, (_, i) => h('i', { class: i < sq.armor[z] ? 'on' : '' }))),
     h('td', null,
@@ -215,15 +240,17 @@ function armorEditor(app: App, side: SideState, sq: Squadron): HTMLElement {
     sameType.length ? h('div', { class: 'seg mini scope' },
       h('button', { class: `seg-btn ${all ? 'on' : ''}`, ...tip(`Every change is made on ${[sq, ...sameType].map((q) => q.name).join(', ')} at once.`), onclick: () => { armorWholeType = true; app.render(); } }, `All ${sameType.length + 1} ${nationAt(side.id).aircraft[sq.kind]} squadrons`),
       h('button', { class: `seg-btn ${!all ? 'on' : ''}`, onclick: () => { armorWholeType = false; app.render(); } }, 'This squadron only')) : null,
-    h('div', { class: 'blueprint-wrap' }, h('div', { class: 'armor-plot' }, c, badges)),
-    h('p', { class: 'handwritten fitter' }, comp.length > 30 ? 'Orange crosses: holes on aircraft that came back. Pale steel with a tag: plate, one bar per plate. The holes show where an aircraft can be hit and still come home.' : 'Too few returns yet to see a pattern. Orange marks are holes on aircraft that came back; pale steel with a tag is plate, one bar per plate.'),
+    h('div', { class: 'armor-plots' },
+      figure('Armor fitted', plan, tags, plateKey),
+      figure('Holes on aircraft that came back', seen, [], holeKey)),
+    h('p', { class: 'handwritten fitter' }, comp.length > 30 ? 'The holes show where an aircraft can be hit and still come home. Click a part on either drawing to add a plate, right-click to take one off.' : 'Too few returns yet to see a pattern. Click a part on either drawing to add a plate, right-click to take one off.'),
     h('div', { class: 'weight', ...tip({ head: 'Weight', text: 'Each plate adds weight: a slower aircraft is caught more often and an armored fighter is less nimble.' }) },
       h('span', null, `Plates ${used}/${budget}`),
       h('span', { class: `weight-bar ${used > budget / 2 ? 'heavy' : ''}` }, h('i', { style: `width:${(used / budget) * 100}%` })),
       h('span', { class: 'small muted' }, `${COSTS.armorChange} supplies a plate${all ? ' per squadron' : ''}; removing is free`)),
     h('table', { class: 'armor-table' },
       h('thead', null, h('tr', null, h('th', null, 'Zone'), h('th', null, 'Plates'), h('th', null, ''), h('th', null, 'Holes seen'), h('th', null, callTotal ? 'Last calls' : ''))),
-      h('tbody', null, rows)),
+      h('tbody', null, rows.map((r) => (rowEls.push(r), r)))),
     callTotal ? h('p', { class: 'small muted' }, `Last calls: what ${plural(callTotal, 'crew')} who did not come back said over the radio as they went down.`) : null,
   );
 }
