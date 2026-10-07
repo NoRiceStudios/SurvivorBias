@@ -36,6 +36,7 @@ export const TAB_ALIAS: Record<string, string> = { briefing: 'war', operations: 
 
 /** Resource values last shown, per side, so a change can flash with its delta. */
 const lastShown = new Map<string, number>();
+const lastText = new Map<string, string>();
 
 export function topBar(app: App, side: SideState, debriefWeek?: number, what = 'debrief'): HTMLElement {
   const st = app.state!;
@@ -47,8 +48,12 @@ export function topBar(app: App, side: SideState, debriefWeek?: number, what = '
     const before = lastShown.get(key);
     lastShown.set(key, v);
     const delta = before === undefined ? 0 : v - before;
+    // The digits that changed roll over, like a tote board.
+    const prev = lastText.get(key);
+    lastText.set(key, shown);
+    const digits = [...shown].map((ch, i) => h('span', { class: `dg ${delta && prev !== undefined && prev[i - shown.length + prev.length] !== ch ? 'rolling' : ''}` }, ch));
     return h('div', { class: `res ${cls} ${delta ? 'changed' : ''}`, ...tip({ head: label, text: title, effect }) }, icon(name, 18),
-      h('div', { class: 'res-v' }, h('b', null, shown), h('small', null, label)),
+      h('div', { class: 'res-v' }, h('b', null, digits), h('small', null, label)),
       delta ? h('span', { class: `res-delta ${delta > 0 ? 'up' : 'down'}` }, `${delta > 0 ? '+' : '−'}${Math.abs(delta)}`) : null);
   };
   const lan = app.lan;
@@ -60,9 +65,9 @@ export function topBar(app: App, side: SideState, debriefWeek?: number, what = '
     : null;
   return h('header', { class: 'topbar' },
     h('div', { class: `crest side${side.id}` }, h('div', { class: 'crest-name' }, side.id === 0 ? 'No. 7 Composite Wing' : 'Kampfgeschwader Nord'), h('div', { class: 'crest-sub' }, side.name)),
-    h('div', { class: 'week' }, icon('week', 18),
-      h('span', null, debriefWeek !== undefined ? `Week ${debriefWeek} ${what}` : `Week ${st.turn}`),
-      debriefWeek !== undefined ? null : h('span', { class: 'forecast', ...tip({ head: 'Forecast', text: 'Meteorological Office forecast for the coming operation. Usually right. Storms spoil bombing and interceptions; cloud hides results.' }) }, `${WEATHER_LABEL[st.forecast[side.id]]}`)),
+    h('div', { class: 'slate' },
+      h('b', null, debriefWeek !== undefined ? `Week ${debriefWeek} ${what}` : `Week ${st.turn}`),
+      debriefWeek !== undefined ? h('span', null, THEATERS[st.theater.index].name) : h('span', tip({ head: 'Forecast', text: 'Meteorological Office forecast for the coming operation. Usually right. Storms spoil bombing and interceptions; cloud hides results.' }), `${THEATERS[st.theater.index].name} · ${WEATHER_LABEL[st.forecast[side.id]]}`)),
     lanChip,
     h('div', { class: 'resources' },
       res('supplies', r.supplies, String(r.supplies), 'supplies', 'Pay for armor, aircraft, training, research and repairs. Delivered every week; more when High Command trusts you.'),
@@ -85,13 +90,14 @@ export function renderHq(app: App, sideId: SideId, tabIn: string): HTMLElement {
   const nav = h('nav', { class: 'tabs' },
     TABS.map(([id, label, hint]) => {
       const b = badge(id);
-      return h('button', { class: `tab ${tab === id ? 'active' : ''}`, 'data-tab': id, ...tip(hint), onclick: () => { sfxClick(); app.go({ kind: 'hq', side: sideId, tab: id }); } }, label, b ? h('span', { class: 'badge' }, b) : null);
+      return h('button', { class: `tab ${tab === id ? 'active' : ''}`, 'data-tab': id, ...tip(hint), onclick: () => { sfxClick(); app.go({ kind: 'hq', side: sideId, tab: id }); } }, label, b ? h('span', { class: 'badge', ...tip(b === '★' ? 'A squadron has a new commanding officer to confirm this week.' : `${b} request${b === '1' ? '' : 's'} from the squadrons waiting for an answer.`) }, b) : null);
     }),
     h('div', { class: 'tabs-spacer' }),
-    h('button', { class: 'tab small', ...tip('Field Manual: what every term means (F1)'), onclick: () => toggleManual(() => app.render()) }, '? Field Manual'),
-    app.state!.mode !== 'single' ? h('button', { class: 'tab small', ...tip('Hide the screen (Esc)'), onclick: () => app.toggleCover() }, 'Close folder') : null,
-    app.lan?.role === 'client' ? null : h('button', { class: 'tab small', onclick: () => { void app.save(`week${app.state!.turn}`).then(() => app.toast('Campaign saved')); } }, 'Save'),
-    h('button', { class: 'tab small', onclick: () => { void app.save().then(() => { app.endLan(); app.go({ kind: 'title' }); }); } }, 'Main Menu'),
+    h('div', { class: 'quiet-links' },
+      h('button', { class: 'quiet-link', ...tip('What every term means'), onclick: () => toggleManual(() => app.render()) }, 'F1 Manual'),
+      app.state!.mode !== 'single' ? h('button', { class: 'quiet-link', ...tip('Hide the screen (Esc)'), onclick: () => app.toggleCover() }, 'Close folder') : null,
+      app.lan?.role === 'client' ? null : h('button', { class: 'quiet-link', onclick: () => { void app.save(`week${app.state!.turn}`).then(() => app.toast('Campaign saved')); } }, 'Save'),
+      h('button', { class: 'quiet-link', onclick: () => { void app.save().then(() => { app.endLan(); app.go({ kind: 'title' }); }); } }, 'Leave')),
   );
   let body: HTMLElement;
   switch (tab) {
@@ -160,7 +166,7 @@ function intel(app: App, side: SideState): HTMLElement {
         st.archive.length ? null : h('p', { class: 'empty-state' }, 'No reports yet: every site is assumed intact until our crews or cameras say otherwise.'),
         st.theater.sites.filter((x) => x.owner !== side.id).map((x) => {
           const b = believed(st, side.id, x);
-          return h('div', { class: 'bar-row wide' }, h('span', null, x.name), h('span', { class: 'bar' }, h('i', { style: `width:${b}%` })), h('span', null, `${b}%${p.photographed.includes(x.id) ? ' 📷' : ''}`));
+          return h('div', { class: 'bar-row wide' }, h('span', null, x.name), h('span', { class: 'bar est' }, h('i', { style: `width:${b}%` })), h('span', null, `${b}%${p.photographed.includes(x.id) ? ' 📷' : ''}`));
         }),
         h('p', { class: 'small muted' }, 'From crews\' bombing reports; 📷 marks figures from photographs.')),
       correspondence(app, side),

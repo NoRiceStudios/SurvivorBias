@@ -117,7 +117,7 @@ export function readinessBar(app: App, sideId: SideId): HTMLElement {
   return h('div', { class: 'launchbar readiness' },
     h('div', { class: 'launch-summary' },
       planSentence(app, side),
-      chipRow(app, sideId, chips, 3),
+      chipRow(app, sideId, chips.filter((c) => c !== blocked), 3),
     ),
     h('div', { class: 'launch-actions' },
       c.stores > side.resources.stores ? h('button', { class: 'btn small choice', ...tip('Drop the feint, then escorts and squadrons from the raid, until the plan fits the stores we hold.'), onclick: () => app.act(() => app.fitToStores(sideId)) }, 'Fit to stores') : null,

@@ -255,7 +255,7 @@ function noise(x: number, y: number, seed: number): number {
   return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
 }
 
-export type RenderStyle = 'camo' | 'blueprint' | 'silhouette';
+export type RenderStyle = 'camo' | 'blueprint' | 'silhouette' | 'outline';
 
 export interface RenderOpts {
   side: SideId;
@@ -266,6 +266,10 @@ export interface RenderOpts {
   seed?: number;
   /** highlight zones (blueprint mode) */
   zoneTint?: Partial<Record<ZoneId, string>>;
+  /** Armor plates per zone (blueprint mode): drawn as white hatching, denser with more plates. */
+  zonePlates?: Partial<Record<ZoneId, number>>;
+  /** Line colour for the 'outline' style (a chalk outline on the ground). */
+  lineColor?: string;
   /** draw hits as red dots (composite map) */
   dots?: boolean;
   dotColor?: string;
@@ -274,6 +278,9 @@ export interface RenderOpts {
   /** Earlier holes, drawn faint underneath the dots. */
   faintHits?: Hit[];
 }
+
+/** The blueprint palette: Wald's diagram, drawn by a draughtsman. */
+export const BLUE = { fill: '#24426a', shade: '#2b4d78', zone: '#6f8fb4', line: '#e3ebf2', plate: '#e3ebf2', faint: '#7f9cc0', hole: '#ff6a3c' };
 
 /** Render an aircraft into an ImageData-compatible RGBA buffer. */
 export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: number; h: number; data: Uint8ClampedArray<ArrayBuffer> } {
@@ -299,10 +306,11 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
       if (m === 0) {
         // Outline around the silhouette.
         if (filled(x - 1, y) || filled(x + 1, y) || filled(x, y - 1) || filled(x, y + 1)) {
-          put(i, style === 'blueprint' ? PAL.ink : PAL.outline, 255);
+          put(i, style === 'blueprint' ? BLUE.line : style === 'outline' ? opts.lineColor ?? '#e8e4d8' : PAL.outline, 255);
         }
         continue;
       }
+      if (style === 'outline') continue;
       if (style === 'silhouette') {
         put(i, PAL.ink);
         continue;
@@ -310,14 +318,16 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
       const lightEdge = !filled(x, y - 1) || !filled(x - 1, y);
       const darkEdge = !filled(x, y + 1) || !filled(x + 1, y);
       if (style === 'blueprint') {
+        // A draughtsman's drawing: blue fill, white lines; plates as white hatching.
         const zi = def.zone[i];
         const tint = zi >= 0 ? opts.zoneTint?.[ZONES[zi]] : undefined;
-        let c = tint ?? (m === MAT_ID.glass ? PAL.paperShade : m === MAT_ID.engine ? PAL.paperShade : PAL.paperDark);
-        if (m === MAT_ID.prop) c = PAL.paperShade;
-        // Zone boundaries as fine ink lines.
+        const plates = zi >= 0 ? opts.zonePlates?.[ZONES[zi]] ?? 0 : 0;
+        let c = tint ?? (m === MAT_ID.glass || m === MAT_ID.engine || m === MAT_ID.prop ? BLUE.shade : BLUE.fill);
+        if (plates > 0 && (x + y) % (5 - plates) === 0) c = BLUE.plate;
+        // Zone boundaries as fine lines.
         const zr = def.zone[i + 1];
         const zd = def.zone[i + w];
-        if (zi >= 0 && ((zr >= 0 && zr !== zi && mat[i + 1]) || (zd >= 0 && zd !== zi && mat[i + w]))) c = PAL.paperShade;
+        if (zi >= 0 && ((zr >= 0 && zr !== zi && mat[i + 1]) || (zd >= 0 && zd !== zi && mat[i + w]))) c = BLUE.zone;
         put(i, c);
         continue;
       }
@@ -374,8 +384,9 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
   for (const hit of opts.faintHits ?? []) {
     const px = def.zonePixels[hit.zone];
     if (!px || px.length === 0) continue;
-    put(px[Math.floor(hit.u * px.length) % px.length], '#7d7360');
+    put(px[Math.floor(hit.u * px.length) % px.length], style === 'blueprint' ? BLUE.faint : '#7d7360');
   }
+  const dot = opts.dotColor ?? (style === 'blueprint' ? BLUE.hole : PAL.red);
   // Damage
   for (const hit of opts.hits ?? []) {
     const px = def.zonePixels[hit.zone];
@@ -385,8 +396,8 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
     const y = Math.floor(idx / w);
     if (opts.dots) {
       if (opts.bigDots) {
-        for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) if (filled(x + dx, y + dy)) put((y + dy) * w + x + dx, opts.dotColor ?? PAL.red);
-      } else put(idx, opts.dotColor ?? PAL.red);
+        for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) if (filled(x + dx, y + dy)) put((y + dy) * w + x + dx, dot);
+      } else put(idx, dot);
       continue;
     }
     if (hit.approach === 'flak') {

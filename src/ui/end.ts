@@ -4,7 +4,7 @@ import { SECTORS, THEATERS } from '../core/theaters';
 import type { AircraftKind, GameState, Hit, Outcome, SideId } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
-import { sfxClick } from './audio';
+import { sfxClick, sfxKey } from './audio';
 import { h, plural } from './dom';
 import { aircraftCanvas } from './sprites';
 
@@ -29,7 +29,7 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
       h('button', { class: `tab ${tab === id ? 'active' : ''}`, onclick: () => { sfxClick(); app.go({ kind: 'end', side: sideId, tab: id }); } }, label)),
     st.mode !== 'single' ? h('button', { class: 'tab', onclick: () => app.go({ kind: 'end', side: other, tab }) }, `View ${st.sides[other].short}`) : null,
     h('div', { class: 'tabs-spacer' }),
-    h('button', { class: 'tab small', onclick: () => { app.endLan(); app.go({ kind: 'title' }); } }, 'Main Menu'),
+    h('div', { class: 'quiet-links' }, h('button', { class: 'quiet-link', onclick: () => { app.endLan(); app.go({ kind: 'title' }); } }, 'Leave')),
   );
   const trueLost = st.archive.reduce((a, e) => a + e.trueLosses[sideId], 0);
   const trueKills = st.archive.reduce((a, e) => a + e.trueKills[sideId], 0);
@@ -55,9 +55,9 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
           i === 0 ? h('div', { class: 'stamp big declass-stamp' }, 'DECLASSIFIED') : null,
           h('h2', null, `Where our ${NAMES[k]} were hit — ${AIRCRAFT[k].name[sideId]}`),
           h('div', { class: 'composite-row three' },
-            h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: sv, dots: true }, scale), h('figcaption', null, `What you saw: ${plural(sv.length, 'hole')} on aircraft that returned.`)),
-            h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: ls, dots: true, dotColor: '#5a5040' }, scale), h('figcaption', null, `What you never saw: ${plural(ls.length, 'hole')} on aircraft that did not return.`)),
-            h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: fatal, dots: true, dotColor: '#d02020' }, scale), h('figcaption', null, `The ${fatal.length} hits that brought them down.`)),
+            h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: sv, dots: true }, scale)), h('figcaption', null, `What you saw: ${plural(sv.length, 'hole')} on aircraft that returned.`)),
+            h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: ls, dots: true, dotColor: '#e3ebf2' }, scale)), h('figcaption', null, `What you never saw: ${plural(ls.length, 'hole')} on aircraft that did not return.`)),
+            h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: fatal, dots: true, dotColor: '#ff3b30' }, scale)), h('figcaption', null, `The ${fatal.length} hits that brought them down.`)),
           ),
           h('h3', null, `This war's ${AIRCRAFT[k].name[sideId]}: chance that one hit brings her down (unarmored)`),
           ZONES.map((z) => h('div', { class: 'bar-row' }, h('span', null, ZONE_LABEL[z]), h('span', { class: 'bar red' }, h('i', { style: `width:${Math.round((leth[z] / maxL) * 100)}%` })), h('span', null, `${Math.round(leth[z] * 100)}%`))),
@@ -139,8 +139,8 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
       h('p', { class: 'typed big' }, text),
       h('div', { class: 'reveal' },
         reveal('Claimed by our crews', claimed, 0),
-        reveal('Reported to High Command', toHq, 900),
-        reveal('Actually destroyed', trueKills, 1800, 'truth'),
+        reveal('Reported to High Command', toHq, 250),
+        reveal('Actually destroyed', trueKills, 500, 'truth'),
       ),
       h('p', { class: 'muted' }, `${st.archive.length} weeks of operations. ${trueLost} of our aircraft lost.`),
       h('div', { class: 'theater-record end-record' }, st.theaterResults.map((r) =>
@@ -155,9 +155,9 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
         if (!k) return null;
         const of = (hs: Hit[]) => hs.filter((x) => (x.kind ?? 'medium') === k);
         return h('div', { class: 'preview-strip' },
-          h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: of(surv), dots: true }, 3), h('figcaption', null, 'What you saw')),
-          h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: of(lostH), dots: true, dotColor: '#5a5040' }, 3), h('figcaption', null, 'What you never saw')),
-          h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: of(lostH).filter((x) => x.lethal), dots: true, dotColor: '#d02020' }, 3), h('figcaption', null, 'What brought them down')));
+          h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: of(surv), dots: true }, 3)), h('figcaption', null, 'What you saw')),
+          h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: of(lostH), dots: true, dotColor: '#e3ebf2' }, 3)), h('figcaption', null, 'What you never saw')),
+          h('figure', null, h('div', { class: 'blueprint-wrap' }, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: of(lostH).filter((x) => x.lethal), dots: true, dotColor: '#ff3b30' }, 3)), h('figcaption', null, 'What brought them down')));
       })(),
       h('button', { class: 'btn primary launch', onclick: () => { sfxClick(); app.go({ kind: 'end', side: sideId, tab: 'archive' }); } }, 'Open the archives ▸'),
     );
@@ -169,21 +169,25 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
 function reveal(label: string, value: number, delay: number, cls = ''): HTMLElement {
   const b = h('b', { class: cls }, '0');
   const el = h('div', { class: `reveal-item ${cls}` }, b, h('span', null, label));
-  const steps = 20;
+  const steps = 12;
   let k = 0;
   const tick = () => {
     if (k > 0 && !el.isConnected) return;
     k++;
     b.textContent = String(Math.round((value * Math.min(k, steps)) / steps));
     if (k < steps) setTimeout(tick, 45);
-    else el.classList.add('done');
+    else {
+      el.classList.add('done');
+      // The truth lands: the red pencil goes through what was claimed and reported.
+      if (cls === 'truth') el.parentElement?.querySelectorAll('.reveal-item:not(.truth)').forEach((x, i) => setTimeout(() => { x.classList.add('struck'); sfxKey(); }, 150 + i * 300));
+    }
   };
-  setTimeout(tick, 400 + delay);
+  setTimeout(tick, 200 + delay);
   return el;
 }
 
 /** Claims, returns to HQ and the truth per week, as lines; weeks a sector was lost shaded. */
-function ledgerChart(archive: GameState['archive'], side: SideId): SVGElement {
+function ledgerChart(archive: GameState['archive'], side: SideId): HTMLElement {
   const W = 900;
   const H = 180;
   const n = archive.length;
@@ -226,9 +230,8 @@ function ledgerChart(archive: GameState['archive'], side: SideId): SVGElement {
   line((e) => e.claimed[side], '#5e5546', '6 4');
   line((e) => e.reportedToHq[side], '#2f4a7a');
   line((e) => e.trueKills[side], '#a8352a');
-  add('text', { x: 34, y: 18, fill: '#5e5546', 'font-size': 16 }, '— — claimed by crews');
-  add('text', { x: 230, y: 18, fill: '#2f4a7a', 'font-size': 16 }, '—— reported to HQ');
-  add('text', { x: 420, y: 18, fill: '#a8352a', 'font-size': 16 }, '—— actually destroyed');
-  add('text', { x: 640, y: 18, fill: '#a8352a', 'font-size': 16, opacity: 0.7 }, '▮ week a sector was lost');
-  return svg;
+  const key = (cls: string, label: string) => h('span', { class: `lk ${cls}` }, h('i', null), label);
+  return h('div', { class: 'ledger-chart-wrap' },
+    h('div', { class: 'ledger-key' }, key('claimed', 'claimed by crews'), key('hq', 'reported to HQ'), key('truth', 'actually destroyed'), key('lost', 'week a sector was lost')),
+    svg as unknown as HTMLElement);
 }

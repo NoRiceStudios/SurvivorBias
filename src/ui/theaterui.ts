@@ -8,7 +8,7 @@ import { HIGH_COMMAND, portraitCanvas } from './general';
 import { SECTOR_PRESSURE, SECTORS, THEATERS, depthFor } from '../core/theaters';
 import type { FacilityType, GameState, SideId, Site, TargetId, TheaterResult } from '../core/types';
 import type { App } from './app';
-import { sfxStamp } from './audio';
+import { sfxStamp, startDrone, stopDrone } from './audio';
 import { countUp, h } from './dom';
 import { setTip, tip as tipAttrs } from './tip';
 const tip = tipAttrs;
@@ -502,8 +502,10 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
   const roll = (st.sides[side].roll ?? []).filter((e) => e.theater === res.index);
   const fate = { missing: 'missing', prisoner: 'prisoner of war', returned: 'returned', killed: 'killed' };
   const big = (v: number, label: string, cls = '', delay = 300) => h('div', { class: `kpi ${cls}` }, countUp(v, delay), h('span', null, label));
+  // A defeat is heard as well as read: a low drone under the verdict.
+  if (!won && res.winner !== null) { startDrone(); window.setTimeout(stopDrone, 2600); }
   return h('div', { class: 'letter-screen theater-change-screen' },
-    h('div', { class: 'tc paper' },
+    h('div', { class: `tc paper ${!won && res.winner !== null ? 'defeat' : ''}` },
       h('div', { class: 'tc-old' },
         h('div', { class: 'letter-kicker' }, `${res.name} · ${res.weeks} weeks · decided`),
         h('div', { class: `stamp big drop ${won ? 'notice' : res.winner === null ? 'order' : 'reprimand'}` }, verdict),
@@ -520,7 +522,7 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
         generalVerdict(st, side, res),
         roll.length ? h('div', { class: 'roll' },
           h('h3', null, `Roll of the missing (${roll.length})`),
-          h('div', { class: 'tags' }, roll.map((e) => h('div', { class: `tag ${e.fate}`, ...tip({ head: e.name, text: `${e.crew > 1 ? `With ${e.crew - 1} crew. ` : ''}${e.serial}, ${e.squadron}, missing since week ${e.week}.` }) },
+          h('div', { class: 'tags' }, roll.map((e, i) => h('div', { class: `tag ${e.fate}`, style: `animation-delay:${600 + i * 50}ms`, ...tip({ head: e.name, text: `${e.crew > 1 ? `With ${e.crew - 1} crew. ` : ''}${e.serial}, ${e.squadron}, missing since week ${e.week}.` }) },
             h('span', { class: 'tag-name' }, e.name), h('span', { class: 'tag-fate' }, fate[e.fate].toUpperCase()))))) : null),
       h('div', { class: 'tc-new' },
         nextDef ? [

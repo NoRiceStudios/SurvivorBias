@@ -139,7 +139,7 @@ function mapCard(app: App, side: SideState): HTMLElement {
   return h('section', { class: 'paper panel map-card' },
     h('div', { class: 'map-head' },
       h('div', { class: 'mh-title' },
-        h('b', null, def.name), h('span', { class: 'muted' }, ` · wk ${t.week + 1}/${def.weeks} · `),
+        h('b', null, def.name), h('span', { class: 'muted' }, ` · wk ${Math.min(t.week + 1, def.weeks)}/${def.weeks} · `),
         h('span', { class: 'dotted', ...tip({ head: `Stage: ${stage.title}`, text: stage.text }) }, stage.title), ' · ',
         h('span', { class: 'dotted', ...tip({ head: 'Map key', text: '✈ airfield · ▙ aircraft works · ◘ fuel depot (pips: condition). Red hatching: enemy-held. Red line: the front, arrow shows which way the pressure runs. Dashed line: our operation. Blue ring: our patrol. Red pennant: named in a standing order. Struck-through plate: probably wrecked. Faded: out of range.' }) }, 'map key')),
       h('div', { class: 'objective', ...tip({ head: 'Primary objective', text: `Take ${DECISIVE_GAIN} sectors to win the theater outright. If nobody breaks through by week ${def.weeks}, it goes to whoever holds the advantage, but only if they have taken at least one sector.` }) },
@@ -196,19 +196,12 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
     const cond = believed(st, side.id, site);
     const depth = depthFor(t.held0, side.id, site.sector);
     const order = side.orders.find((o) => o.text.includes(site.name));
+    const alt = enemySites.filter((x) => inRange(x) && x.id !== site.id).length;
     target = h('div', { class: 'target-box' },
-      h('div', { class: 'tb-name' }, site.name, order ? h('span', { class: 'stamp order' }, 'ORDERED') : null),
-      h('div', { class: 'small muted' }, `${def.sectors[site.sector]} · ${depthLabel(st, side.id, site)} · ${depth > escortRange(side) ? 'beyond escort range' : 'escorts can stay with the bombers'}`),
+      h('div', { class: 'tb-line' }, h('span', { class: 'tb-label' }, 'Target:'), h('b', { class: 'tb-name' }, site.name), order ? h('span', { class: 'stamp order' }, 'ORDERED') : null),
       h('div', { class: 'cond-row', ...tip({ head: 'Believed condition', text: 'How much of the site still works, as far as we know.', source: side.perceived.photographed.includes(site.id) ? 'photographs' : 'crews\' bombing reports (often optimistic)' }) },
         h('span', { class: 'cond-bar' }, h('i', { style: `width:${cond}%` })), h('b', null, `≈${cond}%`), side.perceived.photographed.includes(site.id) ? ' 📷' : ''),
-      h('div', { class: 'site-chips' },
-        enemySites.filter(inRange).map((x) => {
-          const c = believed(st, side.id, x);
-          const ord = side.orders.some((o) => o.siteId === x.id && !o.done);
-          return h('button', { class: `site-chip ${x.id === site.id ? 'on' : ''} ${c <= 20 ? 'wrecked' : ''}`, ...tip({ head: x.name, text: `${depthLabel(st, side.id, x)}. Believed condition ≈${c}%.${ord ? ' Named in a standing order.' : ''}${c <= 20 ? ' Probably wrecked already.' : ''}` }), onclick: () => pick(x.type, x.id) },
-            h('span', { class: 'sc-name' }, `${x.type === 'airfield' ? '✈' : x.type === 'industry' ? '▙' : '◘'} ${siteKind(app, x)}`, ord ? h('span', { class: 'sc-ord' }, ' ORDERED') : null),
-            h('span', { class: 'sc-sub' }, def.sectors[x.sector], h('span', { class: 'sc-bar' }, h('i', { style: `width:${c}%` })), `${c}%`));
-        })),
+      h('div', { class: 'small muted' }, `${def.sectors[site.sector]} · ${depthLabel(st, side.id, site)} · ${depth > escortRange(side) ? 'beyond escort range' : 'escorts can stay with the bombers'}${alt ? ` · ${alt} other target${alt > 1 ? 's' : ''} in range: click the map` : ''}`),
     );
   } else if (mission === 'support' || mission === 'sweep') {
     target = h('div', { class: 'target-box' }, h('div', { class: 'tb-name' }, `${TARGETS[mission].name} over ${def.sectors[frontSector(t, side.id)]}`), h('div', { class: 'small muted' }, TARGETS[mission].desc));
@@ -252,15 +245,16 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
           : null;
     const info = ARCHETYPE_INFO[sq.leader.archetype];
     return h('div', { class: `sq-row ${role !== 'rest' ? 'active' : ''}`, 'data-sq': sq.id },
-      h('div', { class: 'sq-id', ...tip({ head: `${sq.name} — ${AIRCRAFT[sq.kind].name[side.id]}`, text: `${sq.leader.rank} ${sq.leader.name} (${info.label}): ${info.blurb}`, effect: `${ready} ready of ${sq.airframes.length}. Flying costs ${cost} stores.` }) },
-        h('div', { class: 'sq-face' }, leaderPortrait(sq.leader, side.id, 1)),
-        h('div', null,
-          h('div', { class: 'sq-name' }, sqLabel(sq.name)),
-          h('div', { class: 'small muted' }, h('span', { class: 'sq-type' }, aircraftCanvas(sq.kind, { side: side.id, seed: sq.insignia }, 1)), `${ready}/${sq.airframes.length} ready`),
-          h('div', { class: 'small muted' },
-            h('span', tip({ head: 'Fatigue', text: 'Rises each week a squadron flies, falls when it rests. Tired crews shoot and fly worse; above 6/10 their morale slides.' }), 'fat ', pips(sq.fatigue, 6, 0.6)),
-            ' ', h('span', tip({ head: 'Morale', text: 'Falls with losses. If the whole wing stays very low for three weeks, the crews refuse to fly.' }), 'mor ', pips(sq.morale, 6, 0.3, true))))),
-      seg<Role>(roles.map((r) => ({ ...r, disabled: ready === 0 && r.value !== 'rest', tip: { text: r.tip, effect: r.value === 'rest' ? undefined : `− ${cost} stores` } })), role, (r) => app.act(() => assign(sq, r)), 'roles-seg'),
+      h('div', { class: 'sq-line1', ...tip({ head: `${sq.name} — ${AIRCRAFT[sq.kind].name[side.id]}`, text: `${sq.leader.rank} ${sq.leader.name} (${info.label}): ${info.blurb}`, effect: `${ready} ready of ${sq.airframes.length}. Flying costs ${cost} stores.` }) },
+        h('span', { class: 'sq-face' }, leaderPortrait(sq.leader, side.id, 1)),
+        h('span', { class: 'sq-name' }, sqLabel(sq.name)),
+        h('span', { class: 'sq-pips' },
+          h('span', tip({ head: `Fatigue ${Math.round(sq.fatigue * 10)}/10`, text: 'Rises each week a squadron flies, falls when it rests. Tired crews shoot and fly worse; above 6/10 their morale slides.' }), pips(sq.fatigue, 6, 0.6)),
+          h('span', tip({ head: `Morale ${Math.round(sq.morale * 10)}/10`, text: 'Falls with losses. If the whole wing stays very low for three weeks, the crews refuse to fly.' }), pips(sq.morale, 6, 0.3, true))),
+        h('span', { class: 'sq-type' }, aircraftCanvas(sq.kind, { side: side.id, seed: sq.insignia }, 1)),
+        h('span', { class: `sq-ready ${ready === 0 ? 'bad' : ''}` }, `${ready}/${sq.airframes.length}`)),
+      h('div', { class: 'sq-line2' },
+        seg<Role>(roles.map((r) => ({ ...r, disabled: ready === 0 && r.value !== 'rest', tip: { text: r.tip, effect: r.value === 'rest' ? undefined : `− ${cost} stores` } })), role, (r) => app.act(() => assign(sq, r)), 'mini roles-seg')),
       extra,
     );
   });
@@ -317,7 +311,8 @@ function inTray(app: App, side: SideState): HTMLElement {
         h('div', { class: 'memo-body' }, m.body))) : [h('p', { class: 'small muted' }, 'Nothing new. Older correspondence is filed under Intelligence.')]),
     ] as (HTMLElement | null)[]).filter((x): x is HTMLElement => !!x);
   }
-  return h('section', { class: 'paper panel intray' },
+  if (!side.requests.length && !side.orders.length && !fresh.length) return h('section', { class: 'intray empty' }, 'In-tray empty.');
+  return h('section', { class: 'intray' },
     h('div', { class: 'tray-tabs' }, tabs.map(([id, label, n]) => h('button', { class: `tray-tab ${tab === id ? 'on' : ''}`, onclick: () => { trayTab = id; app.render(); } }, label, n ? h('span', { class: `badge ${id === 'orders' && !due ? 'quiet' : ''}` }, String(n)) : null))),
     h('div', { class: 'tray-body', 'data-keep-scroll': 'tray' }, body));
 }

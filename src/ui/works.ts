@@ -107,26 +107,27 @@ function researchCol(app: App, side: SideState): HTMLElement {
       : h('p', { class: 'small warnc' }, 'Engineers idle: fund one project. One at a time.'),
     h('div', { class: 'small muted' }, `${done} of ${RESEARCH.length} in service.`),
     BRANCHES.map((b) => {
-      // A lane per branch: each project followed by the ones that build on it.
+      // A lane per branch on a fixed grid of tiers: a project sits one column right of the one it builds on.
       const items = RESEARCH.filter((r) => r.branch === b.id);
-      const ordered: typeof items = [];
-      const visit = (r: (typeof items)[number]) => { ordered.push(r); for (const c of items.filter((x) => x.requires === r.id)) visit(c); };
-      for (const r of items.filter((x) => !x.requires || !items.some((y) => y.id === x.requires))) visit(r);
+      const tier = (r: (typeof items)[number]): number => {
+        const parent = items.find((x) => x.id === r.requires);
+        return parent ? tier(parent) + 1 : 0;
+      };
       return h('div', { class: 'lane' },
         h('div', { class: 'lane-name' }, b.name),
-        h('div', { class: 'lane-chips' }, ordered.map((r, i) => {
+        h('div', { class: 'lane-grid' }, items.map((r) => {
           const isDone = side.research.includes(r.id);
           const locked = !!r.requires && !side.research.includes(r.requires);
           const active = side.researching === r.id;
           const need = RESEARCH.find((x) => x.id === r.requires)?.name;
           const can = !isDone && !active && !locked && !side.researching && sup >= r.cost;
-          const chip = h('button', {
+          return h('button', {
             class: `r-chip ${isDone ? 'done' : ''} ${locked ? 'locked' : ''} ${active ? 'active' : ''} ${can ? 'can' : ''}`,
+            style: `grid-column:${tier(r) + 1}`,
             ...tip({ head: r.name, text: r.desc, effect: isDone ? 'in service' : locked ? `-needs ${need}` : `${r.cost} supplies, ${researchTurns(r.cost)} weeks` }),
             disabled: !can,
             onclick: () => app.cmd(side.id, { k: 'research', id: r.id }),
-          }, h('span', { class: 'r-name' }, r.name), h('span', { class: 'r-sub' }, isDone ? '✓ in service' : active ? 'in the works' : locked ? 'locked' : `${r.cost} · ${researchTurns(r.cost)}w`));
-          return i > 0 && r.requires === ordered[i - 1].id ? [h('span', { class: 'lane-arrow' }, '▸'), chip] : [i > 0 ? h('span', { class: 'lane-gap' }) : null, chip];
+          }, h('span', { class: 'r-name' }, `${tier(r) ? '▸ ' : ''}${r.name}`), h('span', { class: 'r-sub' }, isDone ? '✓ in service' : active ? 'in the works' : locked ? 'locked' : `${r.cost} · ${researchTurns(r.cost)}w`));
         })));
     }),
   );

@@ -32,7 +32,7 @@ export function renderLetter(app: App, sideId: SideId, mode: 'returns' | 'week')
       orders.map((o) => {
         const site = o.siteId ? st.theater.sites.find((x) => x.id === o.siteId && x.owner !== sideId) : undefined;
         const current = site && app.plans[sideId].raid?.siteId === site.id;
-        return h('div', { class: 'lo-row' }, h('b', null, o.text), h('span', { class: 'muted small' }, ` by week ${o.deadline}`),
+        return h('div', { class: 'lo-row' }, h('b', null, o.text), /week \d+/.test(o.text) ? null : h('span', { class: 'muted small' }, ` by week ${o.deadline}`),
           site && !current ? h('button', { class: 'btn small', onclick: (e: MouseEvent) => { e.stopPropagation(); strikeAt(app, side, site); } }, 'Make target ▸') : current ? h('span', { class: 'small good' }, ' ✓ target set') : null);
       })));
   }
@@ -103,8 +103,17 @@ export function renderLetter(app: App, sideId: SideId, mode: 'returns' | 'week')
         ? h('div', { class: `stamp big conf ${delta > 0 ? 'notice' : delta < 0 ? 'reprimand' : 'order'}` }, `CONFIDENCE ${side.trust}`, h('small', null, delta ? ` ${delta > 0 ? '▲' : '▼'}${Math.abs(delta)}` : ' ='))
         : null),
     h('div', { class: 'letter-body' }, sections),
+    h('div', { class: 'letter-more' }, 'more ▾'),
     h('div', { class: 'letter-foot' },
       h('span', { class: 'muted small' }, mode === 'returns' ? 'High Command judges you on the returns you send, not on what happened.' : 'Directives are kept under Standing orders in the War Room.'),
       btn));
+  // A long letter says so at the foot: a fade and "more", until the end is read.
+  setTimeout(() => {
+    const body = sheet.querySelector<HTMLElement>('.letter-body');
+    if (!body) return;
+    const check = () => sheet.classList.toggle('more', body.scrollHeight - body.scrollTop - body.clientHeight > 8);
+    body.addEventListener('scroll', check);
+    check();
+  }, 50);
   return h('div', { class: 'letter-screen' }, sheet);
 }

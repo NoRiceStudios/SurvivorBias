@@ -104,6 +104,7 @@ export class LanSession {
   private async resolve() {
     const app = this.app;
     const st = app.state!;
+    app.ordersIssued();
     resolveTurn(st, [st.sealed[0]!, st.sealed[1]!]);
     app.plans = [carryPlan(st, 0, app.plans[0]), carryPlan(st, 1, app.plans[1])];
     app.pendingCommands = [[], []];
@@ -237,6 +238,7 @@ export class LanSession {
           this.status = `Playing against ${m.opponent}.`;
           app.go(m.phase === 'sealed' ? { kind: 'lanWait', side: 1 } : m.state.outcome ? { kind: 'end', side: 1, tab: 'summary' } : { kind: 'hq', side: 1, tab: 'briefing' });
         } else {
+          app.ordersIssued();
           app.go({ kind: 'radio', side: 1 });
         }
         return;

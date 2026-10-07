@@ -78,6 +78,19 @@ Each turn is one **sortie cycle**, roughly a few days of in-game time.
    *reported*, and not on what actually happened.
 7. Repeat until the war ends or you lose.
 
+### Art direction: the ops room desk
+
+Every screen is an object on the commander's desk in a blacked-out operations
+room: the HQ is an open manila folder with index tabs, the theater map lies on
+baize under a brass edge, orders are typed on a clipboard, armor and damage
+are drawn on blueprints (Wald's diagram), the R/T log is a teleprinter strip,
+and High Command writes on letterhead. A lamp lights the desk: warm in the
+evening while planning, near dark in the radio room, cool at dawn for the
+debrief. Three type voices have fixed jobs: stencil (Silkscreen) for titles,
+stamps and the one primary action; typewriter (VT323) for documents, data and
+every control; handwriting (Pixelify) only for people speaking or annotating.
+Aircraft fly only on the title screen; after that the war is paper.
+
 In PvP both players do steps 1–3 at the same time, the simulation resolves both
 sides' sorties against each other, and each player gets their own distorted debrief.
 

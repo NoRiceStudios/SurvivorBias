@@ -87,7 +87,7 @@ function wingRows(app: App, side: SideState, st: NonNullable<App['state']>): HTM
     return h('button', { class: `roster-row ${q.id === app.selected ? 'on' : ''} ${q.airframes.length === 0 ? 'empty' : ''}`, onclick: () => { app.selected = q.id; sfxClick(); app.render(); } },
       h('div', { class: 'rr-face' }, leaderPortrait(q.leader, side.id, 1)),
       h('div', { class: 'rr-main' },
-        h('div', { class: 'rr-name' }, sqLabel(q.name), flags ? h('span', { class: 'rr-flags' }, flags) : null),
+        h('div', { class: 'rr-name' }, sqLabel(q.name), flags ? h('span', { class: 'rr-flags', ...tip([flags.includes('✉') ? '✉ a request from this squadron' : '', flags.includes('★') ? '★ a new CO to confirm this week' : '', flags.includes('✚') ? '✚ the medical officer is worried about the CO' : ''].filter(Boolean).join(' · ')) }, flags) : null),
         h('div', { class: 'rr-sub' }, `${AIRCRAFT[q.kind].name[side.id]} · ${flyable(q).length}/${q.airframes.length}`),
         h('div', { class: 'rr-pips' }, pips(q.fatigue, 6, 0.6), pips(q.morale, 6, 0.3, true))),
       h('span', { class: `task-chip ${task === 'REST' ? 'rest' : ''}` }, task));
@@ -156,8 +156,6 @@ function stat(label: string, value: string, sub: string): HTMLElement {
 
 /* ---------------- Armor over the evidence ---------------- */
 
-const PLATE_TINT = ['', '#c5c8a0', '#9aa774', '#6f7f4f'];
-
 function survivorHits(app: App, side: SideState, sq: Squadron): Hit[] {
   // Every hole the ground crews logged on this type over the last ten weeks.
   return app.state!.archive.slice(-10).flatMap((e) => e.survivorHits[side.id]).filter((x) => (x.kind ?? 'medium') === sq.kind);
@@ -174,10 +172,10 @@ function armorEditor(app: App, side: SideState, sq: Squadron): HTMLElement {
   const sameType = side.squadrons.filter((q) => q !== sq && q.kind === sq.kind);
   const all = armorWholeType && sameType.length > 0;
   const set = (z: ZoneId, v: number) => app.cmd(side.id, { k: 'armor', sq: sq.id, zone: z, value: v, all });
-  const tint = Object.fromEntries(ZONES.map((z) => [z, PLATE_TINT[sq.armor[z]]]).filter(([, v]) => v));
+
   const def = spriteDef(sq.kind);
   const scale = Math.max(3, Math.min(9, Math.floor(400 / def.w)));
-  const c = aircraftCanvas(sq.kind, { side: side.id, style: 'blueprint', zoneTint: tint, hits: comp, dots: true }, scale);
+  const c = aircraftCanvas(sq.kind, { side: side.id, style: 'blueprint', zonePlates: sq.armor, hits: comp, dots: true, bigDots: true }, scale);
   c.classList.add('armor-canvas');
   const zoneUnder = (e: MouseEvent) => {
     const r = c.getBoundingClientRect();
@@ -209,7 +207,7 @@ function armorEditor(app: App, side: SideState, sq: Squadron): HTMLElement {
       h('button', { class: `seg-btn ${all ? 'on' : ''}`, ...tip(`Every change is made on ${[sq, ...sameType].map((q) => q.name).join(', ')} at once.`), onclick: () => { armorWholeType = true; app.render(); } }, `All ${sameType.length + 1} ${AIRCRAFT[sq.kind].name[side.id]} squadrons`),
       h('button', { class: `seg-btn ${!all ? 'on' : ''}`, onclick: () => { armorWholeType = false; app.render(); } }, 'This squadron only')) : null,
     h('div', { class: 'blueprint-wrap' }, c),
-    h('p', { class: 'handwritten fitter' }, comp.length > 30 ? 'Red dots: holes on aircraft that came back. They show where an aircraft can be hit and still come home.' : 'Too few returns yet to see a pattern. Red dots are holes on aircraft that came back.'),
+    h('p', { class: 'handwritten fitter' }, comp.length > 30 ? 'Orange crosses: holes on aircraft that came back. White hatching: plate. The holes show where an aircraft can be hit and still come home.' : 'Too few returns yet to see a pattern. Orange marks are holes on aircraft that came back; white hatching is plate.'),
     h('div', { class: 'weight', ...tip({ head: 'Weight', text: 'Each plate adds weight: a slower aircraft is caught more often and an armored fighter is less nimble.' }) },
       h('span', null, `Plates ${used}/${budget}`),
       h('span', { class: `weight-bar ${used > budget / 2 ? 'heavy' : ''}` }, h('i', { style: `width:${(used / budget) * 100}%` })),

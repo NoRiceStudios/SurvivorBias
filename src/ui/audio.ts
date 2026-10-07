@@ -107,6 +107,44 @@ export function sfxStatic(dur = 0.25) {
   o.stop(c.currentTime + dur + 0.1);
 }
 
+/** A sheet of paper slid or turned: a short band of noise. */
+export function sfxPaper() {
+  const c = ac();
+  if (!c || !master) return;
+  const n = c.createBufferSource();
+  n.buffer = noiseBuffer(c, 0.08);
+  const bp = c.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 2500;
+  bp.Q.value = 0.8;
+  const g = c.createGain();
+  env(c, g, 0.01, 0.12, 0.06);
+  n.connect(bp).connect(g).connect(master);
+  n.start();
+}
+
+/** The field telephone: two British double rings. */
+export function sfxRing() {
+  const c = ac();
+  if (!c || !master) return;
+  const t0 = c.currentTime + 0.05;
+  for (const start of [0, 0.6, 2.0, 2.6]) {
+    for (const f of [400, 450]) {
+      const o = c.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = f;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t0 + start);
+      g.gain.exponentialRampToValueAtTime(0.05, t0 + start + 0.02);
+      g.gain.setValueAtTime(0.05, t0 + start + 0.38);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + start + 0.4);
+      o.connect(g).connect(master);
+      o.start(t0 + start);
+      o.stop(t0 + start + 0.42);
+    }
+  }
+}
+
 export function sfxClick() {
   const c = ac();
   if (!c || !master) return;

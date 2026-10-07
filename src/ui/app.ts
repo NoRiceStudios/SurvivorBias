@@ -5,8 +5,8 @@ import { resolveTurn } from '../core/turn';
 import { applyCommand, type Command } from '../core/commands';
 import { carryPlan, defaultPlan, fitPlanToStores } from '../core/plans';
 import type { GameState, SideId, TurnPlan } from '../core/types';
-import { sfxClick, sfxStamp, stopDrone } from './audio';
-import { clear, h } from './dom';
+import { sfxClick, sfxPaper, sfxStamp, sfxStatic, stopDrone } from './audio';
+import { animOn, clear, h } from './dom';
 import { clearDispatches, memoDispatch, showDispatch, type Dispatch } from './general';
 import { renderEnd } from './end';
 import { renderHq, TAB_ALIAS } from './hq';
@@ -73,10 +73,14 @@ export class App {
     const nextSide = 'side' in screen ? screen.side : null;
     if (['handover', 'title', 'lanSetup', 'lanWait'].includes(screen.kind) || prevSide !== nextSide) clearDispatches();
     else if (JSON.stringify(prev) !== JSON.stringify(screen)) clearDispatches(true);
+    this.entering = JSON.stringify(prev) !== JSON.stringify(screen);
     this.screen = screen;
     this.render();
     if (screen.kind === 'hq' && screen.tab === 'war' && prev.kind !== 'hq' && prev.kind !== 'letter') this.announceWeek(screen.side);
   }
+
+  /** The screen changed since the last render: the new sheet animates in. */
+  entering = false;
 
   /** Element to pulse after the next render (a readiness chip pointing at a problem). */
   pulse: string | null = null;
@@ -148,6 +152,14 @@ export class App {
         break;
     }
     this.root.append(view);
+    // A new sheet is laid on the desk: it rises into place with the sound of paper.
+    if (this.entering) {
+      view.classList.add('entering');
+      if (s.kind === 'hq' || s.kind === 'debrief' || s.kind === 'end') sfxPaper();
+      this.entering = false;
+    }
+    // Evening while planning, night in the radio room, dawn at the debrief.
+    document.body.dataset.phase = { title: 'night', radio: 'night', debrief: 'dawn', letter: 'letter', theater: 'letter', end: 'letter' }[s.kind as string] ?? 'plan';
     const manual = manualOverlay(() => this.render());
     if (manual) this.root.append(manual);
     for (const [key, top] of scrollers) {
@@ -300,6 +312,31 @@ export class App {
     return this.launch(side);
   }
 
+  /**
+   * The moment the orders go out: "ORDERS ISSUED" is stamped on the sheet in
+   * front of the commander, and the sheet slides away into the dark while the
+   * next screen comes up underneath. A click skips it.
+   */
+  ordersIssued() {
+    const view = this.root.firstElementChild as HTMLElement | null;
+    if (!view || !animOn()) return;
+    const clone = view.cloneNode(true) as HTMLElement;
+    // A cloned canvas comes without its picture: copy the pixels over.
+    const from = view.querySelectorAll('canvas');
+    const to = clone.querySelectorAll('canvas');
+    from.forEach((c, i) => {
+      const d = to[i] as HTMLCanvasElement;
+      d.width = c.width;
+      d.height = c.height;
+      d.getContext('2d')?.drawImage(c, 0, 0);
+    });
+    const sheet = h('div', { class: 'departing', onclick: () => sheet.remove() }, clone, h('div', { class: 'issued-stamp' }, h('span', { class: 'stamp big' }, 'ORDERS ISSUED')));
+    document.body.append(sheet);
+    sfxStamp();
+    window.setTimeout(() => sfxStatic(0.35), 900);
+    window.setTimeout(() => sheet.remove(), 1500);
+  }
+
   /** Take sealed orders back to amend them (before the week is fought). */
   unseal(side: SideId) {
     const st = this.state!;
@@ -340,6 +377,7 @@ export class App {
       return;
     }
     const plans: [TurnPlan, TurnPlan] = st.mode === 'single' ? [this.plans[0], aiPlan(st, 1)] : [st.sealed[0] ?? this.plans[0], this.plans[1]];
+    this.ordersIssued();
     resolveTurn(st, plans);
     this.pendingCommands = [[], []];
     // Carry standing orders (assignments, returns policy) into the next turn.

@@ -4,7 +4,45 @@
  */
 import { SECTOR_PRESSURE, DECISIVE_GAIN } from '../core/theaters';
 import { STORES_CAP } from '../core/turn';
+import type { Hit, ZoneId } from '../core/types';
 import { h } from './dom';
+import { icon } from './icons';
+import { aircraftCanvas } from './sprites';
+import { pressureGauge } from './theaterui';
+import { pips } from './widgets';
+
+/** A few holes, placed the same way every time, for the illustrations. */
+function holes(zones: ZoneId[]): Hit[] {
+  return zones.map((zone, i) => ({ zone, u: ((i * 37) % 100) / 100, v: ((i * 53) % 100) / 100, approach: 'tail' }));
+}
+const plot = (hits: Hit[], plates?: Partial<Record<ZoneId, number>>, dotColor?: string) => h('div', { class: 'blueprint-wrap' }, aircraftCanvas('medium', { side: 0, style: 'blueprint', hits, dots: true, bigDots: true, zonePlates: plates, dotColor }, 3));
+const stamp = (text: string, kind = '') => h('span', { class: `stamp big ${kind}` }, text);
+const bar = (v: number, cls = '') => h('span', { class: `fx-bar ${cls}` }, h('i', { style: `width:${v}%` }), h('span', { class: 'fx-tick', style: 'left:50%' }), h('em', null, `${v}%`));
+
+/** One small picture per page, drawn from the game's own pieces. */
+const ART: Record<string, () => HTMLElement> = {
+  'The turn': () => stamp('ORDERS ISSUED'),
+  'Survivorship bias': () => h('div', { class: 'art-row' },
+    h('figure', null, plot(holes(['outerWing', 'outerWing', 'fuselage', 'fuselage', 'tail', 'outerWing', 'fuselage', 'wingRoot'])), h('figcaption', null, 'What came back')),
+    h('figure', null, plot(holes(['engines', 'cockpit', 'engines', 'fuel', 'cockpit']), undefined, '#ff3b30'), h('figcaption', null, 'What brought them down'))),
+  Supplies: () => icon('supplies', 64),
+  Stores: () => icon('fuel', 64),
+  Confidence: () => h('span', { class: 'stamp big notice' }, 'CONFIDENCE 62 ▲3'),
+  'Pressure and sectors': () => pressureGauge(10, { label: 'Pressure' }),
+  Strike: () => aircraftCanvas('medium', { side: 0, seed: 3 }, 3),
+  'Close support': () => aircraftCanvas('medium', { side: 0, seed: 5 }, 3),
+  Sweep: () => aircraftCanvas('fighter', { side: 0, seed: 2 }, 4),
+  'Escort and defence': () => h('div', { class: 'art-row' }, aircraftCanvas('fighter', { side: 0, seed: 1 }, 3), aircraftCanvas('medium', { side: 0, seed: 2 }, 3)),
+  Feint: () => aircraftCanvas('fighter', { side: 0, style: 'outline', lineColor: '#2a2721' }, 4),
+  'Fatigue and morale': () => h('div', { class: 'art-pips' }, h('span', null, 'Fatigue ', pips(0.8, 10, 0.6)), h('span', null, 'Morale ', pips(0.3, 10, 0.3, true))),
+  Doctrine: () => h('div', { class: 'seg' }, ...['Loose', 'Standard', 'Tight box'].map((x, i) => h('button', { class: `seg-btn ${i === 2 ? 'on' : ''}` }, x))),
+  Armor: () => plot(holes(['outerWing', 'fuselage']), { cockpit: 2, engines: 2, fuel: 1 }),
+  'Leaders and reports': () => h('div', { class: 'art-row' }, ...['Showman', 'Gloomy', 'By the book', 'Cautious'].map((x) => h('span', { class: 'trait' }, x))),
+  'Believed condition': () => h('div', { class: 'art-col' }, bar(64, 'est'), h('span', { class: 'small muted' }, '≈64%: from crews\' reports')),
+  'Crippled works': () => h('div', { class: 'art-col' }, bar(38, 'crippled'), h('span', { class: 'small muted' }, 'Below the tick: crippled')),
+  'Y-Service': () => h('span', { class: 'stamp big intel' }, 'Y-SERVICE'),
+  'Returns policy': () => h('div', { class: 'seg' }, ...['Accurate', 'Optimistic', 'Creative'].map((x, i) => h('button', { class: `seg-btn ${i === 1 ? 'on' : ''}` }, x))),
+};
 
 const PAGES: [string, string, string][] = [
   ['The turn', 'How a week goes', 'Plan in the War Room (mission, tasks, doctrine, armor, factory, research), launch, listen to the radio, read the debrief, file your reports. High Command answers, and the next week begins. You never see the battle itself, only what the crews who come back say about it.'],
@@ -46,7 +84,8 @@ export function manualOverlay(render: () => void): HTMLElement | null {
         h('button', { class: 'btn small', onclick: () => { open = false; render(); } }, 'Close')),
       h('div', { class: 'manual-body' },
         h('nav', { class: 'manual-index' }, PAGES.map(([t], i) => h('button', { class: `manual-link ${i === page ? 'on' : ''}`, onclick: () => { page = i; render(); } }, t))),
-        h('article', null, h('div', { class: 'letter-kicker' }, kind), h('h1', null, title), h('p', { class: 'manual-text' }, text)))));
+        h('article', null, h('div', { class: 'letter-kicker' }, kind), h('h1', null, title), h('p', { class: 'manual-text' }, text),
+          ART[title] ? h('div', { class: 'manual-art' }, ART[title]()) : null))));
 }
 
 export function manualOpen(): boolean {
