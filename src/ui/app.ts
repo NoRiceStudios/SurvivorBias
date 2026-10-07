@@ -401,7 +401,8 @@ export class App {
     return h(
       'div',
       { class: 'handover' },
-      h('div', { class: `handover-card paper side${s.side}` },
+      h('div', { class: `handover-card folder paper side${s.side}` },
+        h('div', { class: 'folder-tab' }, side.id === 0 ? 'AIR MINISTRY · MOST SECRET' : 'DIREKTORAT · GEHEIM'),
         h('div', { class: 'stamp big' }, 'MOST SECRET'),
         h('div', { class: `crest big side${s.side}` }),
         h('div', { class: 'handover-for' }, 'For the eyes of'),

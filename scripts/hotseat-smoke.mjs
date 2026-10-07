@@ -18,7 +18,7 @@ const shot = async (name) => { await p.waitForTimeout(150); await p.screenshot({
 const check = (cond, msg) => { if (!cond) { errs.push('CHECK FAILED: ' + msg); } };
 
 // Setup screen with commander names.
-await p.click('text=Two Commanders (Hotseat)');
+await p.click('text=Hotseat: two commanders');
 await p.fill('.name-input >> nth=0', 'Cdre Ashworth');
 await p.fill('.name-input >> nth=1', 'Oberst Voigt');
 await shot('h0-setup');

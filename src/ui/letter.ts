@@ -9,6 +9,7 @@ import type { App } from './app';
 import { sfxKey, sfxStamp } from './audio';
 import { h } from './dom';
 import { HIGH_COMMAND, memoDispatch, portraitCanvas, type DispatchLine } from './general';
+import { strikeAt } from './warroom';
 
 export function renderLetter(app: App, sideId: SideId, mode: 'returns' | 'week'): HTMLElement {
   const st = app.state!;
@@ -23,6 +24,18 @@ export function renderLetter(app: App, sideId: SideId, mode: 'returns' | 'week')
     return p;
   };
   const sections: HTMLElement[] = [];
+  // The directives first, as one line each, with the way to act on them.
+  const orders = side.orders.filter((o) => !o.done && o.deadline >= st.turn);
+  if (orders.length && !st.outcome) {
+    sections.push(h('div', { class: 'letter-orders' },
+      h('div', { class: 'letter-kicker' }, 'You are to:'),
+      orders.map((o) => {
+        const site = o.siteId ? st.theater.sites.find((x) => x.id === o.siteId && x.owner !== sideId) : undefined;
+        const current = site && app.plans[sideId].raid?.siteId === site.id;
+        return h('div', { class: 'lo-row' }, h('b', null, o.text), h('span', { class: 'muted small' }, ` by week ${o.deadline}`),
+          site && !current ? h('button', { class: 'btn small', onclick: (e: MouseEvent) => { e.stopPropagation(); strikeAt(app, side, site); } }, 'Make target ▸') : current ? h('span', { class: 'small good' }, ' ✓ target set') : null);
+      })));
+  }
   if (d) {
     sections.push(h('div', { class: 'letter-section' },
       h('div', { class: 'letter-meta' }, h('span', { class: 'stamp notice' }, 'SIGNAL'), h('span', null, `Re: your returns for week ${d.turn}`)),
@@ -30,7 +43,11 @@ export function renderLetter(app: App, sideId: SideId, mode: 'returns' | 'week')
   }
   for (const m of memos) {
     const o = typeof m === 'string' ? { text: m } : m;
-    sections.push(h('div', { class: `letter-section ${o.kind ? `memo-${o.kind}` : ''}` },
+    // A directive is already in the "You are to" box.
+    if (o.kind === 'order' && orders.some((x) => x.text === o.text)) continue;
+    // Background (intelligence, notices) in a lighter hand than orders and praise or blame.
+    const minor = o.kind === 'intel' || o.kind === 'notice';
+    sections.push(h('div', { class: `letter-section ${o.kind ? `memo-${o.kind}` : ''} ${minor ? 'minor' : ''}` },
       h('div', { class: 'letter-meta' }, o.stamp ? h('span', { class: `stamp ${o.kind ?? ''}` }, o.stamp) : null, o.from ? h('span', null, o.from) : null),
       h('div', { class: 'letter-row' },
         o.portrait ? h('div', { class: `letter-photo ${o.mourning ? 'mourning' : ''}` }, o.portrait, o.caption ? h('div', { class: 'small' }, o.caption) : null) : null,

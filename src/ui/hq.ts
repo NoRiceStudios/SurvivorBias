@@ -151,12 +151,13 @@ function intel(app: App, side: SideState): HTMLElement {
         (Object.keys(APPROACH_LABEL) as FighterApproach[]).map((k) => h('div', { class: 'bar-row' }, h('span', null, APPROACH_LABEL[k]), h('span', { class: 'bar' }, h('i', { style: `width:${Math.round(app2[k] * 100)}%` })), h('span', null, pct(app2[k])))),
         h('p', { class: 'small muted' }, 'As reported by returning crews. Only crews who survive an attack can describe it.')),
       panel('Our crews\' claims per week',
-        claims.length ? h('div', { class: 'chart' }, claims.map((c, i) => h('div', { class: 'col-bar', ...tip(`Week ${i + 1}: ${c} claimed`) }, h('em', null, String(c)), h('i', { style: `height:${Math.round((c / maxC) * 80)}%` }), h('span', null, `w${i + 1}`)))) : h('p', { class: 'muted' }, 'No operations flown yet.'),
+        claims.length ? h('div', { class: 'chart' }, claims.map((c, i) => h('div', { class: 'col-bar', ...tip(`Week ${i + 1}: ${c} claimed`) }, h('em', null, String(c)), h('i', { style: `height:${Math.round((c / maxC) * 80)}%` }), h('span', null, `w${i + 1}`)))) : h('p', { class: 'empty-state' }, 'The first claims arrive after your first operation.'),
         claims.length ? h('p', { class: 'small muted' }, 'Unverified. The truth is in the archives, after the war.') : null),
     ),
     h('div', { class: 'col' },
       strategicPanel(app, side),
       panel('Enemy sites (our estimate)',
+        st.archive.length ? null : h('p', { class: 'empty-state' }, 'No reports yet: every site is assumed intact until our crews or cameras say otherwise.'),
         st.theater.sites.filter((x) => x.owner !== side.id).map((x) => {
           const b = believed(st, side.id, x);
           return h('div', { class: 'bar-row wide' }, h('span', null, x.name), h('span', { class: 'bar' }, h('i', { style: `width:${b}%` })), h('span', null, `${b}%${p.photographed.includes(x.id) ? ' 📷' : ''}`));

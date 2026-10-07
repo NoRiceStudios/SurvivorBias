@@ -9,8 +9,9 @@ import { SECTOR_PRESSURE, SECTORS, THEATERS, depthFor } from '../core/theaters';
 import type { FacilityType, GameState, SideId, Site, TargetId, TheaterResult } from '../core/types';
 import type { App } from './app';
 import { sfxStamp } from './audio';
-import { h } from './dom';
+import { countUp, h } from './dom';
 import { setTip, tip as tipAttrs } from './tip';
+const tip = tipAttrs;
 
 const FACILITY_WORD: Record<FacilityType, string> = { airfield: 'Airfield', industry: 'Aircraft works', fuel: 'Fuel depot' };
 
@@ -500,7 +501,7 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
   const claimed = weeks.reduce((a, e) => a + e.claimed[side], 0);
   const roll = (st.sides[side].roll ?? []).filter((e) => e.theater === res.index);
   const fate = { missing: 'missing', prisoner: 'prisoner of war', returned: 'returned', killed: 'killed' };
-  const big = (v: string | number, label: string, cls = '') => h('div', { class: `kpi ${cls}` }, h('b', null, String(v)), h('span', null, label));
+  const big = (v: number, label: string, cls = '', delay = 300) => h('div', { class: `kpi ${cls}` }, countUp(v, delay), h('span', null, label));
   return h('div', { class: 'letter-screen theater-change-screen' },
     h('div', { class: 'tc paper' },
       h('div', { class: 'tc-old' },
@@ -514,15 +515,13 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
           : res.decisive ? 'Our front has broken. The Army is falling back.' : 'The season ends with the advantage theirs.'),
         h('div', { class: 'tc-kpis' },
           big(lost, 'our aircraft lost', lost ? 'bad' : ''),
-          big(claimed, 'enemy claimed by our crews'),
-          big(Math.max(0, (side === 0 ? 1 : -1) * (res.gain ?? 0)), 'sectors taken', (res.gain ?? 0) * (side === 0 ? 1 : -1) > 0 ? 'good' : '')),
+          big(claimed, 'enemy claimed by our crews', '', 900),
+          big(Math.max(0, (side === 0 ? 1 : -1) * (res.gain ?? 0)), 'sectors taken', (res.gain ?? 0) * (side === 0 ? 1 : -1) > 0 ? 'good' : '', 1500)),
         generalVerdict(st, side, res),
-        roll.length ? h('details', { class: 'roll' },
-          h('summary', null, `Roll of the missing (${roll.length})`),
-          h('ul', null, roll.map((e) => h('li', null,
-            h('span', null, `${e.name}${e.crew > 1 ? ` and ${e.crew - 1} crew` : ''}`),
-            h('span', { class: 'muted' }, ` · ${e.serial}, ${e.squadron}, week ${e.week}`),
-            h('b', { class: `fate ${e.fate}` }, ` ${fate[e.fate]}`))))) : null),
+        roll.length ? h('div', { class: 'roll' },
+          h('h3', null, `Roll of the missing (${roll.length})`),
+          h('div', { class: 'tags' }, roll.map((e) => h('div', { class: `tag ${e.fate}`, ...tip({ head: e.name, text: `${e.crew > 1 ? `With ${e.crew - 1} crew. ` : ''}${e.serial}, ${e.squadron}, missing since week ${e.week}.` }) },
+            h('span', { class: 'tag-name' }, e.name), h('span', { class: 'tag-fate' }, fate[e.fate].toUpperCase()))))) : null),
       h('div', { class: 'tc-new' },
         nextDef ? [
           h('div', { class: 'letter-kicker' }, 'Redeployment'),
@@ -533,7 +532,7 @@ export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTM
           obj ? h('p', { class: 'small' }, h('b', null, 'Secondary objective: '), obj.text) : null,
           h('p', { class: 'muted small' }, 'Aircraft in repair have been made serviceable during the move. Squadrons are rested.'),
         ] : h('p', { class: 'typed big' }, 'This was the last theater of the war.'),
-        h('div', { class: 'tc-foot' }, h('button', { class: 'btn primary launch', onclick: () => { sfxStamp(); const go = app.continueAfterTheater; app.continueAfterTheater = null; go?.(); } }, nextDef ? `To ${nextDef.name} ▸` : 'Continue ▸'))),
+        h('div', { class: 'tc-foot' }, h('button', { class: 'btn primary launch', onclick: () => { sfxStamp(); const go = app.continueAfterTheater; app.continueAfterTheater = null; go?.(); } }, nextDef ? 'Take command ▸' : 'Continue ▸'))),
     ),
   );
 }

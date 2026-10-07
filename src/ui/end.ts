@@ -99,17 +99,39 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
       ),
     );
   } else if (tab === 'ledger') {
+    // Grouped by theater with a subtotal each; runs of quiet weeks folded into one row.
+    const rows: HTMLElement[] = [];
+    const held = (e: (typeof st.archive)[number]) => (sideId === 0 ? e.sectors0 : SECTORS - e.sectors0);
+    const truthCell = (kills: number, claimedN: number) => h('td', { class: kills < claimedN ? 'truth' : '' }, String(kills));
+    for (const [ti, th] of THEATERS.entries()) {
+      const weeks = st.archive.filter((e) => e.theater === ti);
+      if (!weeks.length) continue;
+      rows.push(h('tr', { class: 'grp-row' }, h('td', { colspan: '6' }, th.name)));
+      for (let i = 0; i < weeks.length; i++) {
+        const e = weeks[i];
+        const quiet = (x: typeof e) => x.claimed[sideId] === 0 && x.trueKills[sideId] === 0 && x.trueLosses[sideId] === 0;
+        if (quiet(e)) {
+          let j = i;
+          while (j + 1 < weeks.length && quiet(weeks[j + 1])) j++;
+          if (j > i) {
+            rows.push(h('tr', { class: 'quiet' }, h('td', null, `${e.turn}–${weeks[j].turn}`), h('td', { colspan: '4', class: 'muted' }, 'No claims, no losses'), h('td', null, `${held(weeks[j])} / ${SECTORS}`)));
+            i = j;
+            continue;
+          }
+        }
+        rows.push(h('tr', null, h('td', null, String(e.turn)), h('td', null, String(e.claimed[sideId])), h('td', null, String(e.reportedToHq[sideId])),
+          truthCell(e.trueKills[sideId], e.claimed[sideId]), h('td', null, String(e.trueLosses[sideId])), h('td', null, `${held(e)} / ${SECTORS}`)));
+      }
+      const sum = (f: (x: (typeof weeks)[number]) => number) => weeks.reduce((a, x) => a + f(x), 0);
+      rows.push(h('tr', { class: 'sub-row' }, h('td', null, 'Total'), h('td', null, String(sum((x) => x.claimed[sideId]))), h('td', null, String(sum((x) => x.reportedToHq[sideId]))),
+        truthCell(sum((x) => x.trueKills[sideId]), sum((x) => x.claimed[sideId])), h('td', null, String(sum((x) => x.trueLosses[sideId]))), h('td', null, '')));
+    }
     body = h('section', { class: 'paper panel' },
       h('h2', null, 'Claims against the truth, week by week'),
       ledgerChart(st.archive, sideId),
       h('table', { class: 'ledger' },
-        h('thead', null, h('tr', null, ['Week', 'Theater', 'Crews claimed', 'Reported to HQ', 'Actually destroyed', 'Our losses', 'Sectors held'].map((x) => h('th', null, x)))),
-        h('tbody', null, st.archive.map((e) => h('tr', null,
-          h('td', null, String(e.turn)), h('td', null, THEATERS[e.theater].name), h('td', null, String(e.claimed[sideId])), h('td', null, String(e.reportedToHq[sideId])),
-          h('td', { class: 'truth' }, String(e.trueKills[sideId])), h('td', null, String(e.trueLosses[sideId])),
-          h('td', null, `${sideId === 0 ? e.sectors0 : SECTORS - e.sectors0} / ${SECTORS}`),
-        ))),
-      ),
+        h('thead', null, h('tr', null, ['Week', 'Crews claimed', 'Reported to HQ', 'Actually destroyed', 'Our losses', 'Sectors held'].map((x) => h('th', null, x)))),
+        h('tbody', null, rows)),
     );
   } else {
     body = h('section', { class: 'paper panel end-summary' },
@@ -124,7 +146,20 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
       h('div', { class: 'theater-record end-record' }, st.theaterResults.map((r) =>
         h('div', { class: `theater-step ${r.winner === sideId ? 'won' : r.winner === null ? 'drawn' : 'lost'}` },
           h('b', null, r.name), h('span', null, `${r.weeks} weeks`), h('span', { class: 'step-label' }, r.winner === null ? 'DRAWN' : r.winner === sideId ? (r.decisive ? 'BROKE THROUGH' : 'WON') : r.decisive ? 'BROKEN' : 'LOST')))),
-      h('p', { class: 'muted' }, 'The archives are open. See "Declassified" for what your returning aircraft could never tell you.'),
+      (() => {
+        // The most-flown type, as a preview of the archives: what you saw, what you never saw, what killed them.
+        const surv = st.archive.flatMap((e) => e.survivorHits[sideId]);
+        const lostH = st.archive.flatMap((e) => e.lostHits[sideId]);
+        const kinds = KINDS.map((k) => [k, surv.filter((x) => (x.kind ?? 'medium') === k).length + lostH.filter((x) => (x.kind ?? 'medium') === k).length] as const).sort((a, b) => b[1] - a[1]);
+        const k = kinds[0]?.[1] ? kinds[0][0] : null;
+        if (!k) return null;
+        const of = (hs: Hit[]) => hs.filter((x) => (x.kind ?? 'medium') === k);
+        return h('div', { class: 'preview-strip' },
+          h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: of(surv), dots: true }, 3), h('figcaption', null, 'What you saw')),
+          h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: of(lostH), dots: true, dotColor: '#5a5040' }, 3), h('figcaption', null, 'What you never saw')),
+          h('figure', null, aircraftCanvas(k, { side: sideId, style: 'blueprint', hits: of(lostH).filter((x) => x.lethal), dots: true, dotColor: '#d02020' }, 3), h('figcaption', null, 'What brought them down')));
+      })(),
+      h('button', { class: 'btn primary launch', onclick: () => { sfxClick(); app.go({ kind: 'end', side: sideId, tab: 'archive' }); } }, 'Open the archives ▸'),
     );
   }
   return h('div', { class: 'hq end' }, h('div', { class: 'hq-body' }, nav, h('main', { class: 'content' }, body)));
@@ -171,6 +206,20 @@ function ledgerChart(archive: GameState['archive'], side: SideId): SVGElement {
     const held = (a: typeof e) => (side === 0 ? a.sectors0 : SECTORS - a.sectors0);
     if (prev && prev.theater === e.theater && held(e) < held(prev)) add('rect', { x: x(i) - 8, y: 10, width: 16, height: H - 30, fill: 'rgba(168,53,42,0.15)' });
   });
+  // A band per theater, labelled.
+  for (let ti = 0; ti < THEATERS.length; ti++) {
+    const idx = archive.map((e, i) => (e.theater === ti ? i : -1)).filter((i) => i >= 0);
+    if (!idx.length) continue;
+    const x0 = x(idx[0]) - 6;
+    const x1 = x(idx[idx.length - 1]) + 6;
+    add('rect', { x: x0, y: 24, width: x1 - x0, height: H - 44, fill: ti % 2 ? 'rgba(95,111,71,0.08)' : 'rgba(42,38,32,0.05)' });
+    add('text', { x: x0 + 4, y: H - 4, fill: '#5e5546', 'font-size': 14 }, THEATERS[ti].name);
+  }
+  // Value ticks.
+  for (const v of [0, Math.round(max / 2), max]) {
+    add('line', { x1: 26, y1: y(v), x2: W - 10, y2: y(v), stroke: 'rgba(42,38,32,0.15)', 'stroke-width': 1 });
+    add('text', { x: 4, y: y(v) + 4, fill: '#5e5546', 'font-size': 14 }, String(v));
+  }
   add('line', { x1: 30, y1: H - 20, x2: W - 10, y2: H - 20, stroke: '#5e5546', 'stroke-width': 1 });
   const line = (f: (e: (typeof archive)[number]) => number, color: string, dash = '') =>
     add('polyline', { points: archive.map((e, i) => `${x(i)},${y(f(e))}`).join(' '), fill: 'none', stroke: color, 'stroke-width': 3, 'stroke-dasharray': dash });

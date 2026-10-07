@@ -80,3 +80,19 @@ export function setAnim(on: boolean) {
   }
   document.body.classList.toggle('noanim', !on);
 }
+
+/** A figure that counts up from 0 after a delay (at once when animations are off). */
+export function countUp(value: number, delay = 300, cls = ''): HTMLElement {
+  const b = h('b', { class: cls }, animOn() ? '0' : String(value));
+  if (!animOn()) return b;
+  const steps = Math.min(20, Math.max(1, value));
+  let k = 0;
+  const tick = () => {
+    if (k > 0 && !b.isConnected) return;
+    k++;
+    b.textContent = String(Math.round((value * k) / steps));
+    if (k < steps) setTimeout(tick, 45);
+  };
+  setTimeout(tick, delay);
+  return b;
+}

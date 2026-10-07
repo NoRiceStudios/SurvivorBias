@@ -69,6 +69,7 @@ export function readinessChips(app: App, side: SideState): Chip[] {
     if (have > 0 && have <= 6 && onOrder === 0) chips.push({ label: `${AIRCRAFT[kind].name[side.id]} running out`, level: 'warn', tab: 'works', detail: `Only ${have} left and none on order. Crews follow the aircraft.` });
   }
   if (!side.researching && side.resources.supplies >= 70) chips.push({ label: 'Engineers idle', level: 'info', tab: 'works', focus: '.works-research', detail: 'No development project is funded. One at a time; each takes a few weeks.' });
+  if (side.facilities.industry < 50) chips.push({ label: `Works damaged: ${side.facilities.industry}%`, level: 'warn', tab: 'intel', detail: 'Enemy bombing has cut our aircraft production. Emergency repairs are under Intelligence, Effect of the bombing.' });
   if (side.factory.queue.length === 0 && side.resources.supplies >= 60) chips.push({ label: 'Factory idle', level: 'info', tab: 'works', focus: '.works-factory', detail: 'Nothing is on order at the aircraft works.' });
   if (c.stores <= side.resources.stores && side.resources.stores >= STORES_CAP - 5) chips.push({ label: 'Depots full', level: 'info', tab: 'war', detail: `Deliveries beyond ${STORES_CAP} stores are lost: we can afford a bigger effort.` });
   return chips;
@@ -95,7 +96,7 @@ function planSentence(app: App, side: SideState): HTMLElement {
 }
 
 /** Chips for the warnings; `readOnly` when the orders are sealed and cannot be changed from here. */
-export function chipRow(app: App, sideId: SideId, chips: Chip[], max = 5, readOnly = false): HTMLElement {
+export function chipRow(app: App, sideId: SideId, chips: Chip[], max = 3, readOnly = false): HTMLElement {
   const shown = showAll ? chips : chips.slice(0, max);
   return h('div', { class: 'chips' },
     shown.map((c) => h('button', {
@@ -116,7 +117,7 @@ export function readinessBar(app: App, sideId: SideId): HTMLElement {
   return h('div', { class: 'launchbar readiness' },
     h('div', { class: 'launch-summary' },
       planSentence(app, side),
-      chipRow(app, sideId, chips),
+      chipRow(app, sideId, chips, 3),
     ),
     h('div', { class: 'launch-actions' },
       c.stores > side.resources.stores ? h('button', { class: 'btn small choice', ...tip('Drop the feint, then escorts and squadrons from the raid, until the plan fits the stores we hold.'), onclick: () => app.act(() => app.fitToStores(sideId)) }, 'Fit to stores') : null,

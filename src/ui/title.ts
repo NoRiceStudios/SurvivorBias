@@ -55,8 +55,8 @@ export function renderTitle(app: App): HTMLElement {
     const items = [
       btn('New Campaign', () => { menu = 'new'; refresh(); }, hasSave ? '' : 'primary'),
       btn('Tutorial', () => { menu = 'main'; app.newTutorial(); }),
-      btn('Two Commanders (Hotseat)', () => { menu = 'hotseat'; refresh(); }),
-      btn('Two Commanders (LAN / Direct IP)', () => app.go({ kind: 'lanSetup' })),
+      btn('Hotseat: two commanders', () => { menu = 'hotseat'; refresh(); }),
+      btn('LAN / Direct IP', () => app.go({ kind: 'lanSetup' })),
     ];
     if (hasSave) items.unshift(btn('Continue', () => void app.loadSlot(AUTOSAVE), 'primary'));
     items.push(btn('Load Campaign', () => { menu = 'load'; refresh(); }));

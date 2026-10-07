@@ -71,7 +71,6 @@ function effectsTable(sq: Squadron, now: Doctrine, preview: Doctrine, active: Do
   // Every effect as a change against the standard setting: green where it helps us, red where it hurts, grey when neutral.
   const delta = (e: DoctrineEffect, i: number) => e.raw - (e.unit === '%' ? 0 : mid[i].raw);
   const fmt = (e: DoctrineEffect, i: number) => {
-    if (e.good === 0) return e.value;
     const d = Math.round(delta(e, i));
     return `${d > 0 ? '+' : d < 0 ? '−' : '±'}${Math.abs(d)}${e.unit === '%' ? '%' : ' pts'}`;
   };
@@ -81,7 +80,7 @@ function effectsTable(sq: Squadron, now: Doctrine, preview: Doctrine, active: Do
   };
   const span = (i: number) => Math.max(8, ...[a[i], b[i]].map((e) => Math.abs(delta(e, i)))) * 1.15;
   const seg = (e: DoctrineEffect, i: number, cls: string) => {
-    const d = e.good === 0 ? 0 : delta(e, i);
+    const d = delta(e, i);
     const w = Math.min(50, (Math.abs(d) / span(i)) * 50);
     return h('i', { class: `${cls} ${tone(e, i)}`, style: `left:${d < 0 ? 50 - w : 50}%;width:${w}%` });
   };
@@ -91,7 +90,7 @@ function effectsTable(sq: Squadron, now: Doctrine, preview: Doctrine, active: Do
       const f = b[i];
       const better = e.good !== 0 && f.raw !== e.raw && (f.raw > e.raw) === (e.good > 0);
       const worse = e.good !== 0 && f.raw !== e.raw && !better;
-      return h('tr', { class: active && e.keys.includes(active) ? 'hot' : '', ...tip({ head: e.label, text: `${e.why} Now: ${e.value}${e.unit === 'pts' && e.good !== 0 ? '' : ' against standard'}.` }) },
+      return h('tr', { class: active && e.keys.includes(active) ? 'hot' : '', ...tip({ head: e.label, text: `${e.why} Now: ${e.unit === 'pts' ? e.value : `${e.value} against standard`}.` }) },
         h('td', null, e.label),
         h('td', { class: 'barcell' }, h('span', { class: 'div-bar' }, h('span', { class: 'div-mid' }), changed ? seg(e, i, 'ghost') : null, seg(changed ? f : e, i, 'val'))),
         h('td', { class: `num ${tone(e, i)}` }, fmt(e, i)),

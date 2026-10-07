@@ -20,7 +20,7 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
   const lines = d.radio;
   const log = h('div', { class: 'radio-log', 'data-keep-scroll': 'radio' });
   const maxT = Math.max(60, ...lines.map((l) => l.t));
-  const map = plotMap(app, sideId, maxT);
+  const map = plotMap(app, sideId, maxT, d.reports.map((r) => { const sq = side.squadrons.find((q) => q.id === r.squadronId); return sq ? CALLSIGNS[sideId][sq.insignia % CALLSIGNS[sideId].length] : ''; }).filter(Boolean));
   let shown = 0;
   let typing = false;
   let done = false;
@@ -31,14 +31,17 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
   const groups = d.reports.map((r) => {
     const sq = side.squadrons.find((q) => q.id === r.squadronId);
     const cs = sq ? CALLSIGNS[sideId][sq.insignia % CALLSIGNS[sideId].length] : r.squadronName;
-    return { cs, name: r.squadronName, sent: r.sent, trouble: new Set<string>() };
+    return { cs, name: r.squadronName, sent: r.sent, trouble: new Set<string>(), aborted: new Set<string>() };
   });
   const tally = h('div', { class: 'radio-tally' });
   const paintTally = () => tally.replaceChildren(
     h('div', { class: 'rt-sum' }, h('span', null, h('b', null, String(sent)), ' took off'), h('span', null, h('b', null, String(calls)), ' calls heard'), h('span', { class: troubles ? 'bad' : '' }, h('b', null, String(troubles)), ' in trouble'), h('span', { class: 'muted' }, done ? 'Who came back: at the debrief' : 'Who came back: ?')),
     ...groups.map((g) => h('div', { class: 'rt-row' }, h('b', null, g.cs.toUpperCase()), h('span', { class: 'muted' }, g.name),
-      h('span', { class: 'rt-planes' }, Array.from({ length: g.sent }, (_, i) => h('i', { class: g.trouble.has(`${g.cs} ${i + 1}`) ? 'down' : '' }))),
-      h('span', { class: g.trouble.size ? 'bad' : 'muted' }, g.trouble.size ? `${g.trouble.size} down?` : ''))));
+      h('span', { class: 'rt-planes' }, Array.from({ length: g.sent }, (_, i) => {
+        const cs = `${g.cs} ${i + 1}`;
+        return h('i', { class: g.trouble.has(cs) ? 'down' : g.aborted.has(cs) ? 'abort' : '' }, g.trouble.has(cs) ? '✕' : '');
+      })),
+      h('span', { class: g.trouble.size ? 'bad' : g.aborted.size ? 'warnc' : 'muted' }, [g.trouble.size ? `${g.trouble.size} in trouble` : '', g.aborted.size ? `${g.aborted.size} turned back` : ''].filter(Boolean).join(' · ')))));
   paintTally();
   const proceed = h('button', { class: 'btn primary launch', onclick: () => { stopDrone(); sfxStamp(); app.go({ kind: 'debrief', side: sideId, tab: 'returns' }); } }, 'Debrief the crews ▸');
   const speeds = h('div', { class: 'seg mini' }, [1, 2].map((v) => h('button', { class: `seg-btn ${speed === v ? 'on' : ''}`, onclick: (e: MouseEvent) => {
@@ -55,6 +58,8 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
     if (trouble) {
       troubles++;
       groups.find((g) => l.callsign.startsWith(`${g.cs} `))?.trouble.add(l.callsign);
+    } else if (/abort|turning back|going home|heading home|returning to base|turn(ing)? for home|breaking off/i.test(l.text)) {
+      groups.find((g) => l.callsign.startsWith(`${g.cs} `))?.aborted.add(l.callsign);
     }
     paintTally();
     const row = h('div', { class: `radio-line ${isOther ? 'home' : ''} ${dead ? 'dead' : ''} ${trouble ? 'trouble' : ''}` },
@@ -135,7 +140,7 @@ export function renderRadio(app: App, sideId: SideId): HTMLElement {
 }
 
 /** The theater map at night, with the operation plotted on it as the calls come in. */
-function plotMap(app: App, sideId: SideId, maxT: number) {
+function plotMap(app: App, sideId: SideId, maxT: number, callsigns: string[] = []) {
   const st = app.state!;
   const plan = app.plans[sideId];
   const base = theaterMap(st, { viewer: sideId, raid: plan.raid ?? undefined, scale: 3 });
@@ -147,6 +152,17 @@ function plotMap(app: App, sideId: SideId, maxT: number) {
   c.className = 'pix plot-overlay';
   const g = c.getContext('2d')!;
   const el = h('div', { class: 'plot' }, base, c);
+  // The call signs that took off, at the head of the route.
+  if (callsigns.length) {
+    g.font = '8px monospace';
+    const text = callsigns.map((x) => x.toUpperCase()).join(' · ');
+    const w = g.measureText(text).width;
+    const lx = Math.max(2, Math.min(W - w - 6, hx - w / 2));
+    g.fillStyle = 'rgba(15,17,13,0.75)';
+    g.fillRect(lx - 2, hy + 8, w + 4, 10);
+    g.fillStyle = '#f0d070';
+    g.fillText(text, lx, hy + 16);
+  }
   const pos = (t: number) => {
     // Outbound until ~55% of the timeline, then home again.
     const f = Math.min(1, t / (maxT * 0.55));
@@ -302,8 +318,9 @@ function returnsSheet(app: App, d: Debrief): HTMLElement {
         damaged.map((r, i) => {
           const af = side.squadrons.flatMap((s) => s.airframes).find((a) => a.id === r.airframeId);
           const tag = r.fate === 'crashed' ? 'Written off on landing' : r.fate === 'aborted' ? 'Turned back early' : `${r.hits.length} hole${r.hits.length > 1 ? 's' : ''}`;
-          return h('div', { class: `airframe ${r.fate} ${landing ? 'taxi' : ''}`, style: landing ? `animation-delay:${i * 120}ms` : undefined },
-            aircraftCanvas(r.kind, { side: d.side, hits: r.hits, seed: r.serial.length, patches: af?.patches ? af.patches - r.hits.length : 0 }, r.kind === 'fighter' || r.kind === 'recon' ? 3 : 2),
+          return h('div', { class: `airframe compact ${r.fate} ${landing ? 'taxi' : ''}`, style: landing ? `animation-delay:${i * 120}ms` : undefined },
+            r.hits.length ? h('span', { class: 'hole-badge' }, String(r.hits.length)) : null,
+            aircraftCanvas(r.kind, { side: d.side, hits: r.hits, seed: r.serial.length, patches: af?.patches ? af.patches - r.hits.length : 0 }, r.kind === 'fighter' || r.kind === 'recon' ? 2 : 1),
             h('div', { class: 'af-serial' }, r.serial),
             h('div', { class: 'small muted' }, `${sqName(r.squadronId)} · ${r.role}`),
             h('div', { class: `small ${r.fate === 'crashed' ? 'bad' : ''}` }, tag),
@@ -380,10 +397,9 @@ function reportsSheet(app: App, d: Debrief): HTMLElement {
   const siteName = (id: string) => st.theater.sites.find((x) => x.id === id)?.name ?? 'target';
   return h('div', { class: 'reports-sheet' },
     h('div', { class: 'col' },
-      d.reports.length ? h('section', { class: 'paper panel claims-head' },
-        h('h2', null, 'Form 541: squadron reports'),
-        h('p', null, `Squadrons claim ${claims} enemy aircraft destroyed this week. `, side.research.includes('gunCameras') ? h('span', { class: 'muted' }, 'Gun camera film has struck off some claims.') : h('span', { class: 'muted' }, 'Claims are unverified.')),
-        side.research.includes('intelOfficer') && d.reports.length > 1 ? h('p', { class: 'handwritten' }, intelNote(d)) : null) : h('section', { class: 'paper panel' }, h('p', null, 'No squadrons flew this week.')),
+      d.reports.length ? h('div', { class: 'sheet-sub' },
+        h('b', null, 'Form 541 · '), `squadrons claim ${claims} enemy aircraft destroyed. `, h('span', { class: 'muted' }, side.research.includes('gunCameras') ? 'Gun camera film has struck off some claims.' : 'Claims are unverified.'),
+        side.research.includes('intelOfficer') && d.reports.length > 1 ? h('div', { class: 'handwritten' }, intelNote(d)) : null) : h('section', { class: 'paper panel' }, h('p', null, 'No squadrons flew this week.')),
       h('div', { class: 'reports' }, d.reports.map((r) => reportForm(r, defIds.has(r.squadronId), side.squadrons.find((q) => q.id === r.squadronId)?.leader.archetype ?? r.leader.archetype, d.side))),
     ),
     h('div', { class: 'col' },
@@ -392,7 +408,7 @@ function reportsSheet(app: App, d: Debrief): HTMLElement {
         theaterMap(st, { viewer: d.side, scale: 1 }),
         pressureGauge(side.perceived.front, { from: d.frontBefore, band: side.perceived.frontBand }),
         d.pressure?.length ? h('table', { class: 'ledger pressure-ledger' }, h('tbody', null, d.pressure.map((p) => h('tr', null,
-          h('td', null, p.label), h('td', { class: `glyph ${p.sign > 0 ? 'good' : p.sign < 0 ? 'bad' : 'muted'}` }, p.sign > 0 ? '▸' : p.sign < 0 ? '◂' : '·'), h('td', { class: p.sign > 0 ? 'good' : p.sign < 0 ? 'bad' : 'muted' }, p.effect))))) : null,
+          h('td', null, p.label), h('td', { class: `glyph ${p.sign > 0 ? 'good' : p.sign < 0 ? 'bad' : 'muted'}` }, liaisonArrow(p.sign, p.effect)), h('td', { class: p.sign > 0 ? 'good' : p.sign < 0 ? 'bad' : 'muted' }, p.effect))))) : null,
         h('p', { class: 'muted small' }, 'The Army\'s impression, not a measurement.')),
       h('section', { class: 'paper panel' }, h('h2', null, 'Home front'), d.defenseSummary.map((x) => h('p', null, x)),
         d.recon ? h('div', { class: 'recon-photo' }, h('span', { class: 'stamp intel' }, 'PHOTOGRAPHIC INTERPRETATION'), h('p', null, `Photographs of the ${siteName(d.recon.siteId)} show the facility at ${d.recon.condition}% of capacity.`)) : null),
@@ -433,6 +449,13 @@ function intelNote(d: Debrief): string {
   const lo = Math.min(...est);
   const hi = Math.max(...est);
   return hi > lo * 1.8 ? `Intelligence Section: estimates of enemy fighters range from ${lo} to ${hi}. At least one squadron is badly wrong.` : `Intelligence Section: squadron estimates broadly agree (${lo}–${hi}).`;
+}
+
+/** The liaison's words as an arrow: doubled when the words are strong, a dash when nothing moved. */
+function liaisonArrow(sign: number, words: string): string {
+  if (sign === 0) return '—';
+  const strong = /hard|heav|strong|great|badly|much|well/i.test(words);
+  return sign > 0 ? (strong ? '▸▸' : '▸') : strong ? '◂◂' : '◂';
 }
 
 /** The chief fitter reads the holes he can see, and only those. */

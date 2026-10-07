@@ -71,7 +71,7 @@ export function doctrineEffects(kind: AircraftKind, d: Doctrine, skill = 0.5): D
     out.push({ keys: ['aggression'], label: 'Escorts engaging interceptors', value: `${Math.round((0.55 + 0.35 * d.aggression) * 100)}%`, raw: (0.55 + 0.35 * d.aggression) * 100, unit: 'pts', good: 1, why: 'Escorts that turn into the enemy tie them up before they reach the bombers.' });
   }
   const off = Math.round(d.breakOff * 100);
-  out.push({ keys: ['breakOff'], label: 'Squadron turns back after losing', value: d.breakOff >= 0.99 ? 'never' : `${off}%`, raw: -d.breakOff * 100, unit: 'pts', good: 0, why: 'Breaking off early saves crews but leaves the job undone; never breaking off finishes it at any price.' });
+  out.push({ keys: ['breakOff'], label: 'Squadron turns back after losing', value: d.breakOff >= 0.99 ? 'never' : `${off}%`, raw: d.breakOff * 100, unit: 'pts', good: 0, why: 'Breaking off early saves crews but leaves the job undone; never breaking off finishes it at any price.' });
   return out;
 }
 

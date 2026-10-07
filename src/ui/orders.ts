@@ -14,6 +14,8 @@ import { sfxClick, sfxStamp } from './audio';
 import { h, plural } from './dom';
 import { missionLabel, topBar } from './hq';
 import { theaterMap } from './theaterui';
+import { leaderPortrait } from './general';
+import { sqLabel } from './warroom';
 import { chipRow, readinessChips } from './readiness';
 
 /** Everything this commander has ordered for the coming week, on one sheet. */
@@ -39,16 +41,17 @@ export function ordersOverview(app: App, sideId: SideId): HTMLElement {
     const [r, where] = role(q);
     const flying = r !== 'Stand down' && r !== 'Rest';
     const d = q.doctrine;
-    return h('tr', { class: flying ? 'active' : 'muted' },
-      h('td', null, h('b', null, q.name), h('div', { class: 'small muted' }, AIRCRAFT[q.kind].name[sideId])),
-      h('td', null, h('b', null, r), where ? h('div', { class: 'small' }, where) : null),
-      h('td', { class: 'num' }, flying ? String(n(q)) : '—'),
-      h('td', { class: 'small' }, q.kind === 'recon' ? '' : [
-        q.kind !== 'fighter' ? doctrineSummary(q.kind, 'formation', d.formation).split(':')[0].replace(/\.$/, '') : null,
-        `${doctrineSummary(q.kind, 'altitude', d.altitude).split('.')[0]}`,
-        doctrineSummary(q.kind, 'breakOff', d.breakOff).replace(/\.$/, ''),
-      ].filter(Boolean).join(' · ')),
-    );
+    return h('div', { class: `sq-row ${flying ? 'active' : 'idle'}` },
+      h('div', { class: 'sq-id' },
+        h('div', { class: 'sq-face' }, leaderPortrait(q.leader, sideId, 1)),
+        h('div', null,
+          h('div', { class: 'sq-name' }, sqLabel(q.name)),
+          h('div', { class: 'small muted' }, `${AIRCRAFT[q.kind].name[sideId]} · ${flying ? `${n(q)} flying` : `${n(q)} ready`}`),
+          q.kind === 'recon' ? null : h('div', { class: 'small muted' }, [
+            q.kind !== 'fighter' ? doctrineSummary(q.kind, 'formation', d.formation).split(':')[0].replace(/\.$/, '') : null,
+            `${doctrineSummary(q.kind, 'altitude', d.altitude).split('.')[0]}`,
+          ].filter(Boolean).join(' · ')))),
+      h('div', { class: 'task' }, h('span', { class: `task-chip ${flying ? '' : 'rest'}` }, r.toUpperCase()), where ? h('div', { class: 'small' }, where) : null));
   });
   const raidN = (plan.raid?.squadronIds ?? []).reduce((a, id) => a + n(sq(id)), 0);
   const cost = planCost(side, plan);
@@ -68,9 +71,7 @@ export function ordersOverview(app: App, sideId: SideId): HTMLElement {
             h('span', { class: cost.stores > side.resources.stores ? 'bad' : '' }, `Stores ${cost.stores}/${side.resources.stores}`),
             h('span', null, `Returns: ${policy}`),
             h('span', null, `Forecast: ${WEATHER_LABEL[st.forecast[sideId]]}`))),
-        h('table', { class: 'sq-table orders-table' },
-          h('thead', null, h('tr', null, h('th', null, 'Squadron'), h('th', null, 'Task'), h('th', null, 'A/c'), h('th', null, 'Doctrine'))),
-          h('tbody', null, rows)),
+        h('div', { class: 'sq-rows orders-table' }, rows),
       ),
       h('div', { class: 'col' },
         theaterMap(st, { viewer: sideId, selected: plan.raid?.siteId, patrols: Object.values(plan.cover), feint: plan.feint?.sector, raid: plan.raid ?? undefined, scale: 2 }),
