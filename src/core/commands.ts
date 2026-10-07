@@ -17,8 +17,10 @@ import {
   setApproach,
   setArmor,
   setDoctrine,
+  setTurrets,
   setQc,
   setTrainingFocus,
+  setLiveFire,
   startResearch,
   upgradeFactory,
   upgradeFlak,
@@ -26,6 +28,7 @@ import {
   type ActionResult,
 } from './actions';
 import { approveRequest, declineRequest } from './requests';
+import { chooseAllotment } from './allotments';
 import type {
   AircraftKind,
   Doctrine,
@@ -35,6 +38,7 @@ import type {
   QcPolicy,
   SideId,
   TrainingFocus,
+  TurretFit,
   TurnPlan,
   ZoneId,
 } from './types';
@@ -43,10 +47,12 @@ export type Command =
   | { k: 'armor'; sq: string; zone: ZoneId; value: number; all?: boolean }
   | { k: 'armorAll'; sq: string }
   | { k: 'doctrine'; sq: string; d: Partial<Doctrine> }
+  | { k: 'turrets'; sq: string; fit: TurretFit }
   | { k: 'approach'; w: Record<FighterApproach, number> }
   | { k: 'upgrade'; what: 'factory' | 'training' | 'flak' }
   | { k: 'qc'; v: QcPolicy }
   | { k: 'focus'; v: TrainingFocus }
+  | { k: 'liveFire'; on: boolean }
   | { k: 'build'; kind: AircraftKind }
   | { k: 'cancel'; i: number }
   | { k: 'research'; id: string }
@@ -57,7 +63,8 @@ export type Command =
   | { k: 'crews'; n: number }
   | { k: 'merge'; from: string; into: string }
   | { k: 'appoint'; sq: string }
-  | { k: 'restCO'; sq: string };
+  | { k: 'restCO'; sq: string }
+  | { k: 'allot'; id: string };
 
 export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?: TurnPlan): ActionResult {
   const side = state.sides[sideId];
@@ -78,10 +85,12 @@ export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?
     }
     case 'armorAll': return copyArmor(side, c.sq);
     case 'doctrine': return setDoctrine(side, c.sq, c.d);
+    case 'turrets': return setTurrets(side, c.sq, c.fit);
     case 'approach': return setApproach(side, c.w);
     case 'upgrade': return c.what === 'factory' ? upgradeFactory(side) : c.what === 'training' ? upgradeTraining(side) : upgradeFlak(side);
     case 'qc': return setQc(side, c.v);
     case 'focus': return setTrainingFocus(side, c.v);
+    case 'liveFire': return setLiveFire(side, c.on);
     case 'build': return queueAircraft(side, c.kind);
     case 'cancel': return cancelQueued(side, c.i);
     case 'research': return startResearch(side, c.id);
@@ -95,6 +104,7 @@ export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?
     case 'merge': return mergeSquadrons(state, side, c.from, c.into, plan);
     case 'appoint': return appointLeader(state, side, c.sq);
     case 'restCO': return restLeader(state, side, c.sq);
+    case 'allot': return chooseAllotment(state, side, c.id);
   }
 }
 

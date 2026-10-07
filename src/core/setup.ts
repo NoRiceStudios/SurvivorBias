@@ -196,7 +196,7 @@ function makeSide(state: GameState, rng: Rng, id: SideId, isAI: boolean, faction
     short: nat.short,
     isAI,
     insight: 0.35,
-    resources: { supplies: 160, stores: Math.min(220, rules.storesCap), replacements: 6 },
+    resources: { supplies: 160, stores: Math.min(120, rules.storesCap), replacements: 6 },
     squadrons,
     factory: { level: 1, qc: 'standard', queue: [], progress: 0 },
     training: { level: 1, focus: 'balanced', inTraining: 0 },

@@ -30,6 +30,8 @@ import {
   ZONES,
   aiPlan,
   approveRequest,
+  chooseAllotment,
+  RARITY_LABEL,
   armorUsed,
   declineRequest,
   bomberRange,
@@ -167,6 +169,7 @@ function brief() {
     ...(side.orders.length ? side.orders.map((o) => `  - ${o.text}${o.graced ? ` [EXTENDED to week ${o.deadline}: HQ awaits photographs]` : o.deadline <= st.turn ? ' [DUE THIS WEEK]' : ''}`) : ['  (none)']),
     ...(adjutant().length ? ['Adjutant\'s notes:', ...adjutant().map((n) => `  ! ${n}`)] : []),
     ...(side.requests.length ? ['Requests from the squadrons (approve R# / decline R#):', ...side.requests.map((r, i) => `  R${r.n ?? i + 1} ${r.text}\n       If approved: ${r.effect}${r.cost ? ` Cost: ${r.cost} supplies.` : ''}`)] : []),
+    ...(side.allotments?.length ? ['High Command offers one allotment this week (take A#; the others lapse):', ...side.allotments.map((x, i) => `  A${i + 1} [${RARITY_LABEL[x.rarity]}] ${x.title}: ${x.text}${x.catch ? ` BUT: ${x.catch}` : ''}`)] : []),
     'Correspondence this week:',
     ...side.memos.filter((m) => m.turn >= st.turn).map((m) => `  [${m.kind.toUpperCase()}] ${m.from} — ${m.subject}: ${m.body}`),
   );
@@ -478,6 +481,7 @@ function run(cmd: string) {
       '        build fighter|medium|heavy|recon · cancel <queue#> · research <id> · upgrade factory|training|flak',
       '        qc rushed|standard|strict · focus balanced|gunnery|evasion|reporting',
       'Requests: approve R# · decline R# (squadron leaders\' requests, listed in the brief)',
+      'take A# — take one of High Command\'s three weekly allotments (listed in the brief)',
       'crews N — ask the Ministry for N trained aircrew for aircraft without crews (price rises as confidence falls)',
       'merge S# S# — fold a squadron down to one or two aircraft into another of the same type',
       'appoint S# — after a change of command or a merge, make the other flight commander CO (that week only)',
@@ -620,6 +624,14 @@ function run(cmd: string) {
       if (verb === 'approve') check(approveRequest(side, req.id, plan));
       else declineRequest(side, req.id);
       say(`${verb === 'approve' ? 'Approved' : 'Declined'}: ${req.text}`);
+      return;
+    }
+    case 'take': {
+      const num = Number(a[0]?.replace(/^A/i, ''));
+      const offer = side.allotments?.[num - 1];
+      if (!offer) throw new Error(`No allotment ${a[0]}. Allotments are listed in the brief.`);
+      check(chooseAllotment(state, side, offer.id));
+      say(`Taken: ${offer.title}. ${side.memos[0]?.body ?? ''}`);
       return;
     }
     case 'screenshot': {

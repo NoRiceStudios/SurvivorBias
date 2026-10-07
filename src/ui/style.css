@@ -531,6 +531,11 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px;
 .doc-row2 { display: grid; grid-template-columns: 110px auto; align-items: center; column-gap: 8px; }
 .doc-row2 .doc-sum { grid-column: 2; margin-top: -2px; }
 .doc-pictures { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 4px; }
+.turrets { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.turret-table { margin-top: 2px; }
+.turret-pips { display: inline-flex; gap: 2px; }
+.turret-pips i { width: 8px; height: 8px; box-shadow: inset 0 0 0 1px var(--ink-3); }
+.turret-pips i.on { background: var(--ink); }
 .doc-figure { margin: 0; }
 .doc-figure figcaption { margin-top: 2px; }
 .doc-canvas { box-shadow: 0 0 0 2px var(--ink); }
@@ -1060,6 +1065,17 @@ body.noanim *, body.noanim *::before, body.noanim *::after { animation: none !im
 .letter-orders { margin: 6px 0 4px; padding: 8px 12px; background: rgba(176,48,42,0.07); box-shadow: inset 4px 0 0 var(--stamp); }
 .lo-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 22px; padding: 2px 0; }
 .lo-row b { font-weight: normal; }
+.allot-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 8px 0 6px; }
+.allot-card { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; background: rgba(255,255,255,0.25); box-shadow: 0 0 0 2px var(--paper-3); }
+.allot-card .btn { margin-top: auto; align-self: flex-start; }
+.allot-card.rare { box-shadow: 0 0 0 2px #3f5f8a, inset 4px 0 0 #3f5f8a; }
+.allot-card.exceptional { box-shadow: 0 0 0 2px var(--brass), inset 4px 0 0 var(--brass); background: rgba(200,160,60,0.14); }
+.allot-rarity { font-family: 'Silkscreen'; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: #5e5546; }
+.allot-card.rare .allot-rarity { color: #3f5f8a; }
+.allot-card.exceptional .allot-rarity { color: #8a6a1a; }
+.allot-title { font-family: 'Silkscreen'; font-weight: 400; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
+.allot-text, .allot-catch { font-size: 19px; line-height: 1.15; margin: 0; }
+.allot-catch { color: var(--stamp); }
 .letter-section.minor .letter-text { font-size: 20px; color: #4a4336; }
 .letter-head .muted { white-space: nowrap; }
 /* Debrief density */

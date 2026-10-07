@@ -76,6 +76,15 @@ Each turn is one **sortie cycle**, roughly a few days of in-game time.
    your returns, then the week's memos, with the change in confidence stamped. How much you
    get depends on **Command Trust**, which is based on the results you
    *reported*, and not on what actually happened.
+
+   Under the directives lies the week's **allotment**: three offers from
+   High Command, of which the commander takes one; the others lapse. Each
+   offer is Routine, Priority or Most Secret, and the higher High Command's
+   confidence, the likelier the rarer ones (below 40: 80/18/2 %, 40–74:
+   60/32/8 %, from 75: 40/42/18 %). Some offers come with strings attached
+   (a newsreel visit that tires a squadron, a propaganda campaign that brings
+   another directive, aircraft on loan that cost confidence). The AI takes
+   the rarest offer without strings. The pool lives in `src/core/allotments.ts`.
 7. Repeat until the war ends or you lose.
 
 ### Art direction: the ops room desk
@@ -145,8 +154,18 @@ no plate about 20. The hangar shows, next to the holes on returned aircraft,
 how many last calls of crews who didn't come back named each zone: the only
 word from the aircraft nobody sees.
 
-**Loadouts:** engine variant, guns, turret configuration, fuel tanks
-(self-sealing option), bomb load.
+**Turret layouts** *(implemented)*: each bomber squadron chooses where its
+guns sit: standard (strong astern, little ahead), tail-heavy (a wall of fire
+astern, almost nothing ahead) or a chin turret (answers head-on attacks,
+weaker astern). A refit costs 15 supplies. The Squadrons tab shows the
+defensive fire per direction next to what the gunners report. Enemy pilots
+see the guns and, over a few weeks, shift their attacks round them, so no
+layout stays right for long. In measurement (`scripts/turrets.ts`) no fixed
+layout wins clearly (17 to 19 bombers lost per 100 sorties); the tail-heavy
+wall only pays until the enemy turns head-on.
+
+**Loadouts (planned):** engine variant, guns, fuel tanks (self-sealing
+option), bomb load.
 
 **Per-airframe history:** sorties flown, repairs, accumulated fatigue (hidden
 structural wear), and the factory batch it came from.
@@ -207,7 +226,7 @@ The crew is modelled at squadron level:
 | Resource | Used for | Comes from |
 |---|---|---|
 | **Supplies** | Upgrades, R&D, repairs, armor (4 per plate fitted; removal free) | High Command deliveries (scaled by trust and our works), plus a flat +15 each from the Requisition Office and War Economy Board developments; wrecks on our side of the line (written off on landing, or defenders shot down over our country) return 35% of their build cost as salvage |
-| **Stores** (fuel and munitions, merged after playtest round 2) | Each sortie: fighter 3, medium 5, heavy 8, recon 2; flak batteries 20 | Rationed. Deliveries are about 80% of a full effort, so the wing must stand squadrons down from time to time. Depots hold at most 240. Bombing our fuel depots cuts deliveries. A "Fit to stores" button trims a plan that is too big. |
+| **Stores** (fuel and munitions, merged after playtest round 2) | Each sortie: fighter 3, medium 5, heavy 8, recon 2; maximum effort ×1.5 for the raid's squadrons (bombers carry 35% more); live-fire practice 3 per pupil a week (graduates +0.08 skill); flak batteries 20 | Rationed by strength. The Ministry delivers 0.45 + 0.2 × (0.4 + trust/100) of the stores a full effort by every aircraft held would use, so about 65% at trust 60 and 73% at 100 (at least 20). A smaller wing gets a smaller ration, so stores stay short all war (playtest round 8: they piled up). Depots hold at most 150, a new wing starts with 120. Bombing our fuel depots cuts deliveries. A "Fit to stores" button trims a plan that is too big, maximum effort first. |
 | **Replacements** | New airmen into training. Trained aircrew can also be asked of the Ministry for supplies (dearer the less it trusts you), but only for aircraft without crews. A squadron down to one or two aircraft can be merged into another of its type. | Posted, and taken into the school, only for aircraft the wing has or has on order. Crews follow aircraft, so none sit idle. |
 
 **What bombing does** (one rule set, `effects.ts`, for both sides):
@@ -349,23 +368,23 @@ built from crews' reports and an optimistic Army liaison.
 
 Each side fights for one of three nations, chosen before the war (the AI's
 too, in single player). The nations push towards different ways of fighting
-and counter each other in a loose circle: the mass swamps the radar net, the
-elite's armor rides out the mass, and the radar net reads the elite's few
-raids. All rules live in `core/factions.ts`; most strengths are innate
+and pull in different directions: Aldmere flies cheap, accurate operations and
+reads the war clearly, the Directorate sends few aircraft that come home, and
+Varn replaces what it loses. All rules live in `core/factions.ts`; most strengths are innate
 research effects added in `tech()`, so the simulation reads them like any
 development.
 
 | Nation | Strengths | Weaknesses |
 |---|---|---|
-| **Aldmere**, the radar net | Ground radar and photo recon from week 1, +15% interception, recon caught less often, +10% of lost crews home, bombs +10% damage; reports stray a third less from the truth | Bomb load −5%; escorts turn back a sector sooner; confidence rises only 90% as fast |
-| **The Directorate**, the elite | +1 armor plate per type (+2 heavy), armored seat (cockpit lethality ×0.7); +5% hits; gyro sight and cannon at half price; plate weighs 30% less; crews learn 1.5× as fast | Stores −35% and depots of 150; aircraft +25% dearer, works −15%; replacements −30%; confidence swings 1.5× both ways |
+| **Aldmere**, the radar net | Ground radar and photo recon from week 1, +15% interception, recon caught less often, +10% of lost crews home; bombs +10% damage and sorties use 8% fewer stores; reports stray a third less from the truth | Bomb load −5%; confidence rises only 90% as fast |
+| **The Directorate**, the elite | +1 armor plate per type (+2 heavy), armored seat (cockpit lethality ×0.7); +5% hits; gyro sight and cannon at half price; plate weighs 30% less; crews learn 1.5× as fast | 20% less of the weekly stores ration and depots of 110; aircraft +25% dearer, works −15%; replacements −30%; confidence swings 1.5× both ways |
 | **The League of Varn**, mass and supply | Works +15%, aircraft −15%, four-engine airframe and assembly lines at half price; 25 supplies a week of lend-lease whatever the trust; replacements +25%; a third fighter squadron | Twice the hidden defects; −1 plate per type and tanks that burn (fuel lethality ×1.2); weaker training and flak; more showmen and glory-seekers as leaders |
 
 A war without nations (saves from before version 6, the tutorial, or "Nations:
 off" on the title screen) is the classic one: Aldmere against the Directorate
 with symmetric rules. Both sides must be different nations. Measured with
 `npm run balance -- 200 --matrix` (the AI on both sides, equal resources):
-every pairing ends between 42% and 58% of decisive theaters, counting both
+every pairing ends between 45% and 55% of decisive theaters, counting both
 seats together.
 
 ## 7. Doctrine (behaviour settings per squadron)

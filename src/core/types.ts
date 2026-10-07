@@ -28,6 +28,8 @@ export type TargetId = FacilityType | 'support' | 'sweep' | 'feint';
 export type Weather = 'clear' | 'cloud' | 'storm';
 export type TrainingFocus = 'balanced' | 'gunnery' | 'evasion' | 'reporting';
 export type QcPolicy = 'rushed' | 'standard' | 'strict';
+/** Where a bomber squadron's defensive guns are concentrated. */
+export type TurretFit = 'standard' | 'tail' | 'nose';
 
 export interface Doctrine {
   /** 0 = preserve aircraft, 1 = press every attack. */
@@ -113,6 +115,8 @@ export interface Squadron {
   leader: Leader;
   doctrine: Doctrine;
   armor: ZoneMap<number>;
+  /** Bombers: where the defensive guns are concentrated. Absent means standard. */
+  turrets?: TurretFit;
   notables: string[];
   insignia: number;
   /** The leader's last remark in a Form 541, so he doesn't repeat himself. */
@@ -149,6 +153,10 @@ export interface Training {
   focus: TrainingFocus;
   /** Crews in the pipeline, graduate next turn. */
   inTraining: number;
+  /** Pupils fly live-fire practice: better graduates, at stores per pupil each week. */
+  liveFire?: boolean;
+  /** The class now in training had its live-fire practice. */
+  liveFireClass?: boolean;
 }
 
 export interface Facilities {
@@ -198,6 +206,8 @@ export interface Perceived {
   photographed: string[];
   /** Army liaison's account of the pressure on the front, + favours this side. */
   front: number;
+  /** Share of enemy bombers seen with each turret layout; fighter pilots can see the guns. */
+  enemyTurrets?: Record<TurretFit, number>;
   /** Believed enemy armor emphasis per zone, from observation. */
   enemyArmorSeen: ZoneMap<number>;
   /** Cumulative survivor hits by zone (what the debriefs showed). */
@@ -265,6 +275,29 @@ export interface SideState {
   usedLines?: string[];
   /** Leaders' names already used in this war (lost leaders included). */
   usedNames?: string[];
+  /** High Command's three offers this week; the commander takes one. */
+  allotments?: Allotment[];
+  /** A friend on the Air Council: the next failed directive costs no confidence. */
+  advocate?: boolean;
+}
+
+export type AllotmentRarity = 'common' | 'rare' | 'exceptional';
+
+/** One of High Command's weekly offers. */
+export interface Allotment {
+  id: string;
+  card: string;
+  rarity: AllotmentRarity;
+  title: string;
+  text: string;
+  /** The string attached, if any. */
+  catch?: string;
+  squadronId?: string;
+  otherId?: string;
+  kind?: AircraftKind;
+  siteId?: string;
+  researchId?: string;
+  n?: number;
 }
 
 export interface RaidPlan {
@@ -272,6 +305,8 @@ export interface RaidPlan {
   /** For strikes: the specific site attacked. */
   siteId?: string;
   squadronIds: string[];
+  /** Maximum effort: full bomb bays and extra ammunition, at half as many stores again. */
+  maxEffort?: boolean;
 }
 
 export interface TurnPlan {

@@ -19,6 +19,9 @@ import {
   crewShortfall,
   facilityEffects,
   fitPlanToStores,
+  storesRation,
+  STORES_CAP,
+  LIVE_FIRE_STORES,
   planCost,
   tech,
   obituary,
@@ -30,6 +33,9 @@ import {
   MAX_WEEK_SWING,
   redactFor as redactView,
   RESEARCH,
+  ALLOTMENT_CARDS,
+  allotmentOdds,
+  drawAllotments,
   startResearch,
   theaterDecision,
   HEAD_START,
@@ -43,6 +49,8 @@ import {
   SECTOR_PRESSURE,
   THEATERS,
   chooseArmor,
+  chooseTurrets,
+  TURRET_REFIT_COST,
   deserialize,
   emptyPlan,
   endTurnSingle,
@@ -54,6 +62,7 @@ import {
   validatePlan,
   ZONES,
   aircraftName,
+  CLASSIC,
   researchCost,
   spec,
   storesCap,
@@ -409,12 +418,12 @@ describe('hotseat missions', () => {
     delete old.lethality;
     for (const side of old.sides as { resources: Record<string, number> }[]) {
       delete side.resources.stores;
-      side.resources.fuel = 140;
-      side.resources.munitions = 90;
+      side.resources.fuel = 100;
+      side.resources.munitions = 60;
     }
     const loaded = deserialize(JSON.stringify(old));
     expect(loaded.version).toBe(6);
-    expect(loaded.sides[0].resources.stores).toBe(173);
+    expect(loaded.sides[0].resources.stores).toBe(120);
     expect('fuel' in loaded.sides[0].resources).toBe(false);
     expect(loaded.lethality.medium.cockpit).toBeGreaterThan(0);
     expect(loaded.sealed).toEqual([null, null]);
@@ -1115,6 +1124,191 @@ describe('designer decisions after round 2', () => {
   });
 });
 
+describe('scarce stores (playtest feedback: stores no longer limit)', () => {
+  it('the ration follows the wing\'s strength and trust, and the depots hold two weeks', () => {
+    const s = startCampaign({ seed: 'ration' });
+    const side = s.sides[0];
+    const full = storesRation(side);
+    side.trust = 100;
+    expect(storesRation(side)).toBeGreaterThan(full);
+    side.trust = 60;
+    for (const q of side.squadrons) q.airframes = q.airframes.slice(0, Math.ceil(q.airframes.length / 2));
+    expect(storesRation(side)).toBeLessThan(full * 0.6);
+    side.resources.stores = STORES_CAP;
+    endTurnSingle(s, emptyPlan());
+    expect(side.resources.stores).toBeLessThanOrEqual(STORES_CAP);
+  });
+
+  it('maximum effort costs half as many stores again for the raid and drops first when fitting', () => {
+    const s = startCampaign({ seed: 'maxeffort' });
+    const side = s.sides[0];
+    const plan = playerPlan(s);
+    const raidOnly = { ...plan, defense: [], cover: {} };
+    const base = planCost(side, raidOnly).stores;
+    plan.raid!.maxEffort = true;
+    expect(planCost(side, { ...plan, defense: [], cover: {} }).stores).toBe(Math.round(base * 1.5));
+    side.resources.stores = planCost(side, plan).stores - 1;
+    fitPlanToStores(s, 0, plan);
+    expect(plan.raid?.maxEffort).toBeFalsy();
+    expect(plan.raid?.squadronIds.length).toBe(playerPlan(s).raid!.squadronIds.length);
+  });
+
+  it('maximum effort does more damage on the same raid', () => {
+    let std = 0;
+    let max = 0;
+    for (let g = 0; g < 20; g++) {
+      for (const m of [false, true]) {
+        const s = startCampaign({ seed: `maxdmg${g}` });
+        const plan = playerPlan(s);
+        plan.raid!.maxEffort = m;
+        const r = resolveRaid(new Rng({ s: 7 + g }), s, s.sides[0], s.sides[1], plan.raid, emptyPlan());
+        if (m) max += r?.damage ?? 0;
+        else std += r?.damage ?? 0;
+      }
+    }
+    expect(max).toBeGreaterThan(std * 1.2);
+  });
+
+  it('live-fire practice uses stores per pupil and turns out better crews', () => {
+    const a = startCampaign({ seed: 'livefire' });
+    // Aircraft waiting for crews keep the school busy.
+    for (const q of a.sides[0].squadrons) q.crews = Math.max(1, q.crews - 3);
+    a.sides[0].resources.replacements = 10;
+    const b = deserialize(serialize(a));
+    expect(applyCommand(b, 0, { k: 'liveFire', on: true }).ok).toBe(true);
+    endTurnSingle(a, emptyPlan());
+    endTurnSingle(b, emptyPlan());
+    const pupils = b.sides[0].training.inTraining;
+    expect(pupils).toBeGreaterThan(0);
+    expect(b.sides[0].training.liveFireClass).toBe(true);
+    expect(b.sides[0].resources.stores).toBe(a.sides[0].resources.stores - pupils * LIVE_FIRE_STORES);
+    // The class graduates next week, live fire against ground school.
+    endTurnSingle(a, emptyPlan());
+    endTurnSingle(b, emptyPlan());
+    const skill = (st: GameState) => st.sides[0].squadrons.reduce((x, q) => x + q.skill * q.crews, 0) / st.sides[0].squadrons.reduce((x, q) => x + q.crews, 0);
+    expect(skill(b)).toBeGreaterThan(skill(a));
+  });
+});
+
+describe('High Command allotments', () => {
+  it('offers three different cards after each week, and the AI takes one', () => {
+    const s = startCampaign({ seed: 'allot' });
+    endTurnSingle(s, playerPlan(s));
+    const offers = s.sides[0].allotments ?? [];
+    expect(offers.length).toBe(3);
+    expect(new Set(offers.map((o) => o.card)).size).toBe(3);
+    expect(s.sides[1].allotments).toEqual([]);
+  });
+
+  it('draws rarer cards when High Command trusts the wing', () => {
+    expect(allotmentOdds(90).exceptional).toBeGreaterThan(allotmentOdds(50).exceptional);
+    expect(allotmentOdds(50).exceptional).toBeGreaterThan(allotmentOdds(20).exceptional);
+    const count = (trust: number) => {
+      const s = startCampaign({ seed: 'odds' });
+      s.sides[0].trust = trust;
+      const rng = Rng.fromSeed(`odds${trust}`);
+      let rare = 0;
+      for (let i = 0; i < 200; i++) rare += drawAllotments(rng, s, s.sides[0]).filter((a) => a.rarity !== 'common').length;
+      return rare;
+    };
+    expect(count(95)).toBeGreaterThan(count(10) * 1.8);
+  });
+
+  it('applies every card, once, through the command list', () => {
+    for (const card of ALLOTMENT_CARDS) {
+      const s = startCampaign({ seed: `card-${card.id}` });
+      endTurnSingle(s, playerPlan(s));
+      const side = s.sides[0];
+      // Make every card eligible: something in the hangars, a tired squadron, research under way.
+      side.squadrons[0].fatigue = 0.6;
+      side.squadrons[0].airframes[0].status = 'repair';
+      side.squadrons[0].airframes[0].repairTurns = 1;
+      side.researching = RESEARCH[0].id;
+      side.resources.stores = 100;
+      const offer = card.make(s, side);
+      expect(offer, card.id).not.toBeNull();
+      side.allotments = [{ ...offer!, id: 'al-test', card: card.id, rarity: card.rarity }];
+      const memos = side.memos.length;
+      expect(applyCommand(s, 0, { k: 'allot', id: 'al-test' }).ok, card.id).toBe(true);
+      expect(side.allotments).toEqual([]);
+      expect(side.memos.length).toBeGreaterThan(memos);
+      expect(applyCommand(s, 0, { k: 'allot', id: 'al-test' }).ok).toBe(false);
+    }
+  });
+
+  it('a LAN client taking an allotment gets what the host replays', () => {
+    for (const card of ALLOTMENT_CARDS) {
+      const host = startCampaign({ seed: `lan-${card.id}`, mode: 'hotseat' });
+      resolveTurn(host, [emptyPlan(), emptyPlan()]);
+      const side = host.sides[1];
+      side.squadrons[0].fatigue = 0.6;
+      side.researching = RESEARCH[0].id;
+      const offer = card.make(host, side);
+      if (!offer) continue;
+      side.allotments = [{ ...offer, id: 'al901', card: card.id, rarity: card.rarity }];
+      const client = redactView(host, 1);
+      expect(applyCommands(client, 1, [{ k: 'allot', id: 'al901' }]).ok).toBe(true);
+      // Meanwhile the host's own commander has used up ids of the shared counter.
+      host.nextId += 37;
+      expect(applyCommands(host, 1, [{ k: 'allot', id: 'al901' }]).ok).toBe(true);
+      const view = (st: GameState) => JSON.stringify({ sq: st.sides[1].squadrons, r: st.sides[1].resources, t: st.sides[1].trust, p: st.sides[1].perceived.sites, res: st.sides[1].research, o: st.sides[1].orders.map((o) => o.text) });
+      expect(view(client), card.id).toBe(view(host));
+    }
+  });
+
+  it('a friend on the Air Council absorbs one failed directive', () => {
+    const s = startCampaign({ seed: 'advocate' });
+    const side = s.sides[0];
+    side.advocate = true;
+    side.orders = [{ id: 'ox', kind: 'kills', amount: 999, deadline: s.turn, text: 'Destroy 999 enemy aircraft.' }];
+    side.trust = 50;
+    const before = side.trust;
+    endTurnSingle(s, playerPlan(s));
+    expect(side.advocate).toBe(false);
+    expect(s.lastDebriefs[0]!.hqResponse.join(' ')).toContain('spoken for you');
+    // The failure itself costs nothing (other movements in confidence still apply).
+    expect(side.trust).toBeGreaterThan(before - 7 - 10);
+  });
+});
+
+describe('turret layouts', () => {
+  it('a refit costs supplies once, and only bombers have turrets', () => {
+    const s = startCampaign({ seed: 'turrets' });
+    const side = s.sides[0];
+    side.resources.supplies = 100;
+    const bomber = side.squadrons.find((q) => q.kind === 'medium')!;
+    const fighter = side.squadrons.find((q) => q.kind === 'fighter')!;
+    expect(applyCommand(s, 0, { k: 'turrets', sq: bomber.id, fit: 'tail' }).ok).toBe(true);
+    expect(bomber.turrets).toBe('tail');
+    expect(side.resources.supplies).toBe(100 - TURRET_REFIT_COST);
+    expect(applyCommand(s, 0, { k: 'turrets', sq: bomber.id, fit: 'tail' }).ok).toBe(true);
+    expect(side.resources.supplies).toBe(100 - TURRET_REFIT_COST);
+    expect(applyCommand(s, 0, { k: 'turrets', sq: fighter.id, fit: 'nose' }).ok).toBe(false);
+    side.resources.supplies = TURRET_REFIT_COST - 1;
+    expect(applyCommand(s, 0, { k: 'turrets', sq: bomber.id, fit: 'nose' }).ok).toBe(false);
+    expect(bomber.turrets).toBe('tail');
+  });
+
+  it('a chin turret is chosen once the gunners report head-on attacks', () => {
+    const s = startCampaign({ seed: 'turrets-ai' });
+    const side = s.sides[1];
+    const bomber = side.squadrons.find((q) => q.kind === 'medium')!;
+    side.perceived.enemyApproach = { tail: 0.2, headOn: 0.6, beam: 0.2 };
+    expect(chooseTurrets(side, bomber)).toBe('nose');
+    side.perceived.enemyApproach = { tail: 0.8, headOn: 0.05, beam: 0.15 };
+    expect(chooseTurrets(side, bomber)).toBe('tail');
+  });
+
+  it('enemy fighters go round a wall of guns astern', () => {
+    const s = startCampaign({ seed: 'turrets-adapt' });
+    aiPlan(s, 1);
+    const before = s.sides[1].approach.headOn;
+    for (const q of s.sides[0].squadrons) if (q.kind === 'medium' || q.kind === 'heavy') q.turrets = 'tail';
+    for (let i = 0; i < 6; i++) aiPlan(s, 1);
+    expect(s.sides[1].approach.headOn).toBeGreaterThan(before + 0.1);
+  });
+});
+
 describe('nations', () => {
   it('a classic war keeps the symmetric rules and the old names', () => {
     const s = startCampaign({ seed: 'classic' });
@@ -1152,6 +1346,8 @@ describe('nations', () => {
     for (const q of varn.squadrons) expect(ZONES.reduce((a, z) => a + q.armor[z], 0)).toBeLessThanOrEqual(spec(varn, q.kind).armorBudget);
     expect(researchCost(dir, RESEARCH.find((r) => r.id === 'cannon')!)).toBe(60);
     expect(dir.resources.stores).toBeLessThanOrEqual(storesCap(dir));
+    // The classic cap and the nation table must agree: factions.ts cannot import it.
+    expect(CLASSIC.storesCap).toBe(STORES_CAP);
   });
 
   it('lend-lease arrives whatever High Command thinks, and the Directorate\'s depots stay small', () => {
@@ -1161,7 +1357,7 @@ describe('nations', () => {
     resolveTurn(s, [emptyPlan(), emptyPlan()]);
     expect(s.sides[0].memos.find((m) => m.subject === 'Deliveries')?.body).toContain('lend-lease');
     for (let w = 0; w < 6 && !s.outcome; w++) resolveTurn(s, [emptyPlan(), emptyPlan()]);
-    expect(s.sides[1].resources.stores).toBeLessThanOrEqual(150);
+    expect(s.sides[1].resources.stores).toBeLessThanOrEqual(110);
   });
 
   it('a war between nations survives save and load', () => {

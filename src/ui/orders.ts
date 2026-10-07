@@ -102,6 +102,7 @@ function describeCommands(app: App, sideId: SideId, cmds: Command[]): string[] {
     else if (c.k === 'merge') out.push(`${name(c.from)} merged into ${name(c.into)}`);
     else if (c.k === 'approve') out.push('A squadron request approved');
     else if (c.k === 'repair') out.push(`Emergency repairs: ${c.what}`);
+    else if (c.k === 'allot') out.push('High Command allotment taken');
   }
   return out.slice(0, 8);
 }

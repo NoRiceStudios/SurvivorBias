@@ -6,6 +6,7 @@ import type {
   RequestKind,
   TargetId,
   Trait,
+  TurretFit,
   ZoneId,
   ZoneMap,
 } from './types';
@@ -142,8 +143,37 @@ export const AIRCRAFT: Record<AircraftKind, AircraftSpec> = {
   },
 };
 
+/**
+ * Bombers' turret layouts: the same guns, moved to where the fighters are
+ * believed to come from. Each value scales defensive fire against an attack
+ * from that direction. Which layout pays depends on how the enemy actually
+ * attacks, and the only evidence is what the gunners say they saw.
+ */
+export const TURRET_FITS: Record<TurretFit, { name: string; desc: string; coverage: Record<FighterApproach, number> }> = {
+  standard: {
+    name: 'Standard',
+    desc: 'Guns spread as the works deliver them: strong astern, fair on the beam, little ahead.',
+    coverage: { tail: 1.25, beam: 0.95, headOn: 0.4 },
+  },
+  tail: {
+    name: 'Tail-heavy',
+    desc: 'Extra guns in the rear turret, taken from the nose and waist. A wall of fire astern; almost nothing ahead.',
+    coverage: { tail: 1.6, beam: 0.85, headOn: 0.25 },
+  },
+  nose: {
+    name: 'Chin turret',
+    desc: 'A powered turret under the nose, guns taken from the tail and waist. Answers head-on attacks; weaker astern.',
+    coverage: { tail: 0.95, beam: 0.85, headOn: 0.9 },
+  },
+};
+/** Supplies to move a squadron's guns to another layout. */
+export const TURRET_REFIT_COST = 15;
+
 /** Share of its build cost a wreck on our side of the line returns as salvage. */
 export const SALVAGE = 0.35;
+
+/** Maximum effort: the raid's squadrons use this many times the stores, and the bombers carry this much more. */
+export const MAX_EFFORT = { stores: 1.5, payload: 0.35 };
 
 export const MAX_ARMOR_PER_ZONE = 3;
 /** Each armor point on a zone multiplies lethality by this. */

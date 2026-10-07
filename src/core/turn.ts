@@ -9,6 +9,7 @@ import { aircraftLabel, nationOf, researchCost, rulesOf, spec, storesCap } from 
 import { buildDebrief, updatePerceived } from './reports';
 import { CRIPPLED, facilityEffects } from './effects';
 import { generateRequests } from './requests';
+import { autoChooseAllotment, drawAllotments } from './allotments';
 import { Rng } from './rng';
 import { captainName, makeAirframe, makeLeader, makeSquadron } from './setup';
 import { finishDay, flyable, gatherFliers, newDay, resolveRaid, resolveRecon, type Flier } from './sim';
@@ -59,8 +60,30 @@ function memo(side: SideState, turn: number, kind: Memo['kind'], subject: string
   if (side.memos.length > 40) side.memos.length = 40;
 }
 
-/** Depots hold at most this much fuel and munitions. */
-export const STORES_CAP = 240;
+/** Depots hold at most this much fuel and munitions: about two weeks of a full effort. */
+export const STORES_CAP = 150;
+
+/** Stores a full effort by every aircraft the wing holds would use, before fuel-saving research. */
+export function establishmentStores(side: SideState): number {
+  return side.squadrons.reduce((a, q) => a + q.airframes.length * AIRCRAFT[q.kind].storesCost, 0);
+}
+
+/**
+ * The week's stores ration. The Ministry rations by the wing's strength, not a fixed
+ * allowance: about two thirds of what a full effort by every aircraft held would use,
+ * more for a commander it trusts. A small wing
+ * gets a small ration, so stores stay short all war.
+ */
+export function storesRation(side: SideState, bonus = 1): number {
+  const trustF = 0.4 + side.trust / 100;
+  const share = 0.45 + 0.2 * trustF;
+  return Math.round(Math.max(20, establishmentStores(side) * share) * facilityEffects(side.facilities).stores * bonus);
+}
+
+/** Live-fire training: stores per pupil at the school each week. */
+export const LIVE_FIRE_STORES = 3;
+/** Live-fire training: added starting skill of its graduates. */
+export const LIVE_FIRE_SKILL = 0.08;
 
 /** Production points per week. */
 export function factoryRate(side: SideState): number {
@@ -465,8 +488,10 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   // Our own requisition officers add a fixed amount, and lend-lease comes by sea, whatever the Air Council thinks of us.
   const lendLease = Math.round(rules.lendLease * bonus);
   const supTotal = sup + tech(side, 'supply') + lendLease;
-  // Stores are rationed: a full effort every week burns more than arrives, and wrecked fuel depots cut deliveries.
-  const stores = Math.round((26 + 28 * trustF) * facilityEffects(side.facilities).stores * bonus * rules.stores);
+  // Stores are rationed by the wing's strength: a full effort every week burns more than arrives,
+  // and wrecked fuel depots cut deliveries.
+  // Difficulty bends the enemy's stores only half as much as its other deliveries: a starved enemy cannot fly at all.
+  const stores = Math.round(storesRation(side, side.isAI ? 0.5 + 0.5 * bonus : 1) * rules.stores);
   // Aircrew are posted only for aircraft the wing has or has on order.
   const rep = Math.min(Math.max(0, crewShortfall(side) - r.replacements), Math.round((2 + 3 * trustF) * bonus * rules.replacements));
   r.supplies += supTotal;
@@ -512,7 +537,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   const graduates = t.inTraining;
   t.inTraining = 0;
   let pool = graduates;
-  const gradSkill = 0.25 + t.level * 0.07 + tech(side, 'training') + (t.focus === 'gunnery' || t.focus === 'evasion' ? 0.06 : 0) - (t.focus === 'reporting' ? 0.04 : 0);
+  const gradSkill = 0.25 + t.level * 0.07 + tech(side, 'training') + (t.focus === 'gunnery' || t.focus === 'evasion' ? 0.06 : 0) - (t.focus === 'reporting' ? 0.04 : 0) + (t.liveFireClass ? LIVE_FIRE_SKILL : 0);
   // Squadrons with no crew at all come first (a new recon flight must not wait for weeks), then the most short-handed.
   const needy = [...side.squadrons].sort((a, b) => (a.crews <= 0 ? -100 : 0) - (b.crews <= 0 ? -100 : 0) || a.crews - a.airframes.length - (b.crews - b.airframes.length));
   side.arrived = [];
@@ -546,6 +571,11 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   const intake = Math.min(capacity, r.replacements, crewShortfall(side));
   r.replacements -= intake;
   t.inTraining = intake;
+  // Live-fire training burns fuel and ammunition for every pupil; with too little in the depots the class trains dry.
+  const liveCost = intake * LIVE_FIRE_STORES;
+  t.liveFireClass = !!t.liveFire && intake > 0 && r.stores >= liveCost;
+  if (t.liveFireClass) r.stores -= liveCost;
+  else if (t.liveFire && intake > 0) memo(side, state.turn + 1, 'notice', 'Live-fire training cancelled', `The school needed ${liveCost} stores for live-fire practice and the depots could not spare them. This class trains on the ground.`, 'Training School');
 
   // Repairs at the airfield.
   const repairCap = Math.round((4 + 8 * side.facilities.airfield / 100) * (1 + tech(side, 'repair')));
@@ -604,7 +634,7 @@ function pressureLedger(parts: Record<'air' | 'support' | 'strikes' | 'works' | 
   return lines;
 }
 
-function newOrder(rng: Rng, state: GameState, side: SideState, exclude: Order['kind'][] = []): Order | null {
+export function newOrder(rng: Rng, state: GameState, side: SideState, exclude: Order['kind'][] = []): Order | null {
   const a = act(state);
   const t = state.theater;
   const def = theaterDef(state);
@@ -728,8 +758,12 @@ function highCommand(rng: Rng, state: GameState, side: SideState, enemy: SideSta
     } else if (state.turn >= o.deadline) {
       o.failed = true;
       failedKinds.push(o.kind);
-      trustDelta -= 7;
       hqLines.push(`Order NOT fulfilled: "${o.text}"`);
+      if (side.advocate) {
+        // A friend on the Air Council has a word: this once, the failure is not held against the wing.
+        side.advocate = false;
+        hqLines.push('A member of the Air Council has spoken for you. The matter will not be pursued.');
+      } else trustDelta -= 7;
     }
   }
   // Claims impress less the more HQ already trusts the wing; and its confidence wears off unless orders are met.
@@ -1271,5 +1305,10 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   if (!state.outcome) intelligenceWarnings(state, raids);
   state.sealed = [null, null];
   if (!state.outcome) state.turn++;
+  // High Command's offers for the coming week, drawn on the confidence the wing has now. The AI takes its pick at once.
+  for (const side of state.sides) {
+    side.allotments = state.outcome ? [] : drawAllotments(rng.fork(`allot-${side.id}-${state.turn}`), state, side);
+    if (side.isAI) autoChooseAllotment(state, side);
+  }
   return { raids, feints };
 }

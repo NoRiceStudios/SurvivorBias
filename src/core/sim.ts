@@ -3,6 +3,8 @@ import {
   APPROACH_ZONES,
   ARMOR_FACTOR,
   ARMOR_FACTOR_ALLOY,
+  MAX_EFFORT,
+  TURRET_FITS,
   ZONE_AREA,
   ZONE_DAMAGE,
 } from './data';
@@ -286,7 +288,7 @@ function bomberPass(ctx: RaidContext, fighter: Flier, bomber: Flier, bombers: Fl
   // Defensive fire from the formation at the attacking fighter.
   const formation = bomber.sq.doctrine.formation;
   const guns = AIRCRAFT[bomber.af.kind].guns;
-  const coverage = approach === 'tail' ? 1.25 : approach === 'beam' ? 0.95 : 0.4;
+  const coverage = TURRET_FITS[bomber.sq.turrets ?? 'standard'].coverage[approach];
   const defLambda = 0.3 * (guns / 4) * skillMult(bomber) * (0.6 + formation * 0.9) * coverage * (1 + tech(bomber.side, 'turrets'));
   const defHits = rng.poisson(defLambda);
   for (let i = 0; i < defHits; i++) {
@@ -583,7 +585,9 @@ export function resolveRaid(
     }
     // Bombsights, bigger bombs and target markers.
     const blind = wx.accuracy + (1 - wx.accuracy) * tech(attacker, 'blindBombing');
-    damage *= 1.25 * blind * (1 + tech(attacker, 'accuracy')) * (1 + tech(attacker, 'payload'));
+    // Maximum effort: every bay full to the last rack.
+    const overload = raidPlan.maxEffort ? 1 + MAX_EFFORT.payload : 1;
+    damage *= 1.25 * blind * (1 + tech(attacker, 'accuracy')) * (1 + tech(attacker, 'payload')) * overload;
     if (bombers.some((b) => b.alive && !b.out)) say(ctx, attacker.id, speaker(bombers.filter((b) => !b.out)).callsign, rt(rng, BOMBS_GONE));
     // Defender's ground observers see the bombs fall.
     say(ctx, defender.id, 'Ground', rt(rng, support ? GROUND_SUPPORT : GROUND_SITE, { site: site?.name ?? 'our facilities' }), defender.id);

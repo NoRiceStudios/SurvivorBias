@@ -1,5 +1,5 @@
 import { tech } from './tech';
-import { AIRCRAFT, MAX_ARMOR_PER_ZONE, RESEARCH } from './data';
+import { AIRCRAFT, MAX_ARMOR_PER_ZONE, MAX_EFFORT, RESEARCH, TURRET_FITS, TURRET_REFIT_COST } from './data';
 import { researchCost, spec, storesCap } from './factions';
 import { flyable } from './sim';
 import { bomberRange, depthFor, frontSector, syncFacilities } from './theaters';
@@ -14,6 +14,7 @@ import type {
   Squadron,
   TrainingFocus,
   TurnPlan,
+  TurretFit,
   ZoneId,
 } from './types';
 import { ZONES } from './types';
@@ -90,6 +91,19 @@ export function setDoctrine(side: SideState, sqId: string, d: Partial<Doctrine>)
   return ok;
 }
 
+/** Move a bomber squadron's guns to another turret layout. */
+export function setTurrets(side: SideState, sqId: string, fit: TurretFit): ActionResult {
+  const sq = side.squadrons.find((s) => s.id === sqId);
+  if (!sq) return fail('No such squadron');
+  if (sq.kind !== 'medium' && sq.kind !== 'heavy') return fail('Only bombers carry turrets');
+  if (!TURRET_FITS[fit]) return fail('No such layout');
+  if ((sq.turrets ?? 'standard') === fit) return ok;
+  if (side.resources.supplies < TURRET_REFIT_COST) return fail('Not enough supplies');
+  side.resources.supplies -= TURRET_REFIT_COST;
+  sq.turrets = fit;
+  return ok;
+}
+
 export function setApproach(side: SideState, weights: Record<FighterApproach, number>): ActionResult {
   const tot = weights.tail + weights.headOn + weights.beam;
   if (tot <= 0) return fail('Weights must be positive');
@@ -132,6 +146,12 @@ export function setQc(side: SideState, qc: QcPolicy): ActionResult {
 
 export function setTrainingFocus(side: SideState, focus: TrainingFocus): ActionResult {
   side.training.focus = focus;
+  return ok;
+}
+
+/** Live-fire practice at the school: better graduates, paid in stores each week. */
+export function setLiveFire(side: SideState, on: boolean): ActionResult {
+  side.training.liveFire = on;
   return ok;
 }
 
@@ -313,7 +333,8 @@ export function planCost(side: SideState, plan: TurnPlan): { stores: number } {
     const sq = side.squadrons.find((s) => s.id === id);
     if (!sq) continue;
     const n = flyable(sq).length;
-    stores += n * AIRCRAFT[sq.kind].storesCost;
+    const max = plan.raid?.maxEffort && plan.raid.squadronIds.includes(id) ? MAX_EFFORT.stores : 1;
+    stores += n * AIRCRAFT[sq.kind].storesCost * max;
   }
   if (plan.recon) stores += AIRCRAFT.recon.storesCost;
   return { stores: Math.round(stores * (1 - tech(side, 'economy'))) };

@@ -39,7 +39,7 @@ export function readinessChips(app: App, side: SideState): Chip[] {
   const v = validatePlan(side, plan, st);
   if (!v.ok && !/stores/i.test(v.reason)) chips.push({ label: v.reason.split(/[.:]/)[0], level: 'block', tab: 'war', focus: '.orders-col', detail: v.reason });
   const c = planCost(side, plan);
-  if (c.stores > side.resources.stores) chips.push({ label: `Stores short by ${c.stores - side.resources.stores}`, level: 'block', tab: 'war', focus: '.orders-col', detail: `This plan needs ${c.stores} stores and we hold ${side.resources.stores}. Stand a squadron down, fly a smaller operation, use "Fit to stores" or buy a convoy (${CONVOY.supplies} supplies for ${CONVOY.stores} stores).` });
+  if (c.stores > side.resources.stores) chips.push({ label: `Stores short by ${c.stores - side.resources.stores}`, level: 'block', tab: 'war', focus: '.orders-col', detail: `This plan needs ${c.stores} stores and we hold ${side.resources.stores}. Stand a squadron down, drop maximum effort, fly a smaller operation, use "Fit to stores" or buy a convoy (${CONVOY.supplies} supplies for ${CONVOY.stores} stores).` });
   // Striking a site our own crews believe is already wrecked.
   const tgt = plan.raid?.siteId ? st.theater.sites.find((x) => x.id === plan.raid!.siteId) : undefined;
   if (tgt && tgt.owner !== side.id && believed(st, side.id, tgt) <= 20) {
@@ -49,6 +49,7 @@ export function readinessChips(app: App, side: SideState): Chip[] {
       detail: `Our crews believe ${tgt.name} is down to ≈${believed(st, side.id, tgt)}%. Another raid may add little.${better ? ` Click to strike ${better.name} instead${side.orders.some((o) => o.siteId === better.id) ? ' (named in a standing order)' : ''}.` : ''}`,
       act: better ? () => strikeAt(app, side, better) : undefined });
   }
+  if (side.allotments?.length && !st.outcome) chips.push({ label: 'High Command allotment waiting', level: 'warn', tab: 'war', detail: 'High Command has offered three allotments for this week. Click to read the letter and take one; unclaimed offers lapse when the week is fought.', act: () => app.go({ kind: 'letter', side: side.id, mode: 'week' }) });
   if (side.requests.length) chips.push({ label: plural(side.requests.length, 'request'), level: 'warn', tab: 'war', focus: '.intray', detail: 'Squadron leaders are waiting for an answer. Unanswered requests lapse at the end of the week.' });
   const raidIds = plan.raid?.squadronIds ?? [];
   const kindIn = (k: AircraftKind[]) => raidIds.some((id) => k.includes(side.squadrons.find((q) => q.id === id)?.kind ?? 'recon'));
@@ -121,7 +122,7 @@ export function readinessBar(app: App, sideId: SideId): HTMLElement {
       chipRow(app, sideId, chips.filter((c) => c !== blocked), 3),
     ),
     h('div', { class: 'launch-actions' },
-      c.stores > side.resources.stores ? h('button', { class: 'btn small choice', ...tip('Drop the feint, then escorts and squadrons from the raid, until the plan fits the stores we hold.'), onclick: () => app.act(() => app.fitToStores(sideId)) }, 'Fit to stores') : null,
+      c.stores > side.resources.stores ? h('button', { class: 'btn small choice', ...tip('Drop maximum effort and the feint, then escorts and squadrons from the raid, until the plan fits the stores we hold.'), onclick: () => app.act(() => app.fitToStores(sideId)) }, 'Fit to stores') : null,
       h('button', { class: 'btn small', disabled: side.convoyWeek === st.turn || side.resources.supplies < CONVOY.supplies, ...tip(`Buy a stores convoy: ${CONVOY.supplies} supplies for ${CONVOY.stores} stores, once a week.`), onclick: () => app.cmd(sideId, { k: 'convoy' }) }, side.convoyWeek === st.turn ? 'Convoy bought' : `Convoy +${CONVOY.stores}`),
       h('div', { class: 'cta' },
         h('button', { class: 'btn primary launch', disabled: !!blocked, onclick: () => void app.seal(sideId) }, label),
