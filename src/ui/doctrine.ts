@@ -3,10 +3,10 @@
  * would do (previewed live while a slider is dragged), and two small drawings:
  * the formation from above and the bombing height from the side.
  */
-import { AIRCRAFT } from '../core/data';
+import { AIRCRAFT, APPROACH_LABEL, TURRET_FITS, TURRET_REFIT_COST } from '../core/data';
 import { altitudeFeet, doctrineEffects, doctrineKeys, doctrineSummary, type DoctrineEffect, type DoctrineKey } from '../core/doctrine';
 import { flyable } from '../core/sim';
-import type { Doctrine, SideState, Squadron } from '../core/types';
+import type { Doctrine, FighterApproach, SideState, Squadron, TurretFit } from '../core/types';
 import type { App } from './app';
 import { h, slider } from './dom';
 import { tip } from './tip';
@@ -51,12 +51,40 @@ export function doctrinePanel(app: App, side: SideState, sq: Squadron): HTMLElem
   return h('div', { class: 'doctrine' },
     h('h3', null, 'Doctrine'),
     h('div', { class: 'doc-sliders' }, rows),
+    sq.kind === 'medium' || sq.kind === 'heavy' ? turretPanel(app, side, sq) : null,
     pictures,
     h('details', { class: 'doc-details', open: true },
       h('summary', null, 'What these settings do'),
       effects,
       h('p', { class: 'muted small' }, 'Drag a slider to see the change before you let go. Hover a row for why.')),
   );
+}
+
+const APPROACHES: FighterApproach[] = ['tail', 'beam', 'headOn'];
+
+/** Where the gunners sit, next to where the gunners say the fighters came from. */
+function turretPanel(app: App, side: SideState, sq: Squadron): HTMLElement {
+  const now = sq.turrets ?? 'standard';
+  const seen = side.perceived.enemyApproach;
+  const fits = Object.keys(TURRET_FITS) as TurretFit[];
+  const pick = (f: TurretFit) => h('button', {
+    class: `seg-btn ${f === now ? 'on' : ''}`,
+    disabled: f !== now && side.resources.supplies < TURRET_REFIT_COST,
+    ...tip({ head: `${TURRET_FITS[f].name} turrets`, text: `${TURRET_FITS[f].desc}${f === now ? '' : ` Refit: ${TURRET_REFIT_COST} supplies.`}` }),
+    onclick: () => { if (f !== now) app.cmd(side.id, { k: 'turrets', sq: sq.id, fit: f }); },
+  }, TURRET_FITS[f].name);
+  const pips = (v: number) => h('span', { class: 'turret-pips' }, Array.from({ length: 5 }, (_, i) => h('i', { class: i < Math.round(v * 3) ? 'on' : '' })));
+  return h('div', { class: 'turrets' },
+    h('div', { class: 'doc-row2' },
+      h('span', { class: 'doc-label' }, 'Turrets'),
+      h('div', { class: 'seg mini' }, fits.map(pick)),
+      h('div', { class: 'doc-sum small muted' }, `${TURRET_FITS[now].desc} Changing costs ${TURRET_REFIT_COST} supplies.`)),
+    h('table', { class: 'doc-table turret-table' },
+      h('thead', null, h('tr', null, h('th', null, 'Attacks'), h('th', null, 'Defensive fire'), h('th', { class: 'num' }, 'Gunners report'))),
+      h('tbody', null, APPROACHES.map((k) => h('tr', { ...tip({ head: APPROACH_LABEL[k], text: 'The share is what our gunners say they saw, not what happened. Crews of aircraft that went down tell nobody where the attack came from.' }) },
+        h('td', null, APPROACH_LABEL[k]),
+        h('td', null, pips(TURRET_FITS[now].coverage[k])),
+        h('td', { class: 'num' }, `${Math.round(seen[k] * 100)}%`))))));
 }
 
 function figure(caption: string, c: HTMLCanvasElement): HTMLElement {

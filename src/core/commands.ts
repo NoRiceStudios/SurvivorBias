@@ -17,6 +17,7 @@ import {
   setApproach,
   setArmor,
   setDoctrine,
+  setTurrets,
   setQc,
   setTrainingFocus,
   startResearch,
@@ -35,6 +36,7 @@ import type {
   QcPolicy,
   SideId,
   TrainingFocus,
+  TurretFit,
   TurnPlan,
   ZoneId,
 } from './types';
@@ -43,6 +45,7 @@ export type Command =
   | { k: 'armor'; sq: string; zone: ZoneId; value: number; all?: boolean }
   | { k: 'armorAll'; sq: string }
   | { k: 'doctrine'; sq: string; d: Partial<Doctrine> }
+  | { k: 'turrets'; sq: string; fit: TurretFit }
   | { k: 'approach'; w: Record<FighterApproach, number> }
   | { k: 'upgrade'; what: 'factory' | 'training' | 'flak' }
   | { k: 'qc'; v: QcPolicy }
@@ -78,6 +81,7 @@ export function applyCommand(state: GameState, sideId: SideId, c: Command, plan?
     }
     case 'armorAll': return copyArmor(side, c.sq);
     case 'doctrine': return setDoctrine(side, c.sq, c.d);
+    case 'turrets': return setTurrets(side, c.sq, c.fit);
     case 'approach': return setApproach(side, c.w);
     case 'upgrade': return c.what === 'factory' ? upgradeFactory(side) : c.what === 'training' ? upgradeTraining(side) : upgradeFlak(side);
     case 'qc': return setQc(side, c.v);
