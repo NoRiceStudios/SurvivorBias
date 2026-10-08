@@ -70,6 +70,12 @@ import {
   researchCost,
   spec,
   storesCap,
+  bondsFor,
+  expectation,
+  failurePenalty,
+  moodWeek,
+  newOrder,
+  pressOf,
   type GameState,
   type TurnPlan,
   type ZoneId,
@@ -562,6 +568,12 @@ describe('leader requests', () => {
 });
 
 describe('LAN: redaction and command replay', () => {
+  /** A side as its own commander sees it before the war ends: what prisoners really knew is not shown. */
+  const noTruth = <T,>(side: T): T => {
+    const c = JSON.parse(JSON.stringify(side)) as { prisoners?: { statements: { truth?: string }[] }[] };
+    for (const p of c.prisoners ?? []) for (const x of p.statements) delete x.truth;
+    return c as T;
+  };
   const played = () => {
     const s = startCampaign({ seed: 'lan', mode: 'lan' });
     for (let w = 0; w < 4 && !s.outcome; w++) resolveTurn(s, [playerPlan(s), aiPlan(s, 1)]);
@@ -584,8 +596,9 @@ describe('LAN: redaction and command replay', () => {
       expect(e.trueKills).toEqual([0, 0]);
       expect(e.survivorHits[0]).toEqual([]);
     }
-    // Own side is intact.
-    expect(v.sides[1]).toEqual(s.sides[1]);
+    // Own side is intact, but for the truth behind prisoners' answers.
+    expect(json).not.toContain('"truth"');
+    expect(v.sides[1]).toEqual(noTruth(s.sides[1]));
   });
 
   it('at the end of the war the archives open', () => {
@@ -614,7 +627,7 @@ describe('LAN: redaction and command replay', () => {
     const plan = playerPlan(s);
     expect(applyCommands(client, 1, cmds, plan).ok).toBe(true);
     expect(applyCommands(s, 1, cmds, plan).ok).toBe(true);
-    expect(s.sides[1]).toEqual(client.sides[1]);
+    expect(noTruth(s.sides[1])).toEqual(client.sides[1]);
   });
 
   it('a command the host cannot apply is reported', () => {
@@ -1386,5 +1399,151 @@ describe('nations', () => {
     const loaded = deserialize(serialize(s));
     expect(loaded.sides.map((x) => x.faction)).toEqual(['aldmere', 'varn']);
     expect(loaded.sides[1].commander).toBe('Oberst Halvard Moe');
+  });
+});
+
+describe('Home front: the newspaper', () => {
+  const run = (weeks: number, embellish = 0) => {
+    const s = startCampaign({ seed: 'press', mode: 'single', aiInsight: 0.4 });
+    for (let w = 0; w < weeks && !s.outcome; w++) {
+      const p = playerPlan(s);
+      p.embellish = embellish;
+      endTurnSingle(s, p);
+    }
+    return s;
+  };
+
+  it('prints the returns sent to High Command, never the truth, once a week for the commander', () => {
+    const s = run(6);
+    const papers = s.sides[0].press!.papers;
+    expect(papers.length).toBe(s.archive.length);
+    for (const p of papers) {
+      const e = s.archive.find((x) => x.turn === p.week)!;
+      expect(p.claimed).toBe(e.reportedToHq[0]);
+      expect(p.enemyClaim).toBe(e.reportedToHq[1]);
+      // The Ministry admits at most half our losses.
+      expect(p.ministryLosses).toBeLessThanOrEqual(Math.floor(p.lost / 2));
+      expect(p.headline.length).toBeGreaterThan(5);
+      expect(p.mood).toBeGreaterThanOrEqual(0);
+      expect(p.mood).toBeLessThanOrEqual(100);
+    }
+    // The AI reads no papers, but its public has a mood all the same.
+    expect(s.sides[1].press!.papers).toEqual([]);
+    expect(typeof s.sides[1].press!.mood).toBe('number');
+  });
+
+  it('a cheerful public buys war bonds, delivered with the week\'s supplies, and expects more', () => {
+    expect(bondsFor(50)).toBeGreaterThan(0);
+    expect(bondsFor(90)).toBeGreaterThan(bondsFor(60));
+    expect(bondsFor(5)).toBeLessThan(0);
+    const s = run(1);
+    const side = s.sides[0];
+    const memo = side.memos.find((m) => m.kind === 'supply')!;
+    const bonds = side.press!.bonds;
+    if (bonds > 0) expect(memo.body).toContain(`${bonds} of them bought with war bonds`);
+    side.press!.mood = 50;
+    expect(expectation(side)).toBe(1);
+    expect(failurePenalty(side)).toBe(1);
+    side.press!.mood = 95;
+    expect(expectation(side)).toBeGreaterThan(1.3);
+    expect(failurePenalty(side)).toBeGreaterThan(1.35);
+  });
+
+  it('High Command asks for more from a wing the public is cheering', () => {
+    const amount = (mood: number) => {
+      const s = startCampaign({ seed: 'orders', mode: 'single' });
+      const side = s.sides[0];
+      pressOf(side).mood = mood;
+      side.orders = [];
+      let total = 0;
+      for (let i = 0; i < 40; i++) {
+        const o = newOrder(new Rng({ s: 1000 + i }), s, side, ['strike', 'advance']);
+        if (o) total += o.amount;
+      }
+      return total;
+    };
+    expect(amount(95)).toBeGreaterThan(amount(50));
+  });
+
+  it('claims cheer the public, losses and a caught-out report sour it, and it gets used to good news', () => {
+    const s = startCampaign({ seed: 'mood', mode: 'single' });
+    const side = s.sides[0];
+    moodWeek(side, { claimed: 8, damage: 30, frontDelta: 6, lost: 0, caught: false });
+    const up = side.press!.mood;
+    expect(up).toBeGreaterThan(50);
+    moodWeek(side, { claimed: 0, damage: 0, frontDelta: 0, lost: 6, caught: true });
+    expect(side.press!.mood).toBeLessThan(up - 15);
+    // With nothing to report the mood drifts back towards the middle.
+    side.press!.mood = 90;
+    moodWeek(side, { claimed: 0, damage: 0, frontDelta: 0, lost: 0, caught: false });
+    expect(side.press!.mood).toBeLessThan(90);
+  });
+
+  it('old saves without a press load and play on', () => {
+    const s = run(2);
+    delete s.sides[0].press;
+    delete s.sides[1].press;
+    delete s.sides[0].prisoners;
+    const loaded = deserialize(serialize(s));
+    endTurnSingle(loaded, playerPlan(loaded));
+    expect(loaded.sides[0].press!.papers.length).toBe(1);
+  });
+});
+
+describe('Prisoners of war', () => {
+  const campaign = () => {
+    for (let k = 0; k < 20; k++) {
+      const s = startCampaign({ seed: `pow-${k}`, mode: 'hotseat' });
+      for (let w = 0; w < 8 && !s.outcome; w++) resolveTurn(s, [playerPlan(s), aiPlan(s, 1)]);
+      if ((s.sides[0].prisoners ?? []).length && (s.sides[1].prisoners ?? []).length) return s;
+    }
+    throw new Error('no prisoners taken in 20 campaigns');
+  };
+
+  it('are enemy airmen lost over our ground, questioned with the truth kept for the archive', () => {
+    const s = campaign();
+    for (const id of [0, 1] as const) {
+      for (const p of s.sides[id].prisoners!) {
+        // A prisoner always flew for the other side.
+        expect(p.side).toBe(1 - id);
+        expect(p.statements.length).toBeGreaterThanOrEqual(2);
+        for (const x of p.statements) {
+          expect(x.q.length).toBeGreaterThan(0);
+          expect(x.truth).toBeTruthy();
+        }
+        // A stubborn man gives name, rank and number to all but one question.
+        if (p.temper === 'stubborn') expect(p.statements.filter((x) => x.a.includes(p.name)).length).toBeGreaterThanOrEqual(p.statements.length - 1);
+        // An honest man's count of fighters is close to the truth.
+        const st = p.statements.find((x) => x.topic === 'strength');
+        if (st && (p.temper === 'shaken' || p.temper === 'talkative')) expect(Math.abs(st.figure! - Number(st.truth!.split(' ')[0]))).toBeLessThanOrEqual(Math.ceil(Number(st.truth!.split(' ')[0]) * 0.16) + 1);
+      }
+    }
+  });
+
+  it('are never taken from defenders shot down over their own country', () => {
+    for (let k = 0; k < 6; k++) {
+      const s = startCampaign({ seed: `pow-def-${k}`, mode: 'hotseat' });
+      for (let w = 0; w < 8 && !s.outcome; w++) {
+        const week = s.turn;
+        const r = resolveTurn(s, [playerPlan(s), aiPlan(s, 1)]);
+        const planes = [...r.raids, ...r.feints].flatMap((x) => x?.planes ?? []);
+        for (const id of [0, 1] as const) {
+          for (const p of (s.sides[id].prisoners ?? []).filter((x) => x.week === week)) {
+            const rec = planes.find((x) => x.serial === p.serial && x.side === p.side);
+            // Recon flights are not among the raids; every other prisoner came down attacking us.
+            if (rec) {
+              expect(rec.role).not.toBe('defense');
+              expect(rec.fate).toBe('lost');
+            } else expect(p.kind).toBe('recon');
+          }
+        }
+      }
+    }
+  });
+
+  it('the AI questions nobody and reads no papers', () => {
+    const s = startCampaign({ seed: 'pow-ai', mode: 'single' });
+    for (let w = 0; w < 8 && !s.outcome; w++) endTurnSingle(s, playerPlan(s));
+    expect(s.sides[1].prisoners ?? []).toEqual([]);
   });
 });

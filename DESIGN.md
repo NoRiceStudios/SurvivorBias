@@ -541,6 +541,30 @@ campaign.
 | Intelligence officer (upgrade) | Supplies | Shows confidence ranges on report figures |
 | Better radios (R&D) | Supplies | A fuller radio log; you learn *where* planes were lost |
 | Wreck recovery (event) | Varies | Rare: inspect a downed plane on friendly ground and see the lethal hit |
+| Prisoner interrogation *(implemented)* | Free | Enemy airmen who bale out over our side are questioned (see §9.1) |
+
+### 9.1 Prisoners of war *(implemented)*
+
+Enemy crews lost over our ground (raids, escorts, feints, recon; never their
+defenders over their own country) may be taken prisoner, on the same roll that
+sends the enemy's Red Cross letter. Each prisoner is questioned at the next
+debrief, on a **Prisoners** sheet after Reports & Front:
+
+- **How he came down**: the lethal hit and the attack that caused it (flak,
+  or a fighter from astern, head-on or the beam). The one source on how well
+  *our* interceptor tactics work.
+- **Their fighter strength**, **where their bombers go next** (the AI's real
+  intent for next week, or a human enemy's last target), **their armour** and
+  **their morale**. A target answer comes with a *Patrol* button, like the
+  Y-Service warning.
+
+Every prisoner has a temper that bends his answers: *shaken* and *talkative*
+men tell the truth, *arrogant* ones inflate their strength and deny being shot
+down, *stubborn* ones give name, rank and number and let one thing slip, and
+*too helpful* ones feed false steers. The interrogator's read of the temper is
+shown and is wrong about three times in ten. Statements stay on file under
+Intelligence; the truth behind each answer opens with the archives after the
+war (and is withheld from a LAN client until then).
 
 ## 10. The enemy
 
@@ -748,6 +772,21 @@ replayed, and verified identically on both machines in PvP.
   the wing's own men, the general (or the Directorate's officer) reads the
   memos in an animated pop-up with a pixel-art portrait and typed text. At the
   end of a theater he reads the verdict, the cost and the roll of the missing.
+- **The morning paper** *(implemented)*: after High Command's letter, the
+  nation's newspaper (*The Aldmere Clarion*, *Nordwacht*, *Varn Morgenblad*)
+  spins onto the desk with the week's returns as headlines: the claims sent to
+  High Command, never the truth. Our losses are always "light" (the Ministry
+  admits at most half of them); the enemy's wireless claims are printed as
+  lies; the week's top-claiming leader is the hero, quoted in character; a
+  press photograph shows one of our returning aircraft, holes and all. The
+  adjutant pencils our real losses in the margin. The public's **mood**
+  (0-100) follows the papers: claims, damage and gains cheer it; losses and a
+  caught-out report sour it; it drifts back to the middle every week. Mood buys
+  **war bonds** (about −8 to +22 supplies a week, with the deliveries) but sets
+  **expectations**: High Command's new directives grow by up to a third and a
+  failed one costs more confidence, and a theater lost after the papers
+  promised victory costs 5 more. Back issues are in the War Room's in-tray
+  (Press); after the war every front page is cut out next to the truth.
 - **Station life:** a scene or two a week from the wing's own airfield, more in
   a quiet week:
   - a squadron's evening off;

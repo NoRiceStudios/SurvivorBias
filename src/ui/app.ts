@@ -13,6 +13,7 @@ import { clearDispatches, memoDispatch, showDispatch, type Dispatch } from './ge
 import { renderEnd } from './end';
 import { renderHq, TAB_ALIAS } from './hq';
 import { renderLetter } from './letter';
+import { renderPaper } from './paper';
 import { DEBRIEF_ALIAS } from './battle';
 import { renderDebrief, renderRadio } from './battle';
 import { renderTitle } from './title';
@@ -35,7 +36,8 @@ export type Screen =
   | { kind: 'lanSetup' }
   | { kind: 'lanWait'; side: SideId }
   | { kind: 'sealed'; side: SideId }
-  | { kind: 'letter'; side: SideId; mode: 'returns' | 'week' };
+  | { kind: 'letter'; side: SideId; mode: 'returns' | 'week' }
+  | { kind: 'paper'; side: SideId; week?: number; then: 'debrief' | 'hq' };
 
 export const AUTOSAVE = 'autosave';
 
@@ -153,17 +155,20 @@ export class App {
       case 'letter':
         view = renderLetter(this, s.side, s.mode);
         break;
+      case 'paper':
+        view = renderPaper(this, s.side, s.week, s.then);
+        break;
     }
     this.root.append(view);
     setMood(moodFor(s.kind));
     // A new sheet is laid on the desk: it rises into place with the sound of paper.
     if (this.entering) {
       view.classList.add('entering');
-      if (s.kind === 'hq' || s.kind === 'debrief' || s.kind === 'end') sfxPaper();
+      if (s.kind === 'hq' || s.kind === 'debrief' || s.kind === 'end' || s.kind === 'paper') sfxPaper();
       this.entering = false;
     }
     // Evening while planning, night in the radio room, dawn at the debrief.
-    document.body.dataset.phase = { title: 'night', radio: 'night', debrief: 'dawn', letter: 'letter', theater: 'letter', end: 'letter' }[s.kind as string] ?? 'plan';
+    document.body.dataset.phase = { title: 'night', radio: 'night', debrief: 'dawn', letter: 'letter', paper: 'letter', theater: 'letter', end: 'letter' }[s.kind as string] ?? 'plan';
     const manual = manualOverlay(() => this.render());
     if (manual) this.root.append(manual);
     for (const [key, top] of scrollers) {
@@ -404,6 +409,14 @@ export class App {
     this.go({ kind: 'letter', side, mode: 'returns' });
   }
 
+  /** High Command's letter has been read: the week's paper comes next, if this commander has one. */
+  afterLetter(side: SideId) {
+    const st = this.state!;
+    const d = st.lastDebriefs[side];
+    if (d && st.sides[side].press?.papers.some((p) => p.week === d.turn)) return this.go({ kind: 'paper', side, week: d.turn, then: 'debrief' });
+    this.afterDebrief(side);
+  }
+
   /** After a side has read its debrief. */
   afterDebrief(side: SideId) {
     const st = this.state!;
@@ -461,7 +474,7 @@ export class App {
   /** Privacy cover for hotseat: hides the screen until clicked. */
   covered = false;
   toggleCover() {
-    if (!this.state || !['hq', 'debrief', 'radio', 'sealed', 'lanWait', 'letter'].includes(this.screen.kind)) return;
+    if (!this.state || !['hq', 'debrief', 'radio', 'sealed', 'lanWait', 'letter', 'paper'].includes(this.screen.kind)) return;
     this.covered = !this.covered;
     let el = document.getElementById('cover');
     if (this.covered) {

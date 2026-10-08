@@ -11,6 +11,7 @@ import { radioCut, radioOff, radioOn, sfxClick, sfxKey, sfxPaper, sfxRing, sfxSt
 import { animOn, h, meter, plural } from './dom';
 import { topBar } from './hq';
 import { aircraftCanvas, spriteDef } from './sprites';
+import { prisonersSheet, weekPrisoners } from './prisoners';
 
 /* ---------------- Radio room ---------------- */
 let speed = 1;
@@ -224,6 +225,11 @@ const DTABS: [string, string][] = [
   ['reports', 'Reports & Front'],
 ];
 
+/** The debrief's sheets this week: prisoners have one of their own when any were brought in. */
+function debriefTabs(app: App, d: Debrief): [string, string][] {
+  return weekPrisoners(app.state!.sides[d.side], d.turn).length ? [...DTABS, ['prisoners', 'Prisoners']] : DTABS;
+}
+
 /** Old sheet names lead to the sheet that now holds them. */
 export const DEBRIEF_ALIAS: Record<string, string> = { aircraft: 'returns', missing: 'returns', home: 'reports' };
 
@@ -240,13 +246,15 @@ export function renderDebrief(app: App, sideId: SideId, tabIn: string): HTMLElem
   const st = app.state!;
   const d = st.lastDebriefs[sideId]!;
   const side = st.sides[sideId];
+  const tabs = debriefTabs(app, d);
+  const pows = weekPrisoners(side, d.turn).length;
   const nav = h('nav', { class: 'tabs' },
-    DTABS.map(([id, label]) => h('button', { class: `tab ${tab === id ? 'active' : ''}`, 'data-tab': id, onclick: () => { sfxClick(); app.go({ kind: 'debrief', side: sideId, tab: id }); } }, label,
-      id === 'returns' && d.missing.length ? h('span', { class: 'badge' }, String(d.missing.length)) : null)),
+    tabs.map(([id, label]) => h('button', { class: `tab ${tab === id ? 'active' : ''}`, 'data-tab': id, onclick: () => { sfxClick(); app.go({ kind: 'debrief', side: sideId, tab: id }); } }, label,
+      id === 'returns' && d.missing.length ? h('span', { class: 'badge' }, String(d.missing.length)) : id === 'prisoners' ? h('span', { class: 'badge quiet' }, String(pows)) : null)),
   );
-  const body = tab === 'reports' ? reportsSheet(app, d) : returnsSheet(app, d);
-  const at = DTABS.findIndex(([id]) => id === tab);
-  const next = DTABS[at + 1];
+  const body = tab === 'reports' ? reportsSheet(app, d) : tab === 'prisoners' && pows ? prisonersSheet(app, d) : returnsSheet(app, d);
+  const at = tabs.findIndex(([id]) => id === tab);
+  const next = tabs[at + 1];
   const file = () => { sfxStamp(); app.fileReports(sideId); };
   const policy = app.plans[sideId].embellish >= 0.65 ? 'Creative' : app.plans[sideId].embellish >= 0.2 ? 'Optimistic' : 'Accurate';
   return h('div', { class: 'hq debrief' },
@@ -254,7 +262,7 @@ export function renderDebrief(app: App, sideId: SideId, tabIn: string): HTMLElem
     h('div', { class: 'hq-body' }, nav, h('main', { class: 'content', 'data-keep-scroll': `db-${tab}` }, kpis(app, d), body)),
     h('div', { class: 'launchbar' },
       h('div', { class: 'launch-summary' },
-        h('span', { class: 'debrief-steps' }, DTABS.map(([id, label], i) => h('span', { class: `step ${id === tab ? 'on' : i < at ? 'done' : ''}` }, `${i + 1}. ${label}`))),
+        h('span', { class: 'debrief-steps' }, tabs.map(([id, label], i) => h('span', { class: `step ${id === tab ? 'on' : i < at ? 'done' : ''}` }, `${i + 1}. ${label}`))),
         h('span', { class: 'small muted', ...tip({ head: 'Returns policy', text: 'How the adjutant presented this week\'s results to High Command. Set it in the War Room.' }) }, `Returns filed: ${policy}`)),
       h('div', { class: 'launch-actions' },
         next ? h('button', { class: 'btn small choice', onclick: file }, 'File now') : null,

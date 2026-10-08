@@ -279,6 +279,90 @@ export interface SideState {
   allotments?: Allotment[];
   /** A friend on the Air Council: the next failed directive costs no confidence. */
   advocate?: boolean;
+  /** The home front: what the public believes, the war bonds it buys, and the papers it reads. */
+  press?: Press;
+  /** Enemy airmen taken prisoner over our ground, and what they said under questioning. */
+  prisoners?: Interrogation[];
+}
+
+/** A column on the newspaper's front page, beside the lead story. */
+export interface NewsColumn {
+  kind: 'enemy' | 'hero' | 'home' | 'letters' | 'correction' | 'weather' | 'notice';
+  head: string;
+  body: string;
+}
+
+/** One week's front page of the home newspaper, written from the returns sent to High Command. */
+export interface Newspaper {
+  week: number;
+  name: string;
+  motto: string;
+  price: string;
+  headline: string;
+  deck: string;
+  lead: string;
+  columns: NewsColumn[];
+  /** A press photograph of one of our aircraft that came home, holes and all. */
+  photo?: { kind: AircraftKind; serial: string; hits: Hit[]; caption: string };
+  /** Enemy aircraft destroyed, as the paper prints it (the returns to High Command). */
+  claimed: number;
+  /** Our aircraft the enemy's wireless claims to have destroyed. */
+  enemyClaim: number;
+  /** Our losses as the Ministry gives them to the press. */
+  ministryLosses: number;
+  /** Our losses as the wing knows them. */
+  lost: number;
+  mood: number;
+  moodBefore: number;
+  /** Supplies the week's war bonds bought for the wing (can be negative). */
+  bonds: number;
+  /** Multiplier on High Command's directives while the public expects this much. */
+  expect: number;
+}
+
+export interface Press {
+  /** What the public believes about the war in the air, 0 to 100. */
+  mood: number;
+  /** War-bond supplies due with this week's deliveries. */
+  bonds: number;
+  papers: Newspaper[];
+}
+
+export type PrisonerTemper = 'proud' | 'shaken' | 'talkative' | 'stubborn' | 'false';
+
+/** One question put to a prisoner, his answer and, for the archive, the truth. */
+export interface Statement {
+  topic: 'downed' | 'strength' | 'armor' | 'target' | 'morale';
+  q: string;
+  a: string;
+  /** The interrogator's note in the margin. */
+  note?: string;
+  /** What was really so: shown only when the archives open. */
+  truth?: string;
+  /** A sector the answer points to (a raid he says is coming). */
+  sector?: number;
+  /** For the strength question: the figure he gave. */
+  figure?: number;
+}
+
+export interface Interrogation {
+  id: string;
+  week: number;
+  /** The side the prisoner flew for. */
+  side: SideId;
+  name: string;
+  rank: string;
+  unit: string;
+  kind: AircraftKind;
+  serial: string;
+  /** He led his squadron. */
+  leader?: boolean;
+  archetype: Archetype;
+  temper: PrisonerTemper;
+  /** How the interrogator read him (not always right). */
+  seemed: PrisonerTemper;
+  statements: Statement[];
+  remark: string;
 }
 
 export type AllotmentRarity = 'common' | 'rare' | 'exceptional';

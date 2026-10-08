@@ -18,6 +18,7 @@ import { tip } from './tip';
 import { countPlanes, pips, seg } from './widgets';
 import { aircraftCanvas } from './sprites';
 import { animatedMap, hoverFlight, type Flight } from './mapanim';
+import { paperMini } from './paper';
 
 type Role = 'raid' | 'defense' | 'rest' | 'recon' | 'feint';
 
@@ -317,7 +318,7 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
 
 /* ---------------- In-tray ---------------- */
 
-let trayTab: 'requests' | 'orders' | 'mail' | null = null;
+let trayTab: 'requests' | 'orders' | 'mail' | 'press' | null = null;
 
 function inTray(app: App, side: SideState): HTMLElement {
   const st = app.state!;
@@ -328,7 +329,7 @@ function inTray(app: App, side: SideState): HTMLElement {
   const supply = side.memos.find((m) => m.kind === 'supply' && m.turn >= st.turn);
   const due = side.orders.filter((o) => o.deadline <= st.turn).length;
   const tab = trayTab ?? (side.requests.length ? 'requests' : due ? 'orders' : 'mail');
-  const tabs: [typeof tab, string, number][] = [['requests', 'Requests', side.requests.length], ['orders', 'Orders', side.orders.length], ['mail', 'Mail', fresh.length]];
+  const tabs: [typeof tab, string, number][] = [['requests', 'Requests', side.requests.length], ['orders', 'Orders', side.orders.length], ['mail', 'Mail', fresh.length], ['press', 'Press', 0]];
   let body: HTMLElement[];
   if (tab === 'requests') {
     body = side.requests.length ? side.requests.map((r) => requestCard(app, side, r)) : [h('p', { class: 'small muted' }, 'No requests this week.')];
@@ -341,6 +342,8 @@ function inTray(app: App, side: SideState): HTMLElement {
         h('span', { class: `order-due ${o.deadline <= st.turn ? 'now' : ''}` }, o.graced ? `wk ${o.deadline}: awaiting photographs` : o.deadline <= st.turn ? 'DUE THIS WEEK' : `due wk ${o.deadline}`),
         site && !current ? h('button', { class: 'btn small', disabled: !inRange(site), onclick: () => pick(site.type, site.id) }, inRange(site) ? 'Make target ▸' : 'Out of range') : current ? h('span', { class: 'small good' }, '✓ this week\'s target') : null);
     }) : [h('p', { class: 'small muted' }, 'No outstanding directives.')];
+  } else if (tab === 'press') {
+    body = [paperMini(app, side)];
   } else {
     body = ([
       supply ? h('div', { class: 'small muted' }, supply.body) : null,
@@ -349,7 +352,7 @@ function inTray(app: App, side: SideState): HTMLElement {
         h('div', { class: 'memo-body' }, m.body))) : [h('p', { class: 'small muted' }, 'Nothing new. Older correspondence is filed under Intelligence.')]),
     ] as (HTMLElement | null)[]).filter((x): x is HTMLElement => !!x);
   }
-  if (!side.requests.length && !side.orders.length && !fresh.length) return h('section', { class: 'intray empty' }, 'In-tray empty.');
+  if (!side.requests.length && !side.orders.length && !fresh.length && !side.press?.papers.length) return h('section', { class: 'intray empty' }, 'In-tray empty.');
   return h('section', { class: 'intray' },
     h('div', { class: 'tray-tabs' }, tabs.map(([id, label, n]) => h('button', { class: `tray-tab ${tab === id ? 'on' : ''}`, onclick: () => { trayTab = id; app.render(); } }, label, n ? h('span', { class: `badge ${id === 'orders' && !due ? 'quiet' : ''}` }, String(n)) : null))),
     (() => {

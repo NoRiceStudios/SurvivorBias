@@ -9,6 +9,8 @@ import type { App } from './app';
 import { sfxClick, sfxKey } from './audio';
 import { countUp, h, plural } from './dom';
 import { aircraftCanvas } from './sprites';
+import { prisonerArchive } from './prisoners';
+import { moodLabel } from '../core/press';
 
 const OUTCOME_TEXT: Record<Outcome, [string, string]> = {
   victory: ['VICTORY', 'The enemy has asked for terms. The war is over, and you will be remembered as the commander who won it, whatever the archives say.'],
@@ -27,7 +29,7 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
   const [title, text] = OUTCOME_TEXT[outcome];
   const other = (1 - sideId) as SideId;
   const nav = h('nav', { class: 'tabs' },
-    [['summary', 'Outcome'], ['archive', 'Declassified'], ['ledger', 'The Ledger'], ...(st.mode !== 'single' ? [['diaries', 'Both War Diaries']] : [])].map(([id, label]) =>
+    [['summary', 'Outcome'], ['archive', 'Declassified'], ['ledger', 'The Ledger'], ...(st.sides[sideId].press?.papers.length ? [['papers', 'The Papers']] : []), ...(st.mode !== 'single' ? [['diaries', 'Both War Diaries']] : [])].map(([id, label]) =>
       h('button', { class: `tab ${tab === id ? 'active' : ''}`, onclick: () => { sfxClick(); app.go({ kind: 'end', side: sideId, tab: id }); } }, label)),
     st.mode !== 'single' ? h('button', { class: 'tab', onclick: () => app.go({ kind: 'end', side: other, tab }) }, `View ${st.sides[other].short}`) : null,
     h('div', { class: 'tabs-spacer' }),
@@ -70,7 +72,10 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
       h('section', { class: 'paper panel' },
         h('p', { class: 'handwritten' }, 'The holes in the returning aircraft show where an aircraft can be hit and still come home. Every type is different, and every war.'),
       ),
+      prisonerArchive(app, sideId),
     );
+  } else if (tab === 'papers') {
+    body = papersArchive(st, sideId);
   } else if (tab === 'diaries') {
     const [a, b] = st.sides;
     const sum = (f: (e: (typeof st.archive)[number]) => number) => st.archive.reduce((x, e) => x + f(e), 0);
@@ -227,4 +232,37 @@ function ledgerChart(archive: GameState['archive'], side: SideId): HTMLElement {
   return h('div', { class: 'ledger-chart-wrap' },
     h('div', { class: 'ledger-key' }, key('claimed', 'claimed by crews'), key('hq', 'reported to HQ'), key('truth', 'actually destroyed'), key('lost', 'week a sector was lost')),
     svg as unknown as HTMLElement);
+}
+
+/** Every front page of the war as a cutting, with the truth of that week pencilled underneath. */
+function papersArchive(st: GameState, side: SideId): HTMLElement {
+  const papers = st.sides[side].press?.papers ?? [];
+  const week = (w: number) => st.archive.find((e) => e.turn === w);
+  const printed = papers.reduce((a, p) => a + p.claimed, 0);
+  const truly = papers.reduce((a, p) => a + (week(p.week)?.trueKills[side] ?? 0), 0);
+  const told = papers.reduce((a, p) => a + p.ministryLosses, 0);
+  const lost = papers.reduce((a, p) => a + (week(p.week)?.trueLosses[side] ?? p.lost), 0);
+  const bonds = papers.reduce((a, p) => a + p.bonds, 0);
+  const peak = papers.reduce((a, p) => (p.mood > a.mood ? p : a), papers[0]);
+  return h('div', { class: 'col' },
+    h('section', { class: 'paper panel' },
+      h('div', { class: 'stamp big declass-stamp' }, 'DECLASSIFIED'),
+      h('h2', null, 'What the papers said, and what happened'),
+      h('div', { class: 'stats diaries-totals' },
+        h('div', null, h('span', null, 'Enemy aircraft the papers printed as destroyed'), h('b', null, String(printed))),
+        h('div', null, h('span', null, 'Actually destroyed'), h('b', { class: 'truth' }, String(truly))),
+        h('div', null, h('span', null, 'Our losses the Ministry admitted'), h('b', null, String(told))),
+        h('div', null, h('span', null, 'Our aircraft actually lost'), h('b', { class: 'truth' }, String(lost))),
+        h('div', null, h('span', null, 'Supplies bought with war bonds'), h('b', null, String(bonds))),
+        peak ? h('div', null, h('span', null, `The public at its happiest (week ${peak.week})`), h('b', null, moodLabel(peak.mood))) : null)),
+    h('div', { class: 'cuttings' }, papers.map((p, i) => {
+      const e = week(p.week);
+      return h('article', { class: 'cutting', style: `transform: rotate(${[-0.8, 0.5, -0.3, 0.9][i % 4]}deg)` },
+        h('div', { class: 'cut-mast' }, p.name, h('small', null, ` · No. ${p.week}`)),
+        h('div', { class: 'cut-head' }, p.headline),
+        h('p', { class: 'cut-deck' }, p.deck),
+        h('div', { class: 'cut-truth handwritten' },
+          h('div', null, `Printed: ${p.claimed} destroyed. In truth: `, h('b', null, String(e?.trueKills[side] ?? '?'))),
+          h('div', null, `Our losses "${p.ministryLosses === 0 ? 'none' : p.ministryLosses}". In truth: `, h('b', null, String(e?.trueLosses[side] ?? p.lost)))));
+    })));
 }

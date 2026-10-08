@@ -93,6 +93,13 @@ const STEPS: Step[] = [
     done: (app) => app.screen.kind === 'hq' || app.screen.kind === 'letter',
   },
   {
+    where: (s) => s.kind === 'paper',
+    target: '.np-home',
+    title: 'The morning paper',
+    text: 'The papers print the returns you send to High Command, never the truth, and our losses are always "light". A cheerful public buys war bonds, which means more supplies, but it also expects more, and High Command asks for it. Fold the paper when you have read it.',
+    done: (app) => app.screen.kind === 'hq',
+  },
+  {
     where: hq(),
     target: '[data-tab="squadrons"]',
     title: 'The squadrons',

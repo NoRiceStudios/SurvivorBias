@@ -23,6 +23,8 @@ const bar = (v: number, cls = '') => h('span', { class: `fx-bar ${cls}` }, h('i'
 /** One small picture per page, drawn from the game's own pieces. */
 const ART: Record<string, () => HTMLElement> = {
   'The turn': () => stamp('ORDERS ISSUED'),
+  'The home front': () => stamp('PASSED BY CENSOR'),
+  'Prisoners of war': () => stamp('PRISONER OF WAR'),
   'Survivorship bias': () => h('div', { class: 'art-row' },
     h('figure', null, plot(holes(['outerWing', 'outerWing', 'fuselage', 'fuselage', 'tail', 'outerWing', 'fuselage', 'wingRoot'])), h('figcaption', null, 'What came back')),
     h('figure', null, plot(holes(['engines', 'cockpit', 'engines', 'fuel', 'cockpit']), undefined, '#ff3b30'), h('figcaption', null, 'What brought them down'))),
@@ -67,6 +69,8 @@ const PAGES: [string, string, string][] = [
   ['Crippled works', 'Intelligence', 'Below 50% a type of works is crippled and the effect jumps: crippled airfields halve fighter cover, crippled depots and works cut deliveries and production further. Only works within two sectors of the front count.'],
   ['Y-Service', 'Intelligence', 'Signals intelligence. Warns of enemy raids, sometimes naming the sector. Its record is shown with each warning; it can be wrong.'],
   ['Returns policy', 'High Command', 'How the adjutant presents results to High Command: accurate, optimistic or creative. Set in the War Room orders column.'],
+  ['The home front', 'High Command', 'Every week the nation\'s newspaper prints the returns you sent to High Command as headlines, and our losses as "light". The public\'s mood follows the papers: claims and gains cheer it, losses and a report caught out sour it, and it drifts back to the middle. A cheerful public buys war bonds (more supplies with the deliveries) but expects more: High Command\'s new directives grow and a failed one costs more confidence. Back issues: War Room › Press.'],
+  ['Prisoners of war', 'Intelligence', 'Enemy airmen who bale out over our lines are questioned at the debrief: how they came down, how strong their side is, where their bombers go next. They talk through their pride, their shock or their orders, and some lie on purpose; the interrogator\'s read of each man is not always right. Statements stay on file under Intelligence.'],
 ];
 
 let open = false;
