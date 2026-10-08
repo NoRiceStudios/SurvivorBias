@@ -22,3 +22,5 @@ export * from './vignettes';
 export * from './doctrine';
 export * from './factions';
 export * from './allotments';
+export * from './press';
+export * from './interrogation';

@@ -75,13 +75,18 @@ await p.waitForTimeout(300);
 await p.click('text=Open the folder');
 await p.evaluate(() => window.sb.go({ kind: 'debrief', side: 0, tab: 'home' }));
 await shot('h5-debrief-home');
-await p.click('text=File reports');
+// "File reports" on the last sheet; "File now" when a Prisoners sheet follows.
+await p.click('.launch-actions button:is(:text("File reports"), :text("File now"))');
 await p.waitForTimeout(200);
 check(await p.evaluate(() => window.sb.screen.kind === 'letter' && !!document.querySelector('.letter')), 'High Command answers in full screen');
 await shot('h5b-hq-letter');
 await p.click('.letter .btn.primary');
+await p.waitForTimeout(1100);
+check(await p.evaluate(() => window.sb.screen.kind === 'paper' && !!document.querySelector('.newspaper .np-headline')), 'the morning paper follows the letter');
+await shot('h5c-paper');
+await p.click('.np-foot .btn.primary');
 await p.waitForTimeout(200);
-check(await p.evaluate(() => window.sb.screen.kind === 'handover' || window.sb.screen.kind === 'theater'), 'filing the reports moves on');
+check(await p.evaluate(() => window.sb.screen.kind === 'handover' || window.sb.screen.kind === 'theater'), 'folding the paper moves on');
 await p.evaluate(() => window.sb.go({ kind: 'debrief', side: 1, tab: 'home' }));
 await shot('h6-debrief-home-side1');
 

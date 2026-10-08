@@ -2,7 +2,7 @@
 
 A pixel-art strategy game about commanding a WWII-style air wing, using only the reports of the crews who come back.
 
-You armor, train, build and send your squadrons out. You never see the battle itself. You hear a broken radio log, then debrief the survivors. Every report is filtered through a squadron leader's personality and shock. The damage you see on returning aircraft is real, but planes that were shot down never show you theirs. When the war ends, the archives are declassified and you find out what really happened.
+You armor, train, build and send your squadrons out. You never see the battle itself. You hear a broken radio log, then debrief the survivors. Every report is filtered through a squadron leader's personality and shock. The damage you see on returning aircraft is real, but planes that were shot down never show you theirs. Every morning the nation's newspaper prints your returns as headlines: a cheerful public buys war bonds but expects more victories. Enemy airmen who bale out over your lines are questioned, and they lie, boast and despair just like your own crews. When the war ends, the archives are declassified and you find out what really happened.
 
 The war is fought across three theaters: the Narrow Sea, the Kessel Basin and the Northern Approaches. Each is a strip of sectors holding named airfields, works and depots. You win a theater by pushing the front forward sector by sector. Strikes, close support and air superiority all build pressure, deeper targets come into range as you advance, and every theater has its own weather, stages and secondary objective. Each side fights for one of three nations with its own strengths and weaknesses: Aldmere's radar net, the Directorate's elite, or the League of Varn's mass production (§6.7). Missions are sector-based and the same for both sides, so they work identically against the AI and against another player. See [DESIGN.md](DESIGN.md), especially §6.6 War theaters and §10.3 How missions work in multiplayer.
 
@@ -27,6 +27,7 @@ The war is fought across three theaters: the Narrow Sea, the Kessel Basin and th
 | `node scripts/screenshots.mjs` | Drive the real UI in Chromium and screenshot every screen (after `npm run build`) |
 | `npm run balance -- 40` | Play 40 headless campaigns and print outcome statistics |
 | `xvfb-run -a node scripts/electron-smoke.mjs` | Launch the Electron app headlessly and check that saving works |
+| `node scripts/press-shots.mjs` | Screenshot the newspaper, the prisoners' interrogations and their archive pages in Chromium (after `npm run build`) |
 | `node scripts/tutorial-smoke.mjs` | Walk through the whole tutorial in Chromium, doing what each step asks |
 | `node scripts/hotseat-smoke.mjs` | Play a two-commander hotseat campaign through the real UI: names, feints, Esc cover, sealed orders across save/load, theater changes, end diaries |
 | `xvfb-run -a node scripts/lan-smoke.mjs` | Two desktop instances play over TCP: redaction, command replay, several weeks, disconnect and rejoin |

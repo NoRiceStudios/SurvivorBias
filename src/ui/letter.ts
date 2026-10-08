@@ -63,7 +63,7 @@ export function renderLetter(app: App, sideId: SideId, mode: 'returns' | 'week')
   const delta = before === undefined ? 0 : side.trust - before;
   const ack = () => {
     sfxStamp();
-    if (mode === 'returns') app.afterDebrief(sideId);
+    if (mode === 'returns') app.afterLetter(sideId);
     else app.go({ kind: 'hq', side: sideId, tab: 'war' });
   };
   const btn = h('button', { class: 'btn primary launch', onclick: (e: MouseEvent) => { e.stopPropagation(); ack(); } }, mode === 'returns' && st.outcome ? 'The war is over ▸' : 'Acknowledged ▸');

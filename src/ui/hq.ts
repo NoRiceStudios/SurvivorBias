@@ -23,6 +23,7 @@ import { toggleManual } from './manual';
 import { dedupeMemos, warRoom } from './warroom';
 import { panel } from './widgets';
 import { worksScreen } from './works';
+import { prisonerFile } from './prisoners';
 
 export { missionLabel } from './widgets';
 
@@ -172,6 +173,7 @@ function intel(app: App, side: SideState): HTMLElement {
           return h('div', { class: 'bar-row wide' }, h('span', null, x.name), h('span', { class: 'bar est' }, h('i', { style: `width:${b}%` })), h('span', null, `${b}%${p.photographed.includes(x.id) ? ' 📷' : ''}`));
         }),
         h('p', { class: 'small muted' }, 'From crews\' bombing reports; 📷 marks figures from photographs.')),
+      prisonerFile(app, side),
       correspondence(app, side),
     ),
   );

@@ -41,6 +41,8 @@ function blankSide(s: SideState): SideState {
     intent: undefined,
     allotments: [],
     advocate: undefined,
+    press: undefined,
+    prisoners: undefined,
   };
 }
 
@@ -62,6 +64,8 @@ export function redactFor(full: GameState, viewer: SideId): GameState {
   s.theater.objectives = s.theater.objectives.filter((o) => o.side === viewer);
   s.lastDebriefs[enemy] = null;
   s.sealed[enemy] = null;
+  // What the prisoners really knew stays in the archive until the war is over.
+  for (const p of me.prisoners ?? []) for (const x of p.statements) delete x.truth;
   // The archive keeps only what this commander saw: own claims, own losses, survivor damage.
   for (const e of s.archive) {
     e.trueKills = [0, 0];
