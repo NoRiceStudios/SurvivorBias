@@ -242,11 +242,13 @@ let boardKind: AircraftKind | null = null;
  * High Command's answer.
  */
 export function renderDebrief(app: App, sideId: SideId, tabIn: string): HTMLElement {
-  const tab = DEBRIEF_ALIAS[tabIn] ?? tabIn;
   const st = app.state!;
   const d = st.lastDebriefs[sideId]!;
   const side = st.sides[sideId];
   const tabs = debriefTabs(app, d);
+  // A sheet this week does not have (no prisoners came in) opens the first one.
+  const asked = DEBRIEF_ALIAS[tabIn] ?? tabIn;
+  const tab = tabs.some(([id]) => id === asked) ? asked : tabs[0][0];
   const pows = weekPrisoners(side, d.turn).length;
   const nav = h('nav', { class: 'tabs' },
     tabs.map(([id, label]) => h('button', { class: `tab ${tab === id ? 'active' : ''}`, 'data-tab': id, onclick: () => { sfxClick(); app.go({ kind: 'debrief', side: sideId, tab: id }); } }, label,

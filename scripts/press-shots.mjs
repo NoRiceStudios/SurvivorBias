@@ -14,10 +14,10 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 await page.goto('file://' + resolve('dist/renderer/index.html'));
 await page.waitForTimeout(600);
 const shot = async (name) => { await page.waitForTimeout(1200); await page.screenshot({ path: `${out}/${name}.png` }); console.log('shot', name); };
-await page.evaluate(() => window.sb.newGame('single', 0.4));
-// Fly until a week brings prisoners in.
+// Fly until a week brings prisoners in (a new campaign if this one never does).
 const week = await page.evaluate(async () => {
-  for (let g = 0; g < 30 && !window.sb.state.outcome; g++) {
+  for (let g = 0; g < 60; g++) {
+    if (g % 12 === 0 || window.sb.state.outcome) window.sb.newGame('single', 0.4);
     const sb = window.sb;
     sb.fitToStores(0);
     await sb.launch(0);
@@ -27,6 +27,8 @@ const week = await page.evaluate(async () => {
   return -1;
 });
 console.log('prisoners in week', week);
+// Let the "orders issued" sheet slide away first.
+await page.waitForTimeout(1800);
 await page.evaluate(() => window.sb.go({ kind: 'debrief', side: 0, tab: 'prisoners' }));
 await shot('p1-debrief-prisoners');
 await page.evaluate(() => window.sb.fileReports(0));
