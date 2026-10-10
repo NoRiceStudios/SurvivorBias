@@ -1,7 +1,7 @@
 import { nationOf, NATIONS, rulesOf, spec, type SideRef } from './factions';
 import { Rng } from './rng';
 import { rollLethality } from './lethality';
-import { enterTheater } from './theaters';
+import { CLASSIC_CAMPAIGN, drawCampaign, enterTheater } from './theaters';
 import type {
   AircraftKind,
   Airframe,
@@ -18,7 +18,7 @@ import type {
 } from './types';
 import { ZONES } from './types';
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 export function zoneMap<T>(fn: (z: (typeof ZONES)[number]) => T): ZoneMap<T> {
   return Object.fromEntries(ZONES.map((z) => [z, fn(z)])) as ZoneMap<T>;
@@ -225,6 +225,8 @@ export interface NewGameOptions {
   aiInsight?: number;
   /** The nation each side fights for. Absent: a classic war of Aldmere against the Directorate with symmetric rules. */
   factions?: [NationId, NationId];
+  /** Play the original three theaters in their old order (the tutorial) instead of drawing from the pool. */
+  classicCampaign?: boolean;
 }
 
 export function newGame(opts: NewGameOptions = {}): GameState {
@@ -240,6 +242,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     sides: undefined as unknown as [SideState, SideState],
     front: 0,
     theater: undefined as unknown as GameState['theater'],
+    campaign: opts.classicCampaign ? [...CLASSIC_CAMPAIGN] : drawCampaign(seed),
     theaterResults: [],
     lethality: undefined as unknown as GameState['lethality'],
     weather: 'clear',
@@ -256,7 +259,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
   state.sides = [makeSide(state, rng, 0, false, f?.[0]), makeSide(state, rng, 1, single, f?.[1])];
   if (single) state.sides[1].insight = opts.aiInsight ?? 0.4;
   state.lethality = rollLethality(rng.fork('lethality'));
-  enterTheater(state, 0, rng, null);
+  enterTheater(state, state.campaign![0], rng, null);
   state.rng = rng.state;
   return state;
 }

@@ -48,6 +48,8 @@ import {
   reachableSites,
   SECTOR_PRESSURE,
   THEATERS,
+  drawCampaign,
+  enterTheater,
   chooseArmor,
   chooseTurrets,
   TURRET_REFIT_COST,
@@ -263,9 +265,32 @@ describe('actions', () => {
 });
 
 describe('theaters', () => {
+  it('draws three different theaters from the pool, the same for the same seed', () => {
+    const seen = new Set<number>();
+    for (let i = 0; i < 40; i++) {
+      const c = drawCampaign(`pool${i}`);
+      expect(new Set(c).size).toBe(3);
+      expect(drawCampaign(`pool${i}`)).toEqual(c);
+      c.forEach((x) => seen.add(x));
+    }
+    expect(seen.size).toBe(THEATERS.length);
+    expect(startCampaign({ seed: 'x', classicCampaign: true }).campaign).toEqual([0, 1, 2]);
+  });
+
+  it('plays through every theater in the pool', () => {
+    for (let ti = 0; ti < THEATERS.length; ti++) {
+      const s = startCampaign({ seed: `pool-${ti}` });
+      s.campaign = [ti, (ti + 1) % THEATERS.length, (ti + 2) % THEATERS.length];
+      enterTheater(s, ti, Rng.fromSeed('e'), null);
+      for (let n = 0; n < 40 && !s.outcome; n++) resolveTurn(s, [playerPlan(s), aiPlan(s, 1)]);
+      expect(s.theaterResults.length).toBeGreaterThan(0);
+      expect(s.theater.index).not.toBe(ti);
+    }
+  });
+
   it('starts in the first theater with symmetric sites', () => {
     const s = startCampaign({ seed: 't0' });
-    expect(s.theater.index).toBe(0);
+    expect(s.theater.index).toBe(s.campaign![0]);
     const own = (side: 0 | 1) => s.theater.sites.filter((x) => x.owner === side).length;
     expect(own(0)).toBe(own(1));
     expect(s.sides[0].facilities.industry).toBe(100);
@@ -425,6 +450,7 @@ describe('hotseat missions', () => {
     const s = startCampaign({ seed: 'v2' }) as unknown as Record<string, unknown>;
     const old = { ...s, version: 2 } as Record<string, unknown>;
     delete old.sealed;
+    delete old.campaign;
     delete old.lethality;
     for (const side of old.sides as { resources: Record<string, number> }[]) {
       delete side.resources.stores;
@@ -432,7 +458,8 @@ describe('hotseat missions', () => {
       side.resources.munitions = 60;
     }
     const loaded = deserialize(JSON.stringify(old));
-    expect(loaded.version).toBe(6);
+    expect(loaded.version).toBe(7);
+    expect(loaded.campaign).toEqual([0, 1, 2]);
     expect(loaded.sides[0].resources.stores).toBe(120);
     expect('fuel' in loaded.sides[0].resources).toBe(false);
     expect(loaded.lethality.medium.cockpit).toBeGreaterThan(0);

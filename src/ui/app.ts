@@ -17,7 +17,7 @@ import { renderPaper } from './paper';
 import { DEBRIEF_ALIAS } from './battle';
 import { renderDebrief, renderRadio } from './battle';
 import { renderTitle } from './title';
-import { renderTheaterChange } from './theaterui';
+import { renderTheaterChange } from './theaterchange';
 import { LAN_SAVE, LanSession } from './lan';
 import { renderLanSetup, renderLanWait } from './lanscreens';
 import { renderSealed } from './orders';
@@ -238,8 +238,8 @@ export class App {
     this.handover(side, { kind: 'hq', side, tab: 'war' }, `Week ${st.turn} — Planning`, side === 1 && st.sealed[0] ? `${other.commander} has sealed their orders.` : undefined);
   }
 
-  newGame(mode: 'single' | 'hotseat', insight = 0.4, commanders?: [string, string], factions?: [NationId, NationId]) {
-    this.state = startCampaign({ mode, aiInsight: insight, seed: `${Date.now()}`, commanders, factions });
+  newGame(mode: 'single' | 'hotseat', insight = 0.4, commanders?: [string, string], factions?: [NationId, NationId], classicCampaign = false) {
+    this.state = startCampaign({ mode, aiInsight: insight, seed: `${Date.now()}`, commanders, factions, classicCampaign });
     this.plans = [defaultPlan(this.state, 0), defaultPlan(this.state, 1)];
     this.selected = null;
     this.announced.clear();
@@ -252,7 +252,7 @@ export class App {
 
   /** A Green campaign with the adjutant explaining each step. */
   newTutorial() {
-    this.newGame('single', 0.15);
+    this.newGame('single', 0.15, undefined, undefined, true);
     this.state!.tutorial = 0;
     // The adjutant has the floor: the general's week-one letter waits for another campaign.
     clearDispatches();

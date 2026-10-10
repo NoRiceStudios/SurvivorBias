@@ -552,6 +552,8 @@ export interface GameState {
   /** True pressure on the contested sector boundary, + favours side 0. */
   front: number;
   theater: TheaterState;
+  /** The theaters of this war in order (indices into the theater pool). Absent in old saves: the original three. */
+  campaign?: number[];
   theaterResults: TheaterResult[];
   /** HIDDEN: per-type chance that one hit in a zone is fatal, rolled per campaign. */
   lethality: Record<AircraftKind, ZoneMap<number>>;
@@ -616,6 +618,8 @@ export interface TheaterResult {
   decisive: boolean;
   /** Sectors side 0 gained in the theater (negative: lost). */
   gain?: number;
+  /** How each side's secondary objective stood when the theater ended. */
+  objectives?: { side: SideId; text: string; status: SecondaryObjective['status'] }[];
 }
 
 /** --- Squadron leaders' requests --- */

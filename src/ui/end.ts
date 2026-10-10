@@ -2,7 +2,7 @@ import { nationAt } from './nation';
 import { AIRCRAFT, ZONE_LABEL } from '../core/data';
 import { KINDS } from '../core/lethality';
 import { rulesOf } from '../core/factions';
-import { SECTORS, THEATERS } from '../core/theaters';
+import { campaignTheaters, SECTORS, THEATERS } from '../core/theaters';
 import type { AircraftKind, GameState, Hit, Outcome, SideId, ZoneId } from '../core/types';
 import { ZONES } from '../core/types';
 import type { App } from './app';
@@ -112,7 +112,7 @@ export function renderEnd(app: App, sideId: SideId, tab: string): HTMLElement {
     const rows: HTMLElement[] = [];
     const held = (e: (typeof st.archive)[number]) => (sideId === 0 ? e.sectors0 : SECTORS - e.sectors0);
     const truthCell = (kills: number, claimedN: number) => h('td', { class: kills < claimedN ? 'truth' : '' }, String(kills));
-    for (const [ti, th] of THEATERS.entries()) {
+    for (const { index: ti, def: th } of campaignTheaters(st)) {
       const weeks = st.archive.filter((e) => e.theater === ti);
       if (!weeks.length) continue;
       rows.push(h('tr', { class: 'grp-row' }, h('td', { colspan: '6' }, th.name)));
