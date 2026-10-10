@@ -85,7 +85,9 @@ function planSentence(app: App, side: SideState): HTMLElement {
   const c = planCost(side, plan);
   const go = () => app.go({ kind: 'hq', side: side.id, tab: 'war' });
   const def = THEATERS[st.theater.index];
-  const op = plan.raid && plan.raid.squadronIds.length
+  const op = plan.raid && plan.raid.squadronIds.length && plan.raid.target === 'support' && plan.raid.stance === 'hold'
+    ? `Close support holding ${def.sectors[frontSector(st.theater, (1 - side.id) as SideId)]}`
+    : plan.raid && plan.raid.squadronIds.length
     ? `${plan.raid.target === 'support' ? 'Close support' : plan.raid.target === 'sweep' ? 'Sweep' : 'Strike'} ${plan.raid.target === 'support' || plan.raid.target === 'sweep' ? `over ${def.sectors[frontSector(st.theater, side.id)]}` : missionLabel(app, plan.raid)}`
     : 'No operation';
   return h('div', { class: 'plan-sentence' },

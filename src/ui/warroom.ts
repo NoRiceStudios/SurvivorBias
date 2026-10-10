@@ -15,7 +15,8 @@ import type { FighterApproach, Memo, SideId, SideState, Site, Squadron, TargetId
 import type { App } from './app';
 import { h, pct, slider } from './dom';
 import { leaderPortrait, letterMemos } from './general';
-import { believed, depthLabel, pressureGauge, theaterMap } from './theaterui';
+import { believed, depthLabel, theaterMap } from './theaterui';
+import { frontReport } from './frontreport';
 import { tip } from './tip';
 import { countPlanes, pips, seg } from './widgets';
 import { aircraftCanvas } from './sprites';
@@ -131,6 +132,15 @@ export function strikeAt(app: App, side: SideState, site: Site) {
   planner(app, side).pick(site.type, site.id);
 }
 
+/** Close support over the front in one click, in the chosen stance. */
+export function supportStance(app: App, side: SideState, stance: 'push' | 'hold') {
+  const P = planner(app, side);
+  app.act(() => {
+    P.pick('support');
+    if (P.plan.raid && stance === 'hold') P.plan.raid.stance = 'hold';
+  });
+}
+
 /* ---------------- Map card ---------------- */
 
 function mapCard(app: App, side: SideState): HTMLElement {
@@ -166,7 +176,7 @@ function mapCard(app: App, side: SideState): HTMLElement {
         pick(site.type, site.id);
       },
     }), flights(app, side)),
-    pressureGauge(side.perceived.front, { band: side.perceived.frontBand }),
+    frontReport(app, side, { hold: () => supportStance(app, side, 'hold'), push: () => supportStance(app, side, 'push') }),
     h('div', { class: 'map-foot small' },
       h('span', { class: 'mf-obj', ...tip({ head: 'Secondary objective', text: obj.text }) }, h('b', null, 'Secondary: '), obj.text, ' ', h('span', { class: `stamp ${obj.status === 'discredited' || obj.status === 'overrun' ? 'reprimand' : obj.status === 'open' ? 'order' : 'notice'}` }, objStatus)),
       h('span', { class: 'theater-mini' }, THEATERS.map((th, i) => {
@@ -228,7 +238,16 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
       h('div', { class: 'small muted' }, `${def.sectors[site.sector]} · ${depthLabel(st, side.id, site)} · ${depth > escortRange(side) ? 'beyond escort range' : 'escorts can stay with the bombers'}${alt ? ` · ${alt} other target${alt > 1 ? 's' : ''} in range: click the map` : ''}`),
     );
   } else if (mission === 'support' || mission === 'sweep') {
-    target = h('div', { class: 'target-box' }, h('div', { class: 'tb-name' }, `${TARGETS[mission].name} over ${def.sectors[frontSector(t, side.id)]}`), h('div', { class: 'small muted' }, TARGETS[mission].desc));
+    const hold = plan.raid?.stance === 'hold';
+    target = h('div', { class: 'target-box' },
+      h('div', { class: 'tb-name' }, mission === 'support' && hold ? `Close support holding ${def.sectors[frontSector(t, (1 - side.id) as SideId)]}` : `${TARGETS[mission].name} over ${def.sectors[frontSector(t, side.id)]}`),
+      h('div', { class: 'small muted' }, TARGETS[mission].desc),
+      mission === 'support' ? h('div', { class: 'policy-row' },
+        h('span', { class: 'small' }, 'Stance'),
+        seg<string>([
+          { value: 'push', label: 'Push', tip: { head: 'Push the enemy line', text: 'Pressure on the enemy line, a little under what it once was; an enemy who has seen it before learns to expect it.' } },
+          { value: 'hold', label: 'Hold the line', tip: { head: 'Hold our own line', text: 'Over our own front: soaks up the pressure the enemy gains this week, up to about nine points, but gains nothing for us.' } },
+        ], hold ? 'hold' : 'push', (v) => app.act(() => { if (plan.raid) plan.raid.stance = v === 'hold' ? 'hold' : undefined; }), 'mini')) : null);
   } else {
     target = h('div', { class: 'target-box' }, h('div', { class: 'small muted' }, 'No operation this week. Bombers rest; fighters may still defend. Click a site on the map to strike it.'));
   }

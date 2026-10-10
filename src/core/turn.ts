@@ -467,6 +467,11 @@ export const STRIKE_DAMAGE = 2.5;
 export const MAX_WEEK_SWING = 18;
 /** The most one raid can move the front in a week. */
 export const SWING_CAP = 15;
+/** Close support pushing the enemy line is worth this much of the raw damage (it used to be worth all of it). */
+export const SUPPORT_PUSH = 0.7;
+/** Close support holding our own line absorbs this share of the raw damage as enemy pressure, up to HOLD_CAP a week. */
+export const HOLD_FACTOR = 1;
+export const HOLD_CAP = 9;
 
 function applyDamage(state: GameState, siteId: string | undefined, dmg: number): number {
   const site = state.theater.sites.find((x) => x.id === siteId);
@@ -620,10 +625,11 @@ function economy(rng: Rng, state: GameState, side: SideState) {
 }
 
 /** What moved the front, from one side's point of view, in the Army liaison's words. */
-function pressureLedger(parts: Record<'air' | 'support' | 'strikes' | 'works' | 'escalation', number>, sign: number, supportFlown: boolean) {
+function pressureLedger(parts: Record<'air' | 'support' | 'hold' | 'strikes' | 'works' | 'escalation', number>, sign: number, supportFlown: boolean) {
   const labels: Record<keyof typeof parts, string> = {
     air: 'Fighting in the air (losses on both sides)',
-    support: 'Close support over the front',
+    support: 'Close support pushing the enemy line',
+    hold: 'Close support holding the line',
     strikes: 'Bombing of works and depots',
     works: 'State of works, depots and airfields (both sides)',
     escalation: 'Enemy reinforcements arriving',
@@ -632,7 +638,7 @@ function pressureLedger(parts: Record<'air' | 'support' | 'strikes' | 'works' | 
     v >= 8 ? 'strongly in our favour' : v >= 3 ? 'in our favour' : v > -3 ? 'little either way' : v > -8 ? 'against us' : 'strongly against us';
   const lines = (Object.keys(parts) as (keyof typeof parts)[])
     .map((k) => ({ k, v: parts[k] * sign }))
-    .filter(({ k, v }) => Math.abs(v) >= 1.5 || k === 'air' || (k === 'support' && supportFlown))
+    .filter(({ k, v }) => Math.abs(v) >= 1.5 || k === 'air' || ((k === 'support' || k === 'hold') && supportFlown))
     .map(({ k, v }) => ({ label: labels[k], effect: word(v), sign: v >= 3 ? 1 : v <= -3 ? -1 : 0 }));
   // One word for the size of the whole week's change.
   const total = Object.values(parts).reduce((a, b) => a + b, 0) * sign;
@@ -1016,6 +1022,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   // Damage (true). Strikes hit sites; close support pushes the front directly.
   const damageTaken: [Partial<Facilities>, Partial<Facilities>] = [{}, {}];
   const supportPush: [number, number] = [0, 0];
+  const holdPower: [number, number] = [0, 0];
   for (const id of [0, 1] as SideId[]) {
     const r = raids[id];
     if (!r) continue;
@@ -1023,7 +1030,10 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       // Crippled airfields and depots can't sustain an offensive over the front.
       const eff = facilityEffects(state.sides[id].facilities);
       const crippled = (eff.crippled.airfield ? 0.6 : 1) * (eff.crippled.fuel ? 0.75 : 1);
-      supportPush[id] = (r.damage * mods.support * crippled) / (1 + 0.25 * state.sides[other(id)].observed.support);
+      const raw = r.damage * mods.support * crippled;
+      // Pushing is a gamble against an enemy who has learned to expect it; holding covers our own line instead.
+      if (plans[id].raid?.stance === 'hold') holdPower[id] = Math.min(HOLD_CAP, raw * HOLD_FACTOR);
+      else supportPush[id] = (raw * SUPPORT_PUSH) / (1 + 0.25 * state.sides[other(id)].observed.support);
     }
     else if (r.target !== 'sweep' && r.target !== 'feint') {
       const dealt = applyDamage(state, r.siteId, r.damage);
@@ -1129,10 +1139,16 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       (Math.min(120, s0.facilities.fuel) - Math.min(120, s1.facilities.fuel)) * 0.05 +
       (Math.min(120, s0.facilities.airfield) - Math.min(120, s1.facilities.airfield)) * 0.04,
     escalation: s1.isAI ? -0.8 * (act(state) - 1) : 0,
+    hold: 0,
   };
+  // (filled in below, once the rest of the week is known)
   // No single week moves the front by a whole sector: a sector has to be fought for over two weeks or more.
-  const delta = Math.max(-MAX_WEEK_SWING, Math.min(MAX_WEEK_SWING, parts.air + parts.support + parts.strikes + parts.works + parts.escalation));
+  const raw = parts.air + parts.support + parts.strikes + parts.works + parts.escalation;
+  // Squadrons holding the line soak up whatever the enemy is gaining this week, up to what they can cover.
+  const hold = raw < 0 ? Math.min(holdPower[0], -raw) : raw > 0 ? -Math.min(holdPower[1], raw) : 0;
+  const delta = Math.max(-MAX_WEEK_SWING, Math.min(MAX_WEEK_SWING, raw + hold));
   const front0 = state.front;
+  parts.hold = hold;
   state.front = Math.round(state.front + delta);
   t.week++;
   const flew = (id: SideId) => !!(raids[id] || feints[id]) || plans[id].defense.length > 0;
@@ -1181,6 +1197,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
     // Army liaison: honest about towns, optimistic about pressure.
     // Army liaison: optimistic, but steady from week to week, so its figure and its words agree.
     side.perceived.front = Math.round(state.front * (id === 0 ? 1 : -1) + 4 + rng.gauss(1)) || 0;
+    side.perceived.frontHistory = [...(side.perceived.frontHistory ?? [frontBefore[id]]), side.perceived.front].slice(-4);
     // An Intelligence Section cross-checks the Army's figures and can put the line within a band.
     if (side.research.includes('intelOfficer')) {
       const f = (id === 0 ? state.front : 0 - state.front) + rng.int(-2, 2);

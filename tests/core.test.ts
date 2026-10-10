@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { frontOutlook } from '../src/core/frontline';
 import {
   AIRCRAFT,
   COSTS,
@@ -1568,5 +1569,35 @@ describe('Prisoners of war', () => {
     Object.assign(day.caps, plan.sorties);
     expect(gatherFliers(side, [id], () => 'raid', day).length).toBe(2);
     expect(carryPlan(s, 0, plan).sorties).toEqual({ [id]: 2 });
+  });
+});
+
+describe('Front report and close support stances', () => {
+  const bomberIds = (s: ReturnType<typeof startCampaign>, id: 0 | 1) => s.sides[id].squadrons.filter((q) => q.kind !== 'fighter' && q.kind !== 'recon').map((q) => q.id);
+
+  it('holding the line soaks up enemy gains but never pushes the front our way', () => {
+    const run = (stance: 'hold' | undefined) => {
+      const s = startCampaign({ seed: 'hold-line', mode: 'hotseat' });
+      s.front = -10;
+      const mine = { ...emptyPlan(), raid: { target: 'support' as const, squadronIds: bomberIds(s, 0), ...(stance ? { stance } : {}) } };
+      resolveTurn(s, [mine, emptyPlan()]);
+      return s.front;
+    };
+    expect(run('hold')).toBeLessThanOrEqual(run(undefined));
+  });
+
+  it('the outlook judges the line on its worst case and names what falls', () => {
+    const s = startCampaign({ seed: 'outlook', mode: 'single' });
+    const side = s.sides[0];
+    side.perceived.front = -16;
+    side.perceived.frontHistory = [-8, -16];
+    const o = frontOutlook(s, side);
+    expect(o.range[0]).toBeLessThan(o.value);
+    expect(o.level).toBe('critical');
+    expect(o.weeksToFall).toBeGreaterThanOrEqual(1);
+    expect(o.atStake?.sites.length).toBeGreaterThan(0);
+    side.perceived.front = 2;
+    side.perceived.frontHistory = [2];
+    expect(frontOutlook(s, side).level).toBe('steady');
   });
 });

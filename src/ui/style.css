@@ -1576,6 +1576,20 @@ td.pow-face { width: 38px; }
 .lg-lines { display: flex; flex-wrap: wrap; gap: 0 14px; }
 .lg-line b { margin-left: 4px; }
 .sq-line1 .sq-pips { display: flex; flex-direction: column; }
+/* Front report */
+.front-report { margin: 6px 0 2px; padding: 6px 8px; background: rgba(0,0,0,0.12); border-left: 4px solid var(--ink-2); }
+.front-report.strained { border-left-color: #c9892a; }
+.front-report.critical { border-left-color: var(--stamp); animation: fr-pulse 1.6s ease-in-out infinite; }
+.front-report.chance { border-left-color: #6f9a46; }
+@keyframes fr-pulse { 50% { background: rgba(168,53,42,0.22); } }
+.fr-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fr-headline { font-weight: normal; font-size: 18px; }
+.fr-detail { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+.fr-drivers { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.fr-drivers .chip { padding: 0 6px; background: rgba(0,0,0,0.18); }
+.fr-drivers .chip.good { color: #a8d080; } .fr-drivers .chip.bad { color: #e07a6a; }
+.fr-actions { margin-top: 5px; display: flex; gap: 6px; }
+
 /* Development board: the apron, then one tree per branch with lines joining a project to the one it builds on */
 .hangar { margin: 8px 0 12px; padding: 10px 12px 8px; background: linear-gradient(#6c6a60, #5c5a52); box-shadow: inset 0 0 0 2px #3f3d37; }
 .hangar-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-around; gap: 14px 24px; min-height: 170px; }
