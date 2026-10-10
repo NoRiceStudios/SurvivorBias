@@ -275,7 +275,7 @@ export const TARGETS: Record<TargetId, { name: string; desc: string }> = {
   industry: { name: 'Aircraft Works', desc: 'Slows enemy aircraft production.' },
   airfield: { name: 'Forward Airfields', desc: 'Grounds enemy fighters and slows repairs.' },
   fuel: { name: 'Fuel Depots', desc: 'Starves the enemy of fuel.' },
-  support: { name: 'Close Support', desc: 'Bomb the enemy front line at low level. Pushes the front directly; the flak is close and heavy.' },
+  support: { name: 'Close Support', desc: 'Bomb at low level over the front, and choose the stance: Push the enemy line (weaker than it was, and the enemy learns to expect it) or Hold our own, soaking up the pressure the enemy gains that week. The flak is close and heavy either way.' },
   sweep: { name: 'Fighter Sweep', desc: 'Fighters only. Hunt enemy fighters over the front; also screens it against enemy close-support raids and sweeps.' },
   feint: { name: 'Feint', desc: 'A diversion over another sector to draw the enemy reserve away from the real raid.' },
 };

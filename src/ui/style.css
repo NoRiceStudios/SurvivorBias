@@ -1518,3 +1518,17 @@ td.pow-face { width: 38px; }
   .np-name { font-size: 40px; }
   .np-headline { font-size: 30px; }
 }
+
+/* Front report */
+.front-report { margin: 6px 0 2px; padding: 6px 8px; background: rgba(0,0,0,0.12); border-left: 4px solid var(--ink-2); }
+.front-report.strained { border-left-color: #c9892a; }
+.front-report.critical { border-left-color: var(--stamp); animation: fr-pulse 1.6s ease-in-out infinite; }
+.front-report.chance { border-left-color: #6f9a46; }
+@keyframes fr-pulse { 50% { background: rgba(168,53,42,0.22); } }
+.fr-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fr-headline { font-weight: normal; font-size: 18px; }
+.fr-detail { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+.fr-drivers { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.fr-drivers .chip { padding: 0 6px; background: rgba(0,0,0,0.18); }
+.fr-drivers .chip.good { color: #a8d080; } .fr-drivers .chip.bad { color: #e07a6a; }
+.fr-actions { margin-top: 5px; display: flex; gap: 6px; }
