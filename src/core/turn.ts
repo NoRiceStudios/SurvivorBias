@@ -955,6 +955,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   }
 
   const day = newDay(state.lethality);
+  for (const pl of plans) Object.assign(day.caps, pl.sorties);
   const other = (id: SideId) => (1 - id) as SideId;
 
   // 1. Feints go in first. The enemy controller may scramble reserve squadrons at them;

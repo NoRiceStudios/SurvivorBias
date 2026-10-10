@@ -72,10 +72,12 @@ export interface Day {
   grounded: Map<string, number>;
   /** Last calls heard today, so no two crews die on the same words in one week. */
   finals: string[];
+  /** Squadrons flying a smaller formation this week: most aircraft each puts up. */
+  caps: Record<string, number>;
 }
 
 export function newDay(lethality: LethalityTable = DEFAULT_LETHALITY): Day {
-  return { fliers: new Map(), lethality, metFront: false, landing: [], grounded: new Map(), finals: [] };
+  return { fliers: new Map(), lethality, metFront: false, landing: [], grounded: new Map(), finals: [], caps: {} };
 }
 
 const CLOCK: Record<FighterApproach, string[]> = {
@@ -226,8 +228,13 @@ function makeFlier(sq: Squadron, af: Airframe, side: SideState, role: PlaneRecor
 }
 
 /** Airframes that can actually fly this turn for a squadron. */
-export function flyable(sq: Squadron): Airframe[] {
-  return sq.airframes.filter((a) => a.status === 'ready').slice(0, Math.max(0, sq.crews));
+export function flyable(sq: Squadron, cap?: number): Airframe[] {
+  return sq.airframes.filter((a) => a.status === 'ready').slice(0, Math.max(0, Math.min(sq.crews, cap ?? Infinity)));
+}
+
+/** Aircraft a squadron puts up under a plan: everything ready, or fewer if the plan keeps some at home. */
+export function sortie(sq: Squadron, plan: { sorties?: Record<string, number> }): Airframe[] {
+  return flyable(sq, plan.sorties?.[sq.id]);
 }
 
 export function gatherFliers(side: SideState, ids: string[], role: (sq: Squadron) => PlaneRecord['role'], day?: Day): Flier[] {
@@ -236,7 +243,7 @@ export function gatherFliers(side: SideState, ids: string[], role: (sq: Squadron
     const sq = side.squadrons.find((s) => s.id === id);
     if (!sq) continue;
     // Cratered runways keep part of an operation on the ground (patrols scramble from dispersal strips).
-    let list = flyable(sq);
+    let list = flyable(sq, day?.caps[sq.id]);
     const r = role(sq);
     if (r !== 'defense' && list.length > 0) {
       const n = Math.max(1, Math.round(list.length * (1 - facilityEffects(side.facilities).grounded)));

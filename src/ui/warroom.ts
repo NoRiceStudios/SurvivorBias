@@ -1,17 +1,19 @@
 /**
  * The War Room: Briefing and Operations on one table. The map on the left is
  * where targets are chosen; the orders column on the right holds the mission,
- * the target, every squadron's task and the returns policy; the in-tray under
- * the map holds requests, standing orders and this week's mail.
+ * the target, the stores ledger, every squadron's task and size and the returns
+ * policy; the desk under the map lays out requests, standing orders, mail and the
+ * press side by side, at full size, with nothing hidden behind a tab.
  */
 import { aircraftName } from '../core/setup';
 import { AIRCRAFT, APPROACH_LABEL, ARCHETYPE_INFO, MAX_EFFORT, TARGETS } from '../core/data';
 import { tech } from '../core/tech';
-import { flyable } from '../core/sim';
+import { flyable, sortie } from '../core/sim';
+import { planLedger, type CostLine } from '../core/actions';
 import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS } from '../core/theaters';
 import type { FighterApproach, Memo, SideId, SideState, Site, Squadron, TargetId } from '../core/types';
 import type { App } from './app';
-import { fadeScroll, h, pct, slider } from './dom';
+import { h, pct, slider } from './dom';
 import { leaderPortrait, letterMemos } from './general';
 import { believed, depthLabel, pressureGauge, theaterMap } from './theaterui';
 import { tip } from './tip';
@@ -37,7 +39,7 @@ export function dedupeMemos(memos: Memo[]): Memo[] {
 
 export function warRoom(app: App, side: SideState): HTMLElement {
   return h('div', { class: 'warroom' },
-    h('div', { class: 'wr-left' }, mapCard(app, side), inTray(app, side)),
+    h('div', { class: 'wr-left' }, mapCard(app, side), desk(app, side)),
     h('div', { class: 'wr-right' }, ordersColumn(app, side)),
   );
 }
@@ -181,7 +183,7 @@ function flights(app: App, side: SideState): Flight[] {
   const { plan, roleOf } = planner(app, side);
   return side.squadrons.filter((q) => flyable(q).length > 0).map((sq) => {
     const role = roleOf(sq);
-    const f: Flight = { id: sq.id, name: sq.name, kind: sq.kind, ready: flyable(sq).length, task: 'rest' };
+    const f: Flight = { id: sq.id, name: sq.name, kind: sq.kind, ready: sortie(sq, plan).length, task: 'rest' };
     if (role === 'defense') {
       f.task = plan.cover[sq.id] === undefined ? 'reserve' : 'patrol';
       f.sector = plan.cover[sq.id];
@@ -236,7 +238,7 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
   if (plan.raid && (mission === 'strike' || mission === 'support')) {
     const raidStores = Math.round(plan.raid.squadronIds.reduce((a, id) => {
       const q = side.squadrons.find((x) => x.id === id);
-      return a + (q ? flyable(q).length * AIRCRAFT[q.kind].storesCost : 0);
+      return a + (q ? sortie(q, plan).length * AIRCRAFT[q.kind].storesCost : 0);
     }, 0) * (1 - tech(side, 'economy')));
     const extra = Math.round(raidStores * (MAX_EFFORT.stores - 1));
     load = h('div', { class: 'policy-row load-row' },
@@ -252,7 +254,17 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
   const rows = side.squadrons.filter((q) => q.airframes.length > 0).map((sq) => {
     const role = roleOf(sq);
     const ready = flyable(sq).length;
-    const cost = ready * AIRCRAFT[sq.kind].storesCost;
+    const flying = sortie(sq, plan).length;
+    const cost = Math.round(flying * AIRCRAFT[sq.kind].storesCost * (1 - tech(side, 'economy')));
+    const setSize = (n: number) => app.act(() => {
+      if (n >= ready) { if (plan.sorties) delete plan.sorties[sq.id]; } else (plan.sorties ??= {})[sq.id] = Math.max(1, n);
+    });
+    const sizer = role !== 'rest' && role !== 'recon' && ready > 1
+      ? h('span', { class: `sizer ${flying < ready ? 'cut' : ''}`, ...tip({ head: 'Formation size', text: `Send fewer aircraft than are ready and the rest stay home. Each aircraft kept at home saves ${Math.round(AIRCRAFT[sq.kind].storesCost * (1 - tech(side, 'economy')))} stores, but a small formation hits less and is easier prey.` }) },
+        h('button', { class: 'step', disabled: flying <= 1, 'aria-label': 'Fewer aircraft', onclick: () => setSize(flying - 1) }, '−'),
+        h('b', null, String(flying)), h('small', null, `/${ready}`),
+        h('button', { class: 'step', disabled: flying >= ready, 'aria-label': 'More aircraft', onclick: () => setSize(flying + 1) }, '+'))
+      : null;
     const roles: { value: Role; label: string; tip: string }[] =
       sq.kind === 'fighter' ? [
         { value: 'raid', label: plan.raid?.target === 'sweep' ? 'Sweep' : 'Escort', tip: plan.raid?.target === 'sweep' ? 'Hunt enemy fighters over the front.' : 'Fly with the bombers and tie up the interceptors.' },
@@ -290,9 +302,11 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
           h('span', tip({ head: `Fatigue ${Math.round(sq.fatigue * 10)}/10`, text: 'Rises each week a squadron flies, falls when it rests. Tired crews shoot and fly worse; above 6/10 their morale slides.' }), h('small', null, 'fat '), pips(sq.fatigue, 6, 0.6)),
           h('span', tip({ head: `Morale ${Math.round(sq.morale * 10)}/10`, text: 'Falls with losses. If the whole wing stays very low for three weeks, the crews refuse to fly.' }), h('small', null, 'mor '), pips(sq.morale, 6, 0.3, true))),
         h('span', { class: 'sq-type' }, aircraftCanvas(sq.kind, { side: side.id, seed: sq.insignia }, 1)),
-        h('span', { class: `sq-ready ${ready === 0 ? 'bad' : ''}` }, `${ready}/${sq.airframes.length}`)),
+        h('span', { class: `sq-ready ${ready === 0 ? 'bad' : ''}`, ...tip({ head: 'Ready aircraft', text: `${ready} ready of ${sq.airframes.length} on strength.` }) }, `${ready}/${sq.airframes.length}`)),
       h('div', { class: 'sq-line2' },
-        seg<Role>(roles.map((r) => ({ ...r, disabled: ready === 0 && r.value !== 'rest', tip: { text: r.tip, effect: r.value === 'rest' ? undefined : `− ${cost} stores` } })), role, (r) => app.act(() => assign(sq, r)), 'mini roles-seg')),
+        seg<Role>(roles.map((r) => ({ ...r, disabled: ready === 0 && r.value !== 'rest', tip: { text: r.tip, effect: r.value === 'rest' ? undefined : `− ${cost} stores` } })), role, (r) => app.act(() => assign(sq, r)), 'mini roles-seg'),
+        sizer,
+        role !== 'rest' ? h('span', { class: 'sq-cost' }, `${cost}`, h('small', null, ' st')) : null),
       extra,
     );
   });
@@ -304,6 +318,7 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
     missionSeg,
     target,
     load,
+    ledger(app, side),
     h('div', { class: 'sq-rows' }, rows),
     h('div', { class: 'policy-row' },
       h('span', { class: 'small', ...tip({ head: 'Returns policy', text: 'How your adjutant presents results to High Command. Optimistic returns raise confidence, until someone checks: photographs and the observers can catch you out.' }) }, 'Returns to HQ'),
@@ -316,51 +331,73 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
   );
 }
 
-/* ---------------- In-tray ---------------- */
+/* ---------------- Stores ledger ---------------- */
 
-let trayTab: 'requests' | 'orders' | 'mail' | 'press' | null = null;
+const LEDGER_TIP: Record<CostLine['key'], string> = {
+  bomb: 'Every bomber that flies burns fuel and drops its load.',
+  escort: 'Fighters flying with the bombers, or sweeping the front.',
+  extra: 'The extra bombs and ammunition of a maximum effort.',
+  feint: 'The diversion over another sector.',
+  patrol: 'Fighters held back to meet enemy raids.',
+  recon: 'One photo flight.',
+};
 
-function inTray(app: App, side: SideState): HTMLElement {
+/** What this week's plan costs, line by line, against the stores we hold. */
+function ledger(app: App, side: SideState): HTMLElement {
+  const plan = app.plans[side.id];
+  const { lines, total, saved } = planLedger(side, plan);
+  const held = side.resources.stores;
+  const over = total > held;
+  const scale = Math.max(held, total, 1);
+  return h('div', { class: `ledger ${over ? 'over' : ''}`, ...tip({ head: 'Stores for the week', text: 'Fuel, bombs and ammunition: every aircraft that flies uses them, paid when the week is flown. What is left over carries into next week.' }) },
+    h('div', { class: 'lg-head' },
+      h('span', { class: 'lg-title' }, 'Stores this week'),
+      h('b', { class: 'lg-total' }, `${total}`), h('span', { class: 'lg-held' }, ` of ${held}`),
+      h('span', { class: `lg-left ${over ? 'bad' : ''}` }, over ? `${total - held} short` : `${held - total} left`)),
+    h('div', { class: 'lg-bar' },
+      lines.map((l) => h('i', { class: `lg-seg lg-${l.key}`, style: `width:${(l.stores / scale) * 100}%`, title: `${l.label}: ${l.stores}` })),
+      over ? null : h('i', { class: 'lg-free', style: `width:${((held - total) / scale) * 100}%` })),
+    lines.length ? h('div', { class: 'lg-lines' }, lines.map((l) => h('span', { class: 'lg-line', ...tip({ head: l.label, text: LEDGER_TIP[l.key] }) }, h('i', { class: `lg-sw lg-${l.key}` }), l.label, h('b', null, String(l.stores))))) : h('div', { class: 'small muted' }, 'Nothing flies, nothing is spent.'),
+    saved > 0 ? h('div', { class: 'lg-saved small' }, `Smaller formations save ${saved} stores`) : null);
+}
+
+/* ---------------- Desk ---------------- */
+
+let pressOpen = false;
+
+/** Requests, standing orders, mail and the press, all in view at full size under the map. */
+function desk(app: App, side: SideState): HTMLElement {
   const st = app.state!;
   const { enemySites, inRange, pick } = planner(app, side);
   // What High Command already read out in its letter is not repeated here.
   const read = new Set(letterMemos(side, st.turn, 6));
   const fresh = dedupeMemos(side.memos.filter((m) => m.turn >= st.turn && m.kind !== 'supply' && !read.has(m)));
   const supply = side.memos.find((m) => m.kind === 'supply' && m.turn >= st.turn);
+  const hasPress = !!side.press?.papers.length;
+  if (!side.requests.length && !side.orders.length && !fresh.length && !hasPress) return h('section', { class: 'intray empty' }, 'Desk clear: no requests, directives or mail.');
+  const head = (title: string, n: number, hot = false) => h('h3', { class: 'desk-head' }, title, n ? h('span', { class: `badge ${hot ? '' : 'quiet'}` }, String(n)) : null);
+  const requests = h('div', { class: 'desk-col desk-requests' }, head('Requests', side.requests.length, true),
+    side.requests.length ? side.requests.map((r) => requestCard(app, side, r)) : h('p', { class: 'small muted' }, 'No requests this week.'));
   const due = side.orders.filter((o) => o.deadline <= st.turn).length;
-  const tab = trayTab ?? (side.requests.length ? 'requests' : due ? 'orders' : 'mail');
-  const tabs: [typeof tab, string, number][] = [['requests', 'Requests', side.requests.length], ['orders', 'Orders', side.orders.length], ['mail', 'Mail', fresh.length], ['press', 'Press', 0]];
-  let body: HTMLElement[];
-  if (tab === 'requests') {
-    body = side.requests.length ? side.requests.map((r) => requestCard(app, side, r)) : [h('p', { class: 'small muted' }, 'No requests this week.')];
-  } else if (tab === 'orders') {
-    body = side.orders.length ? side.orders.map((o) => {
+  const orders = h('div', { class: 'desk-col desk-orders' }, head('Directives', side.orders.length, due > 0),
+    side.orders.length ? side.orders.map((o) => {
       const site = o.siteId ? enemySites.find((x) => x.id === o.siteId) : undefined;
       const current = site && app.plans[side.id].raid?.siteId === site.id;
       return h('div', { class: 'order-item' },
         h('span', { class: 'order-text' }, o.text),
         h('span', { class: `order-due ${o.deadline <= st.turn ? 'now' : ''}` }, o.graced ? `wk ${o.deadline}: awaiting photographs` : o.deadline <= st.turn ? 'DUE THIS WEEK' : `due wk ${o.deadline}`),
         site && !current ? h('button', { class: 'btn small', disabled: !inRange(site), onclick: () => pick(site.type, site.id) }, inRange(site) ? 'Make target ▸' : 'Out of range') : current ? h('span', { class: 'small good' }, '✓ this week\'s target') : null);
-    }) : [h('p', { class: 'small muted' }, 'No outstanding directives.')];
-  } else if (tab === 'press') {
-    body = [paperMini(app, side)];
-  } else {
-    body = ([
-      supply ? h('div', { class: 'small muted' }, supply.body) : null,
-      ...(fresh.length ? fresh.map((m) => h('details', { class: `slip memo-${m.kind}` },
-        h('summary', null, h('span', { class: `stamp ${m.kind}` }, STAMP[m.kind]), ' ', h('b', null, m.subject), h('span', { class: 'small muted' }, ` · ${m.from}`)),
-        h('div', { class: 'memo-body' }, m.body))) : [h('p', { class: 'small muted' }, 'Nothing new. Older correspondence is filed under Intelligence.')]),
-    ] as (HTMLElement | null)[]).filter((x): x is HTMLElement => !!x);
-  }
-  if (!side.requests.length && !side.orders.length && !fresh.length && !side.press?.papers.length) return h('section', { class: 'intray empty' }, 'In-tray empty.');
+    }) : h('p', { class: 'small muted' }, 'No outstanding directives.'));
+  const mail = h('div', { class: 'desk-col desk-mail' }, head('Mail', fresh.length),
+    supply ? h('p', { class: 'small muted' }, supply.body) : null,
+    fresh.length ? fresh.map((m) => h('details', { class: `slip memo-${m.kind}` },
+      h('summary', null, h('span', { class: `stamp ${m.kind}` }, STAMP[m.kind]), ' ', h('b', null, m.subject), h('span', { class: 'small muted' }, ` · ${m.from}`)),
+      h('div', { class: 'memo-body' }, m.body))) : h('p', { class: 'small muted' }, 'Nothing new. Older correspondence is filed under Intelligence.'));
+  const press = hasPress ? h('details', { class: 'desk-press', open: pressOpen, ontoggle: (e: Event) => { pressOpen = (e.target as HTMLDetailsElement).open; } },
+    h('summary', null, 'Home front press'), paperMini(app, side)) : null;
   return h('section', { class: 'intray' },
-    h('div', { class: 'tray-tabs' }, tabs.map(([id, label, n]) => h('button', { class: `tray-tab ${tab === id ? 'on' : ''}`, onclick: () => { trayTab = id; app.render(); } }, label, n ? h('span', { class: `badge ${id === 'orders' && !due ? 'quiet' : ''}` }, String(n)) : null))),
-    (() => {
-      const scroller = h('div', { class: 'tray-body', 'data-keep-scroll': 'tray' }, body);
-      const wrap = h('div', { class: 'tray-scroll' }, scroller, h('button', { class: 'scroll-more quiet-link', onclick: () => scroller.scrollBy({ top: scroller.clientHeight * 0.8, behavior: 'smooth' }) }, 'more ▾'));
-      fadeScroll(scroller, wrap);
-      return wrap;
-    })());
+    h('div', { class: 'desk-grid' }, requests, orders),
+    mail, press);
 }
 
 /** A squadron leader's request, with the trade-off and the answer buttons. */

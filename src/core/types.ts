@@ -405,6 +405,8 @@ export interface TurnPlan {
   feint: { squadronIds: string[]; sector: number } | null;
   /** 0 = honest, 1 = heavily embellished report to High Command. */
   embellish: number;
+  /** Fewer aircraft than are ready: most each squadron puts up this week (absent = all of them). */
+  sorties?: Record<string, number>;
   /** Squadrons stood down this week at their leader's request, and the duties they return to next week. */
   rested?: { id: string; raid: boolean; feint: boolean; defense: boolean; cover?: number }[];
 }

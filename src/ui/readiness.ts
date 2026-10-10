@@ -6,7 +6,7 @@
 import { nationAt } from './nation';
 import { AIRCRAFT } from '../core/data';
 import { CONVOY, planCost, validatePlan } from '../core/actions';
-import { flyable } from '../core/sim';
+import { flyable, sortie } from '../core/sim';
 import { frontSector, THEATERS } from '../core/theaters';
 import { storesCap } from '../core/factions';
 import type { AircraftKind, SideId, SideState, Squadron } from '../core/types';
@@ -58,8 +58,8 @@ export function readinessChips(app: App, side: SideState): Chip[] {
   if (tired.length) chips.push({ label: tired.length <= 2 ? `${tired.map((q) => q.name.replace(/^No\. \d+ |^Staffel /, '').replace(/"/g, '')).join(', ')} exhausted` : `${tired.length} squadrons exhausted`, level: 'warn', tab: 'war', focus: '.orders-col', detail: `${tired.map((q) => q.name).join(', ')}: tired crews shoot and fly worse and their morale slides. Each week standing down takes off about a third of it.` });
   const low = side.squadrons.filter((q) => q.morale <= 0.25 && q.airframes.length > 0);
   if (low.length) chips.push({ label: 'Morale very low', level: 'warn', tab: 'squadrons', detail: `${low.map((q) => q.name).join(', ')}. If the whole wing's morale stays this low for three weeks, the crews will refuse to fly.` });
-  const thin = raidIds.map((id) => side.squadrons.find((q) => q.id === id)).filter((q): q is Squadron => !!q && flyable(q).length > 0 && flyable(q).length <= 2);
-  if (thin.length) chips.push({ label: `${thin.map((q) => q.name.replace(/^No\. \d+ |^Staffel /, '').replace(/"/g, '')).join(', ')}: ${thin.map((q) => flyable(q).length).join('–')} aircraft, easy prey`, level: 'warn', tab: 'war', detail: `${thin.map((q) => `${q.name} can put up only ${flyable(q).length}`).join('; ')}. A handful flying alone is easy prey.` });
+  const thin = raidIds.map((id) => side.squadrons.find((q) => q.id === id)).filter((q): q is Squadron => !!q && sortie(q, plan).length > 0 && sortie(q, plan).length <= 2);
+  if (thin.length) chips.push({ label: `${thin.map((q) => q.name.replace(/^No\. \d+ |^Staffel /, '').replace(/"/g, '')).join(', ')}: ${thin.map((q) => sortie(q, plan).length).join('–')} aircraft, easy prey`, level: 'warn', tab: 'war', detail: `${thin.map((q) => `${q.name} puts up only ${sortie(q, plan).length}`).join('; ')}. A handful flying alone is easy prey.` });
   const busy = new Set([...raidIds, ...plan.defense, ...(plan.feint?.squadronIds ?? []), plan.recon?.squadronId, ...(plan.rested ?? []).map((r) => r.id)]);
   const idle = side.squadrons.filter((q) => !busy.has(q.id) && flyable(q).length > 0 && q.fatigue < 0.5);
   if (idle.length) chips.push({ label: `${plural(idle.length, 'squadron')} idle`, level: 'info', tab: 'war', focus: '.orders-col', detail: `${idle.map((q) => q.name).join(', ')} ${idle.length > 1 ? 'have' : 'has'} no task. Unassigned squadrons rest but do not fight.` });
@@ -81,7 +81,7 @@ export function readinessChips(app: App, side: SideState): Chip[] {
 function planSentence(app: App, side: SideState): HTMLElement {
   const st = app.state!;
   const plan = app.plans[side.id];
-  const n = (ids: string[]) => ids.reduce((a, id) => { const q = side.squadrons.find((s) => s.id === id); return a + (q ? flyable(q).length : 0); }, 0);
+  const n = (ids: string[]) => ids.reduce((a, id) => { const q = side.squadrons.find((s) => s.id === id); return a + (q ? sortie(q, plan).length : 0); }, 0);
   const c = planCost(side, plan);
   const go = () => app.go({ kind: 'hq', side: side.id, tab: 'war' });
   const def = THEATERS[st.theater.index];
