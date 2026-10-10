@@ -5,6 +5,7 @@
 import { nationAt, ROUNDEL } from './nation';
 import type { AircraftKind, Hit, NationId, SideId, ZoneId } from '../core/types';
 import { ZONES } from '../core/types';
+import { liveryFor } from './livery';
 
 export const PAL = {
   outline: '#16171a',
@@ -279,6 +280,10 @@ export interface RenderOpts {
   bigDots?: boolean;
   /** Earlier holes, drawn faint underneath the dots. */
   faintHits?: Hit[];
+  /** Developments in service: some change how the aircraft look (camo and silhouette styles). */
+  research?: readonly string[];
+  /** A development shown as if fitted, for the tech tree's preview. */
+  preview?: string;
   /** A zone to pick out (blueprint mode): its edge is drawn in yellow, as under the cursor. */
   hover?: ZoneId | null;
 }
@@ -304,13 +309,19 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
     data[i * 4 + 2] = b;
     data[i * 4 + 3] = a;
   };
-  const filled = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && mat[y * w + x] !== 0;
+  const lv = style === 'camo' || style === 'silhouette' ? liveryFor(kind, def, opts.research, opts.preview) : null;
+  const filled = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && (mat[y * w + x] !== 0 || !!lv?.extra.has(y * w + x));
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
       const m = mat[i];
       if (m === 0) {
+        const ex = lv?.extra.get(i);
+        if (ex) {
+          put(i, style === 'silhouette' ? PAL.ink : ex);
+          continue;
+        }
         // Outline around the silhouette.
         if (filled(x - 1, y) || filled(x + 1, y) || filled(x, y - 1) || filled(x, y + 1)) {
           put(i, style === 'blueprint' ? BLUE.line : style === 'outline' ? opts.lineColor ?? '#e8e4d8' : PAL.outline, 255);
@@ -364,6 +375,7 @@ export function renderAircraft(kind: AircraftKind, opts: RenderOpts): { w: numbe
 
   // Insignia
   if (style === 'camo') {
+    for (const [i, c] of lv?.over ?? []) put(i, c);
     for (const [ix, iy, rr] of def.insignia) {
       for (let y = Math.floor(iy - rr - 1); y <= iy + rr + 1; y++)
         for (let x = Math.floor(ix - rr - 1); x <= ix + rr + 1; x++) {

@@ -264,12 +264,12 @@ function fleet(side: SideState, sq: Squadron): HTMLElement {
     h('h2', null, `Aircraft of ${sq.name}`),
     h('div', { class: 'fleet' },
       worn.map((af) => h('div', { class: `airframe ${af.status}` },
-        aircraftCanvas(af.kind, { side: side.id, seed: sq.insignia + af.sorties, hits: af.hits, patches: af.patches }, 2),
+        aircraftCanvas(af.kind, { side: side.id, seed: sq.insignia + af.sorties, hits: af.hits, patches: af.patches, research: side.research }, 2),
         h('div', { class: 'af-serial' }, af.serial),
         h('div', { class: 'small' }, af.status === 'repair' ? `In repair (${af.repairTurns}w)` : `${af.condition}% · ${af.sorties} sorties`),
         meter(af.condition, 100, 6, af.condition < 50 ? 'bad' : ''))),
       fine.length ? h('div', { class: 'fleet-fine' },
-        h('div', { class: 'fine-sprites' }, fine.slice(0, 12).map((af) => h('span', tip(`${af.serial} · ${af.sorties} sorties`), aircraftCanvas(af.kind, { side: side.id, seed: sq.insignia + af.sorties, patches: af.patches }, 1)))),
+        h('div', { class: 'fine-sprites' }, fine.slice(0, 12).map((af) => h('span', tip(`${af.serial} · ${af.sorties} sorties`), aircraftCanvas(af.kind, { side: side.id, seed: sq.insignia + af.sorties, patches: af.patches, research: side.research }, 1)))),
         h('div', { class: 'small muted' }, `${fine.length} serviceable, undamaged`)) : null,
       sq.airframes.length === 0 ? h('p', { class: 'muted' }, 'No aircraft on strength.') : null));
 }

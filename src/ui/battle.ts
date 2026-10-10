@@ -469,7 +469,7 @@ function dispersal(app: App, d: Debrief, landing: boolean): HTMLElement {
     b.font = '8px monospace';
     b.fillText(String(i + 1), p.x - sw / 2 - 2, p.y + 20);
     sprites.set(p, p.back
-      ? aircraftCanvas(p.kind, { side: d.side, hits: p.back.hits, seed: p.serial.length }, 1)
+      ? aircraftCanvas(p.kind, { side: d.side, hits: p.back.hits, seed: p.serial.length, research: side.research }, 1)
       : aircraftCanvas(p.kind, { side: d.side, style: 'outline', lineColor: '#e8e4d8' }, 1));
   });
   b.font = '9px monospace';
