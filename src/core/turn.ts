@@ -28,6 +28,8 @@ import {
   syncFacilities,
   theaterDecision,
   theaterDef,
+  campaignStep,
+  nextTheater,
   theaterMods,
   THEATERS,
 } from './theaters';
@@ -54,7 +56,7 @@ import type {
 
 /** Which theater (1..3) the war has reached; drives AI escalation and HQ demands. */
 export function act(state: GameState): 1 | 2 | 3 {
-  return Math.min(3, state.theater.index + 1) as 1 | 2 | 3;
+  return Math.min(3, campaignStep(state) + 1) as 1 | 2 | 3;
 }
 
 function memo(side: SideState, turn: number, kind: Memo['kind'], subject: string, body: string, from = 'Air Ministry') {
@@ -590,7 +592,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
   else if (t.liveFire && intake > 0) memo(side, state.turn + 1, 'notice', 'Live-fire training cancelled', `The school needed ${liveCost} stores for live-fire practice and the depots could not spare them. This class trains on the ground.`, 'Training School');
 
   // Repairs at the airfield.
-  const repairCap = Math.round((4 + 8 * side.facilities.airfield / 100) * (1 + tech(side, 'repair')));
+  const repairCap = Math.round((4 + 8 * side.facilities.airfield / 100) * (1 + tech(side, 'repair')) * theaterMods(state).repair);
   let repaired = 0;
   for (const sq of side.squadrons) {
     for (const af of sq.airframes) {
@@ -621,7 +623,7 @@ function economy(rng: Rng, state: GameState, side: SideState) {
 
   // Facility repair: each site the side holds is patched up a little.
   // Crippled sites barely mend on their own: only paid emergency repairs bring them back quickly.
-  for (const site of state.theater.sites) if (site.owner === side.id) site.condition = Math.min(100, site.condition + Math.round((site.condition < CRIPPLED ? 1 : 4) * (1 + tech(side, 'repair'))));
+  for (const site of state.theater.sites) if (site.owner === side.id) site.condition = Math.min(100, site.condition + Math.round((site.condition < CRIPPLED ? 1 : 4) * (1 + tech(side, 'repair')) * theaterMods(state).repair));
 }
 
 /** What moved the front, from one side's point of view, in the Army liaison's words. */
@@ -1289,7 +1291,7 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
   const decision = theaterDecision(state);
   if (decision) {
     const def = theaterDef(state);
-    state.theaterResults.push({ index: t.index, name: def.name, winner: decision.winner, weeks: t.week, decisive: decision.decisive, gain: t.held0 - t.start0 });
+    state.theaterResults.push({ index: t.index, name: def.name, winner: decision.winner, weeks: t.week, decisive: decision.decisive, gain: t.held0 - t.start0, objectives: t.objectives.map((o) => ({ side: o.side, text: o.text, status: o.status })) });
     for (const id of [0, 1] as SideId[]) {
       const side = state.sides[id];
       const won = decision.winner === id;
@@ -1322,10 +1324,11 @@ export function resolveTurn(state: GameState, plans: [TurnPlan, TurnPlan]): Turn
       moodAfterTheater(side, won ? 'won' : lostT ? 'lost' : 'stalemate');
       if (won) side.resources.supplies += 100;
     }
-    if (t.index + 1 < THEATERS.length) {
-      const next = THEATERS[t.index + 1];
+    const nextIndex = nextTheater(state);
+    if (nextIndex !== null) {
+      const next = THEATERS[nextIndex];
       for (const id of [0, 1] as SideId[]) news[id].push(`The wing is redeploying to ${next.name}.`);
-      enterTheater(state, t.index + 1, rng, decision.winner);
+      enterTheater(state, nextIndex, rng, decision.winner);
       for (const id of [0, 1] as SideId[]) reinforce(rng, state, state.sides[id], news[id]);
       // Orders from the old theater lapse; High Command issues fresh ones.
       for (const side of state.sides) {

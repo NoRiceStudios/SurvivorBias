@@ -4,12 +4,10 @@
  * sectors, who holds them, the sites, the front line and this week's orders.
  * The sector logic is unchanged: the map is only how the strip of sectors looks.
  */
-import { highCommand, portraitCanvas } from './general';
 import { SECTOR_PRESSURE, SECTORS, THEATERS, depthFor } from '../core/theaters';
-import type { FacilityType, GameState, SideId, Site, TargetId, TheaterResult } from '../core/types';
+import type { FacilityType, GameState, SideId, Site, TargetId } from '../core/types';
 import type { App } from './app';
-import { sfxStamp, startDrone, stopDrone } from './audio';
-import { countUp, h } from './dom';
+import { h } from './dom';
 import { setTip, tip as tipAttrs } from './tip';
 const tip = tipAttrs;
 
@@ -142,16 +140,37 @@ function shape(index: number, x: number, y: number): { water: number; elev: numb
     const lake = 9 - Math.hypot((x - W * 0.58) / 1.6, y - H * 0.36);
     return { water: lake + (n - 0.5) * 8, elev: Math.min(1, rim * 0.9 + n * 0.45), forest: fbm(x, y, seed + 9) - 0.6 + rim * 0.2, marsh: 0 };
   }
-  // The Northern Approaches: a fjord coast to the north-east, forest, and Wendover Ridge.
-  const coast = 30 + (x / W) * 40 + Math.sin(x / 9) * 9 * (x / W) + (fbm(x * 2, 3, seed + 5) - 0.5) * 40;
-  const ridge = 1 - Math.min(1, Math.abs(x - CELL_W * 1.5 - (y - H / 2) * 0.25) / 26);
-  return { water: coast - y + (n - 0.5) * 10, elev: Math.min(1, n * 0.7 + ridge * 0.55), forest: fbm(x, y, seed + 9) - 0.5, marsh: 0 };
+  if (index === 2) {
+    // The Northern Approaches: a fjord coast to the north-east, forest, and Wendover Ridge.
+    const coast = 30 + (x / W) * 40 + Math.sin(x / 9) * 9 * (x / W) + (fbm(x * 2, 3, seed + 5) - 0.5) * 40;
+    const ridge = 1 - Math.min(1, Math.abs(x - CELL_W * 1.5 - (y - H / 2) * 0.25) / 26);
+    return { water: coast - y + (n - 0.5) * 10, elev: Math.min(1, n * 0.7 + ridge * 0.55), forest: fbm(x, y, seed + 9) - 0.5, marsh: 0 };
+  }
+  if (index === 3) {
+    // The Saltpan Desert: dry lakebeds in the north, low dunes, scrub in the wadis.
+    const pan = Math.max(20 - Math.hypot((x - W * 0.3) / 2.4, y - 24), 15 - Math.hypot((x - W * 0.8) / 2, y - 30));
+    const dunes = 0.3 + Math.sin(x / 9 + y / 14 + n * 4) * 0.12 + n * 0.3;
+    return { water: pan + (n - 0.5) * 6, elev: dunes, forest: fbm(x, y, seed + 9) - 0.66, marsh: 0 };
+  }
+  if (index === 4) {
+    // The Sundered Highlands: ridges across the strip, a tarn, forest in the valleys.
+    const range = Math.abs(Math.sin(x / 41 + y / 70 + n * 2.2));
+    const tarn = 8 - Math.hypot((x - W * 0.3) / 1.6, y - 52);
+    return { water: tarn + (n - 0.5) * 4, elev: Math.min(1, 0.25 + n * 0.5 + range * 0.5), forest: fbm(x, y, seed + 9) - 0.58 - range * 0.3, marsh: 0 };
+  }
+  // The Sundered Isles: one island to a sector in a warm sea, with reefs in between.
+  let d = 9;
+  for (let s2 = 0; s2 < SECTORS; s2++) d = Math.min(d, Math.hypot((x - (s2 * CELL_W + CELL_W / 2)) / (CELL_W * 0.52), (y - H * 0.58) / (H * 0.36)));
+  return { water: (d - 1) * 14 + (n - 0.5) * 12, elev: Math.max(0, 0.6 - d * 0.35 + n * 0.3), forest: fbm(x, y, seed + 9) - 0.5 - d * 0.15, marsh: 0 };
 }
 
 /** The main river of each theater, as a y (or x) for every column. */
 function riverPath(index: number): (x: number, y: number) => boolean {
   if (index === 0) return (x, y) => Math.abs(y - (150 + Math.sin(x / 23) * 14 + Math.sin(x / 7) * 3)) < 1.2 && x < W / 2 - 40;
   if (index === 1) return (x, y) => Math.abs(y - (H * 0.56 + Math.sin(x / 29) * 16 + Math.sin(x / 9) * 4)) < 1.4;
+  if (index === 3) return (x, y) => Math.abs(y - (H * 0.52 + Math.sin(x / 40) * 22 + Math.sin(x / 11) * 3)) < 0.8 && x % 5 !== 0;
+  if (index === 4) return (x, y) => Math.abs(y - (H * 0.62 + Math.sin(x / 25) * 18 + Math.sin(x / 8) * 3)) < 1.4;
+  if (index === 5) return () => false;
   return (x, y) => Math.abs(x - (CELL_W * 3.3 + Math.sin(y / 19) * 12 + (y - H / 2) * 0.35)) < 1.3;
 }
 
@@ -204,14 +223,32 @@ function sitePos(index: number, site: Site, k: number): [number, number] {
   return [x, y];
 }
 
-const PAL = {
+type Palette = Record<'sea' | 'seaLine' | 'sand' | 'land' | 'land2' | 'forest' | 'tree' | 'marsh' | 'contour' | 'river' | 'road', number[]> & { snow?: number[] };
+
+const BASE_PAL: Palette = {
   sea: [159, 180, 184], seaLine: [138, 161, 166], sand: [217, 204, 156], land: [216, 204, 166], land2: [205, 191, 150],
   forest: [190, 186, 140], tree: [118, 128, 84], marsh: [196, 196, 160], contour: [168, 149, 106], river: [110, 138, 150], road: [138, 90, 58],
+};
+
+/** Each theater is coloured for its season and climate. */
+const PALETTES: Record<number, Palette> = {
+  0: BASE_PAL,
+  // Kessel Basin: winter, grey stone, frozen lake.
+  1: { ...BASE_PAL, sea: [178, 192, 198], seaLine: [158, 174, 182], sand: [232, 232, 226], land: [224, 224, 218], land2: [210, 211, 206], forest: [186, 196, 186], tree: [96, 112, 98], marsh: [208, 210, 206], contour: [150, 150, 150], river: [130, 150, 162], road: [104, 98, 92] },
+  // Northern Approaches: spring green.
+  2: { ...BASE_PAL, sea: [150, 176, 186], land: [208, 216, 164], land2: [194, 205, 148], forest: [172, 190, 126], tree: [90, 122, 68], contour: [150, 160, 110] },
+  // Saltpan Desert: white pans, ochre sand, dry beds.
+  3: { ...BASE_PAL, sea: [238, 234, 222], seaLine: [220, 212, 190], sand: [230, 206, 150], land: [228, 202, 142], land2: [214, 186, 122], forest: [204, 184, 124], tree: [140, 120, 70], marsh: [220, 200, 150], contour: [184, 142, 86], river: [176, 134, 92], road: [150, 100, 60] },
+  // Sundered Highlands: grey rock, snow on the peaks, dark pine.
+  4: { ...BASE_PAL, sea: [150, 172, 190], seaLine: [130, 154, 174], sand: [214, 210, 196], land: [206, 204, 188], land2: [190, 188, 170], forest: [160, 180, 146], tree: [76, 102, 72], contour: [138, 138, 136], river: [112, 140, 160], road: [120, 100, 80], snow: [240, 242, 246] },
+  // Sundered Isles: turquoise sea, white beaches, lush green.
+  5: { ...BASE_PAL, sea: [112, 170, 186], seaLine: [92, 150, 168], sand: [240, 226, 172], land: [170, 202, 122], land2: [154, 190, 108], forest: [118, 164, 94], tree: [62, 112, 62], contour: [120, 160, 90], river: [100, 150, 170], road: [150, 120, 80] },
 };
 
 /** The terrain as pixels, as the viewer sees it (own territory on the left). */
 function terrainImage(g: CanvasRenderingContext2D, index: number, viewer: SideId): ImageData {
   const t = terrain(index);
+  const PAL = PALETTES[index] ?? BASE_PAL;
   const img = g.createImageData(W, H);
   const put = (i: number, c: number[]) => { img.data[i * 4] = c[0]; img.data[i * 4 + 1] = c[1]; img.data[i * 4 + 2] = c[2]; img.data[i * 4 + 3] = 255; };
   for (let y = 0; y < H; y++)
@@ -229,7 +266,8 @@ function terrainImage(g: CanvasRenderingContext2D, index: number, viewer: SideId
         const e = Math.floor(t.elev[i] * 7);
         const right = x + 1 < W ? Math.floor(t.elev[i + 1] * 7) : e;
         const down = y + 1 < H ? Math.floor(t.elev[i + W] * 7) : e;
-        if ((e !== right || e !== down) && e >= 3) put(o, PAL.contour);
+        if (PAL.snow && t.elev[i] > 0.9) put(o, (e !== right || e !== down) ? PAL.contour : PAL.snow);
+        else if ((e !== right || e !== down) && e >= 3) put(o, PAL.contour);
         else if (gr === 'forest') put(o, hash(x, y, 4) > 0.72 && (x + y * 3) % 3 === 0 ? PAL.tree : PAL.forest);
         else if (gr === 'marsh') put(o, (x * 2 + y) % 5 === 0 ? PAL.seaLine : PAL.marsh);
         else put(o, hash(x, y, 7) > 0.86 || t.elev[i] > 0.62 ? PAL.land2 : PAL.land);
@@ -505,81 +543,4 @@ export function mapLegend(): HTMLElement {
     h('span', null, '✈ Airfield'), h('span', null, '▙ Works'), h('span', null, '◘ Fuel'), h('span', { class: 'muted' }, '▨ Enemy-held'),
     h('span', { class: 'red' }, '|▸ Front (arrow: pressure)'), h('span', null, '╌▸ Our operation'), h('span', { class: 'blue' }, '◌ Our patrols'), h('span', { class: 'red' }, '╌ Feint'),
   );
-}
-
-/** Shown when a theater is decided and the wing redeploys (or the war ends). */
-export function renderTheaterChange(app: App, side: SideId, _next: unknown): HTMLElement {
-  const st = app.state!;
-  const res = st.theaterResults[st.theaterResults.length - 1];
-  const won = res.winner === side;
-  const verdict = res.winner === null ? 'STALEMATE' : won ? 'VICTORY' : 'DEFEAT';
-  const lastFront = [...st.archive].reverse().find((e) => e.theater === res.index)?.front ?? 0;
-  const ourPressure = side === 0 ? lastFront : -lastFront;
-  const nextDef = st.outcome ? null : THEATERS[st.theater.index];
-  const obj = st.outcome ? null : st.theater.objectives.find((o) => o.side === side);
-  const weeks = st.archive.filter((e) => e.theater === res.index);
-  const lost = weeks.reduce((a, e) => a + e.trueLosses[side], 0);
-  const claimed = weeks.reduce((a, e) => a + e.claimed[side], 0);
-  const roll = (st.sides[side].roll ?? []).filter((e) => e.theater === res.index);
-  const fate = { missing: 'missing', prisoner: 'prisoner of war', returned: 'returned', killed: 'killed' };
-  const big = (v: number, label: string, cls = '', delay = 300) => h('div', { class: `kpi ${cls}` }, countUp(v, delay), h('span', null, label));
-  // A defeat is heard as well as read: a low drone under the verdict.
-  if (!won && res.winner !== null) { startDrone(); window.setTimeout(stopDrone, 2600); }
-  return h('div', { class: 'letter-screen theater-change-screen' },
-    h('div', { class: `tc paper ${!won && res.winner !== null ? 'defeat' : ''}` },
-      h('div', { class: 'tc-old' },
-        h('div', { class: 'letter-kicker' }, `${res.name} · ${res.weeks} weeks · decided`),
-        h('div', { class: `stamp big drop ${won ? 'notice' : res.winner === null ? 'order' : 'reprimand'}` }, verdict),
-        h('p', { class: 'typed big' }, res.winner === null
-          ? ourPressure > 15 ? 'The pressure was ours, but the Army took no ground. High Command records a stalemate.'
-            : ourPressure < -15 ? 'The enemy held the advantage but took no ground. The armies dig in where they stand.'
-            : 'Neither air force could break the other. The armies dig in where they stand.'
-          : won ? (res.decisive ? 'The enemy front has broken. The Army is through.' : 'The season ends with the advantage ours.')
-          : res.decisive ? 'Our front has broken. The Army is falling back.' : 'The season ends with the advantage theirs.'),
-        h('div', { class: 'tc-kpis' },
-          big(lost, 'our aircraft lost', lost ? 'bad' : ''),
-          big(claimed, 'enemy claimed by our crews', '', 900),
-          big(Math.max(0, (side === 0 ? 1 : -1) * (res.gain ?? 0)), 'sectors taken', (res.gain ?? 0) * (side === 0 ? 1 : -1) > 0 ? 'good' : '', 1500)),
-        generalVerdict(st, side, res),
-        roll.length ? h('div', { class: 'roll' },
-          h('h3', null, `Roll of the missing (${roll.length})`),
-          h('div', { class: 'tags' }, roll.map((e, i) => h('div', { class: `tag ${e.fate}`, style: `animation-delay:${300 + i * 25}ms`, ...tip({ head: e.name, text: `${e.crew > 1 ? `With ${e.crew - 1} crew. ` : ''}${e.serial}, ${e.squadron}, missing since week ${e.week}.` }) },
-            h('span', { class: 'tag-name' }, e.name), h('span', { class: 'tag-fate' }, fate[e.fate].toUpperCase()))))) : null),
-      h('div', { class: 'tc-new' },
-        nextDef ? [
-          h('div', { class: 'letter-kicker' }, 'Redeployment'),
-          h('h1', null, nextDef.name),
-          h('div', { class: 'muted' }, `${nextDef.season} · ${nextDef.weeks} weeks`),
-          theaterMap(st, { viewer: side, scale: 2 }),
-          h('p', null, nextDef.blurb),
-          obj ? h('p', { class: 'small' }, h('b', null, 'Secondary objective: '), obj.text) : null,
-          h('p', { class: 'muted small' }, 'Aircraft in repair have been made serviceable during the move. Squadrons are rested.'),
-        ] : h('p', { class: 'typed big' }, 'This was the last theater of the war.'),
-        h('div', { class: 'tc-foot' }, h('button', { class: 'btn primary launch', onclick: () => { sfxStamp(); const go = app.continueAfterTheater; app.continueAfterTheater = null; go?.(); } }, nextDef ? 'Take command ▸' : 'Continue ▸'))),
-    ),
-  );
-}
-
-/** The commander's own general gives the verdict and the cost, in person, on the redeployment card. */
-function generalVerdict(st: GameState, side: SideId, res: TheaterResult): HTMLElement {
-  const won = res.winner === side;
-  const lost = st.archive.filter((e) => e.theater === res.index).reduce((a, e) => a + e.trueLosses[side], 0);
-  const roll = (st.sides[side].roll ?? []).filter((e) => e.theater === res.index);
-  const count = (f: string) => roll.filter((e) => e.fate === f).length;
-  const hc = highCommand(side);
-  const mid = res.name.replace(/^The /, 'the ');
-  const verdict = res.winner === null
-    ? `${res.name} ends in stalemate after ${res.weeks} weeks. Nobody will write songs about it.`
-    : won ? `${res.name} is ours, after ${res.weeks} weeks. The Army sends its thanks, and so do I.` : `We have lost ${mid} after ${res.weeks} weeks. I will not pretend otherwise.`;
-  const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
-  const cost = `${n(lost, 'aircraft', 'of our aircraft')} lost. ${n(roll.length, 'crew', 'crews')} posted missing: ${count('killed')} known dead, ${n(count('prisoner'), 'prisoner', 'prisoners')}, ${count('returned')} back with us, ${count('missing')} still unaccounted for.`;
-  // The Army's last word on where the line stood, against what it took to break it.
-  const lastFront = [...st.archive].reverse().find((e) => e.theater === res.index)?.front ?? 0;
-  const ours = side === 0 ? lastFront : 0 - lastFront;
-  const line = res.winner === null ? ` At the end the Army put the line at ${ours >= 0 ? '+' : ''}${ours}; a sector needs about ${SECTOR_PRESSURE} to break.` : '';
-  return h('div', { class: 'verdict' },
-    portraitCanvas('general', side, 2),
-    h('div', null,
-      h('div', { class: 'tut-from' }, `${hc.name} · ${hc.title}`),
-      h('p', { class: 'typed' }, `"${verdict} ${cost}${line}"`)));
 }

@@ -3,7 +3,7 @@ import { emptyPlan } from './actions';
 import { Rng } from './rng';
 import { newGame, SAVE_VERSION, type NewGameOptions } from './setup';
 import { DEFAULT_LETHALITY } from './lethality';
-import { depthFor } from './theaters';
+import { depthFor, theaterDef } from './theaters';
 import { resolveTurn, STORES_CAP } from './turn';
 import { nationOf } from './factions';
 import type { GameState, SideId, TurnPlan } from './types';
@@ -32,7 +32,7 @@ export function startCampaign(opts: NewGameOptions & { commanders?: [string, str
         from: 'Air Ministry',
         kind: 'order',
         subject: 'Assumption of command',
-        body: `You are hereby appointed to command the ${nationOf(side).wing}. The war will be fought across three theaters, beginning with ${state.theater.id === 'narrow-sea' ? 'the Narrow Sea' : 'the front'}. The ${enemy.short} air force is of unknown strength. Returns are to be submitted after every operation. Accuracy is expected.`,
+        body: `You are hereby appointed to command the ${nationOf(side).wing}. The war will be fought across three theaters, beginning with ${theaterDef(state).name.replace(/^The /, 'the ')}. The ${enemy.short} air force is of unknown strength. Returns are to be submitted after every operation. Accuracy is expected.`,
       },
       {
         turn: 1,
@@ -91,6 +91,11 @@ export function deserialize(json: string): GameState {
   }
   // Version 5 saves predate nations: they carry on as a classic war with symmetric rules.
   if (s.version === 5) s.version = 6;
+  // Version 6 saves fix the three theaters in their old order; version 7 draws them from a pool.
+  if (s.version === 6) {
+    s.campaign = [0, 1, 2];
+    s.version = 7;
+  }
   if (s.version !== SAVE_VERSION) throw new Error(`Save version ${s.version} is not supported (expected ${SAVE_VERSION})`);
   for (const p of s.sealed) if (p) p.feint ??= null;
   for (const side of s.sides) {

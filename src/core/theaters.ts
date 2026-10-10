@@ -3,7 +3,7 @@
  * Each theater is a strip of sectors holding named facilities. Pressure on
  * the contested boundary captures sectors; two sectors gained wins the theater.
  */
-import type { Rng } from './rng';
+import { Rng } from './rng';
 import { rulesOf } from './factions';
 import type {
   AircraftKind,
@@ -50,6 +50,19 @@ export interface TheaterDef {
   stages: StageDef[];
   /** Secondary objective: the depth and type of the enemy site to wreck, plus the reward. */
   secondary: { depth: number; type: FacilityType; text: string; reward: SecondaryObjective['reward'] };
+  /** Base shift to the chance of raids being spotted (open sky, radar shadows). */
+  detection?: number;
+  /** Multiplier on how fast aircraft and works are mended (1 when absent). */
+  repair?: number;
+  /** What sets this theater apart, in the briefing's words. */
+  features: { title: string; text: string }[];
+  look: TheaterLook;
+}
+
+/** How a theater is dressed in the briefings (its terrain is drawn by the map). */
+export interface TheaterLook {
+  /** Colour of the briefing banner and the campaign strip. */
+  accent: string;
 }
 
 export const THEATERS: TheaterDef[] = [
@@ -69,6 +82,11 @@ export const THEATERS: TheaterDef[] = [
       { week: 8, title: 'Radar chains complete', text: 'Both sides have finished their coastal radar chains. Raids will be met earlier and in strength.', detection: 0.1 },
     ],
     secondary: { depth: 1, type: 'airfield', text: 'Put the enemy\'s forward airfield out of action', reward: { research: 'dropTanks', trust: 5 } },
+    features: [
+      { title: 'Autumn gales', text: 'From week 4 cloud and storms close in over the Narrows.' },
+      { title: 'Radar chains', text: 'By week 8 both sides see raids coming earlier.' },
+    ],
+    look: { accent: '#3d5f7a' },
   },
   {
     id: 'kessel-basin',
@@ -86,6 +104,11 @@ export const THEATERS: TheaterDef[] = [
       { week: 8, title: 'Box barrages', text: 'Both sides have massed their flak around what is left of their industry.', flak: 0.25 },
     ],
     secondary: { depth: 2, type: 'industry', text: 'Wreck the enemy\'s main aircraft works', reward: { supplies: 120, trust: 10 } },
+    features: [
+      { title: 'Ringed with flak', text: 'The densest defences of the war; every works is a hard target.' },
+      { title: 'Deep winter', text: 'Low cloud hides results from week 4. Box barrages stiffen the flak from week 8.' },
+    ],
+    look: { accent: '#5b5f66' },
   },
   {
     id: 'northern-approaches',
@@ -103,8 +126,116 @@ export const THEATERS: TheaterDef[] = [
       { week: 8, title: 'Last reserves', text: 'Both sides are throwing in everything they have left. This is the decision.', detection: 0.1, support: 1.6 },
     ],
     secondary: { depth: 3, type: 'fuel', text: 'Burn the enemy\'s strategic fuel reserve', reward: { supplies: 80, trust: 15 } },
+    features: [
+      { title: 'Armies on the move', text: 'From week 4 close support of the front counts for much more.' },
+      { title: 'Last reserves', text: 'Both sides commit everything in the final weeks.' },
+    ],
+    look: { accent: '#5f7a3d' },
+  },
+  {
+    id: 'saltpan',
+    name: 'The Saltpan Desert',
+    season: 'Summer',
+    weeks: 10,
+    blurb: 'A white wasteland of dry lakes and scrub. There is nowhere to hide in the sky, and everything has to come a long way by road.',
+    sectors: ['Dustwell', 'Oasis Reach', 'Sandmark', 'Zahrin Flats', 'Karthuun', 'Ghar Basin'],
+    layout: [['airfield', 'fuel'], ['airfield', 'fuel'], ['industry', 'airfield']],
+    flak: 0.85,
+    detection: 0.12,
+    repair: 0.75,
+    weather: { clear: 0.72, cloud: 0.2, storm: 0.08 },
+    stages: [
+      { week: 1, title: 'Burning sun', text: 'Open sky from horizon to horizon. Every raid is seen from far off.' },
+      { week: 4, title: 'Dust storms', text: 'The hot winds have started. Sandstorms ground whole squadrons for days.', weather: { clear: -0.15, storm: 0.15 } },
+      { week: 8, title: 'Long supply lines', text: 'The columns are stretched to the limit. The Army needs air cover to move at all.', support: 1.4 },
+    ],
+    secondary: { depth: 2, type: 'fuel', text: 'Destroy the enemy\'s desert fuel dump', reward: { supplies: 100, trust: 10 } },
+    features: [
+      { title: 'Open sky', text: 'Raids are spotted much earlier, ours and theirs. Surprise is hard.' },
+      { title: 'Sand in everything', text: 'Aircraft and works mend a quarter slower.' },
+      { title: 'Dust storms', text: 'From week 4 sandstorms spoil far more weeks.' },
+    ],
+    look: { accent: '#b0702a' },
+  },
+  {
+    id: 'highlands',
+    name: 'The Sundered Highlands',
+    season: 'Autumn',
+    weeks: 10,
+    blurb: 'Snow-capped passes and steep valleys. Cloud sits on the peaks, radar sees nothing round the corners, and the armies crawl.',
+    sectors: ['Vorlberg', 'Kaltental', 'Hohenmark', 'Adlerjoch', 'Steinhorn', 'Gletscherau'],
+    layout: [['airfield', 'industry'], ['fuel', 'industry'], ['industry', 'fuel']],
+    flak: 0.8,
+    detection: -0.1,
+    weather: { clear: 0.3, cloud: 0.45, storm: 0.25 },
+    stages: [
+      { week: 1, title: 'The passes', text: 'The valleys hide the radar chains. Raids will often slip through unseen.', support: 0.75 },
+      { week: 5, title: 'Early snow', text: 'The passes are closing. Cloud on the peaks and storms in the valleys.', weather: { cloud: 0.1, storm: 0.1 } },
+      { week: 8, title: 'Hydro works', text: 'The valley power stations are running flat out. Flak has been hauled up to defend them.', flak: 0.2 },
+    ],
+    secondary: { depth: 2, type: 'industry', text: 'Wreck the enemy\'s mountain aircraft works', reward: { supplies: 110, trust: 12 } },
+    features: [
+      { title: 'Radar shadows', text: 'Valleys screen the radar chains; raids slip through unseen more often.' },
+      { title: 'Armies crawl', text: 'The ground war is slow: close support moves the line a quarter less.' },
+      { title: 'Cloud on the peaks', text: 'Heavy cloud and storms; results are hard to see.' },
+    ],
+    look: { accent: '#4a5e78' },
+  },
+  {
+    id: 'isles',
+    name: 'The Sundered Isles',
+    season: 'Monsoon',
+    weeks: 10,
+    blurb: 'A chain of coral islands, each with its own strip and supply jetty. Everything is fought over, nothing is far from the sea.',
+    sectors: ['Port Marlow', 'Coral Cay', 'Tamarind Sound', 'Kopa Reef', 'Salu Atoll', 'Ravana Roads'],
+    layout: [['airfield', 'airfield'], ['fuel', 'airfield'], ['industry', 'fuel']],
+    flak: 0.95,
+    repair: 1.3,
+    weather: { clear: 0.4, cloud: 0.3, storm: 0.3 },
+    stages: [
+      { week: 1, title: 'Island hopping', text: 'Each island has its own airstrip, quickly patched after every raid.' },
+      { week: 4, title: 'Monsoon', text: 'Warm rain and squalls. Storms come often and last.', weather: { clear: -0.1, storm: 0.1 } },
+      { week: 7, title: 'Landing craft', text: 'The marines are going in. Close support of the beaches counts for much more.', support: 1.6 },
+    ],
+    secondary: { depth: 1, type: 'airfield', text: 'Crater the enemy\'s main island airstrip', reward: { research: 'dropTanks', trust: 8 } },
+    features: [
+      { title: 'Quick repairs', text: 'Island strips and aircraft mend a third faster.' },
+      { title: 'Monsoon squalls', text: 'Storms are common all through the season.' },
+      { title: 'Landings', text: 'From week 7 the marines go in and support missions count for far more.' },
+    ],
+    look: { accent: '#2f7f7a' },
   },
 ];
+
+/** Theaters in a campaign. */
+export const CAMPAIGN_LENGTH = 3;
+/** The theaters of the first versions of the game, in their old fixed order. */
+export const CLASSIC_CAMPAIGN = [0, 1, 2];
+
+/** Draw a campaign's theaters (indices into THEATERS) from the pool, in a reproducible order for the seed. */
+export function drawCampaign(seed: string): number[] {
+  const rng = Rng.fromSeed(`${seed}:theaters`);
+  const pool = THEATERS.map((_, i) => i);
+  const out: number[] = [];
+  while (out.length < CAMPAIGN_LENGTH) out.push(...pool.splice(rng.int(0, pool.length - 1), 1));
+  return out;
+}
+
+/** The theaters of this war in order. */
+export function campaignTheaters(state: GameState): { def: TheaterDef; index: number }[] {
+  return (state.campaign ?? CLASSIC_CAMPAIGN).map((index) => ({ def: THEATERS[index], index }));
+}
+
+/** Position (0-based) of the current theater in the war. */
+export function campaignStep(state: GameState): number {
+  return Math.max(0, (state.campaign ?? CLASSIC_CAMPAIGN).indexOf(state.theater.index));
+}
+
+/** The pool index of the theater after the current one, or null in the last. */
+export function nextTheater(state: GameState): number | null {
+  const order = state.campaign ?? CLASSIC_CAMPAIGN;
+  return order[campaignStep(state) + 1] ?? null;
+}
 
 const SITE_SUFFIX: Record<FacilityType, string[]> = {
   airfield: ['Airfield', 'Aerodrome', 'Landing Ground'],
@@ -220,11 +351,11 @@ export function currentStage(state: GameState): StageDef {
 }
 
 /** Combined environmental modifiers from the theater and its stages so far. */
-export function theaterMods(state: GameState): { flak: number; detection: number; support: number; weather: Record<Weather, number> } {
+export function theaterMods(state: GameState): { flak: number; detection: number; support: number; repair: number; weather: Record<Weather, number> } {
   const def = theaterDef(state);
   const weather = { ...def.weather };
   let flak = def.flak;
-  let detection = 0;
+  let detection = def.detection ?? 0;
   let support = 1;
   for (const s of def.stages) {
     if (state.theater.week + 1 < s.week) continue;
@@ -233,7 +364,8 @@ export function theaterMods(state: GameState): { flak: number; detection: number
     if (s.support) support = s.support;
     for (const [k, v] of Object.entries(s.weather ?? {})) weather[k as Weather] += v as number;
   }
-  return { flak, detection, support, weather };
+  for (const k of Object.keys(weather) as Weather[]) weather[k] = Math.max(0.02, weather[k]);
+  return { flak, detection, support, repair: def.repair ?? 1, weather };
 }
 
 /** Roll next week's weather and each side's (unreliable) forecast. */

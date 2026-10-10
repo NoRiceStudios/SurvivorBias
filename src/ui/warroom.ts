@@ -10,7 +10,7 @@ import { AIRCRAFT, APPROACH_LABEL, ARCHETYPE_INFO, MAX_EFFORT, TARGETS } from '.
 import { tech } from '../core/tech';
 import { flyable, sortie } from '../core/sim';
 import { planLedger, type CostLine } from '../core/actions';
-import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS } from '../core/theaters';
+import { bomberRange, currentStage, DECISIVE_GAIN, depthFor, escortRange, frontSector, SECTOR_PRESSURE, SECTORS, sectorAtDepth, THEATERS, campaignTheaters } from '../core/theaters';
 import type { FighterApproach, Memo, SideId, SideState, Site, Squadron, TargetId } from '../core/types';
 import type { App } from './app';
 import { h, pct, slider } from './dom';
@@ -179,10 +179,10 @@ function mapCard(app: App, side: SideState): HTMLElement {
     frontReport(app, side, { hold: () => supportStance(app, side, 'hold'), push: () => supportStance(app, side, 'push') }),
     h('div', { class: 'map-foot small' },
       h('span', { class: 'mf-obj', ...tip({ head: 'Secondary objective', text: obj.text }) }, h('b', null, 'Secondary: '), obj.text, ' ', h('span', { class: `stamp ${obj.status === 'discredited' || obj.status === 'overrun' ? 'reprimand' : obj.status === 'open' ? 'order' : 'notice'}` }, objStatus)),
-      h('span', { class: 'theater-mini' }, THEATERS.map((th, i) => {
+      h('span', { class: 'theater-mini' }, campaignTheaters(st).map(({ def: th, index: i }, pos) => {
         const r = st.theaterResults.find((x) => x.index === i);
         const cls = r ? (r.winner === side.id ? 'won' : r.winner === null ? 'drawn' : 'lost') : i === t.index ? 'current' : '';
-        return h('span', { class: `tm ${cls}`, ...tip({ head: th.name, text: `${th.season}. ${r ? (r.winner === side.id ? 'Won.' : r.winner === null ? 'Drawn.' : 'Lost.') : i === t.index ? 'In progress.' : 'To come.'} ${th.blurb}` }) }, `${i + 1}`);
+        return h('span', { class: `tm ${cls}`, ...tip({ head: th.name, text: `${th.season}. ${r ? (r.winner === side.id ? 'Won.' : r.winner === null ? 'Drawn.' : 'Lost.') : i === t.index ? 'In progress.' : 'To come.'} ${th.blurb}` }) }, `${pos + 1}`);
       })),
     ),
   );
