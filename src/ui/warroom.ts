@@ -308,7 +308,7 @@ function ordersColumn(app: App, side: SideState): HTMLElement {
         h('span', { class: 'sq-pips' },
           h('span', tip({ head: `Fatigue ${Math.round(sq.fatigue * 10)}/10`, text: 'Rises each week a squadron flies, falls when it rests. Tired crews shoot and fly worse; above 6/10 their morale slides.' }), h('small', null, 'fat '), pips(sq.fatigue, 6, 0.6)),
           h('span', tip({ head: `Morale ${Math.round(sq.morale * 10)}/10`, text: 'Falls with losses. If the whole wing stays very low for three weeks, the crews refuse to fly.' }), h('small', null, 'mor '), pips(sq.morale, 6, 0.3, true))),
-        h('span', { class: 'sq-type' }, aircraftCanvas(sq.kind, { side: side.id, seed: sq.insignia }, 1)),
+        h('span', { class: 'sq-type' }, aircraftCanvas(sq.kind, { side: side.id, seed: sq.insignia, research: side.research }, 1)),
         h('span', { class: `sq-ready ${ready === 0 ? 'bad' : ''}` }, `${ready}/${sq.airframes.length}`)),
       h('div', { class: 'sq-line2' },
         seg<Role>(roles.map((r) => ({ ...r, disabled: ready === 0 && r.value !== 'rest', tip: { text: r.tip, effect: r.value === 'rest' ? undefined : `− ${cost} stores` } })), role, (r) => app.act(() => assign(sq, r)), 'mini roles-seg')),
