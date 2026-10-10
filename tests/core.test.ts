@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { frontOutlook } from '../src/core/frontline';
 import {
   AIRCRAFT,
   COSTS,
@@ -23,6 +24,8 @@ import {
   STORES_CAP,
   LIVE_FIRE_STORES,
   planCost,
+  planLedger,
+  flyable,
   tech,
   obituary,
   remember,
@@ -1572,5 +1575,56 @@ describe('Prisoners of war', () => {
     const s = startCampaign({ seed: 'pow-ai', mode: 'single' });
     for (let w = 0; w < 8 && !s.outcome; w++) endTurnSingle(s, playerPlan(s));
     expect(s.sides[1].prisoners ?? []).toEqual([]);
+  });
+
+  it('a squadron kept to fewer aircraft costs fewer stores, flies fewer aircraft and the ledger adds up', () => {
+    const s = startCampaign({ seed: 'smallformation' });
+    const side = s.sides[0];
+    const plan = playerPlan(s);
+    const full = planLedger(side, plan);
+    expect(full.lines.reduce((a, l) => a + l.stores, 0)).toBe(full.total);
+    expect(full.saved).toBe(0);
+    const id = plan.raid!.squadronIds[0];
+    const sq = side.squadrons.find((q) => q.id === id)!;
+    plan.sorties = { [id]: 2 };
+    const cut = planLedger(side, plan);
+    expect(cut.lines.reduce((a, l) => a + l.stores, 0)).toBe(cut.total);
+    expect(cut.total).toBe(full.total - Math.round((flyable(sq).length - 2) * AIRCRAFT[sq.kind].storesCost * (1 - tech(side, 'economy'))));
+    expect(cut.saved).toBe(full.total - cut.total);
+    expect(planCost(side, plan).stores).toBe(cut.total);
+    const day = newDay();
+    Object.assign(day.caps, plan.sorties);
+    expect(gatherFliers(side, [id], () => 'raid', day).length).toBe(2);
+    expect(carryPlan(s, 0, plan).sorties).toEqual({ [id]: 2 });
+  });
+});
+
+describe('Front report and close support stances', () => {
+  const bomberIds = (s: ReturnType<typeof startCampaign>, id: 0 | 1) => s.sides[id].squadrons.filter((q) => q.kind !== 'fighter' && q.kind !== 'recon').map((q) => q.id);
+
+  it('holding the line soaks up enemy gains but never pushes the front our way', () => {
+    const run = (stance: 'hold' | undefined) => {
+      const s = startCampaign({ seed: 'hold-line', mode: 'hotseat' });
+      s.front = -10;
+      const mine = { ...emptyPlan(), raid: { target: 'support' as const, squadronIds: bomberIds(s, 0), ...(stance ? { stance } : {}) } };
+      resolveTurn(s, [mine, emptyPlan()]);
+      return s.front;
+    };
+    expect(run('hold')).toBeLessThanOrEqual(run(undefined));
+  });
+
+  it('the outlook judges the line on its worst case and names what falls', () => {
+    const s = startCampaign({ seed: 'outlook', mode: 'single' });
+    const side = s.sides[0];
+    side.perceived.front = -16;
+    side.perceived.frontHistory = [-8, -16];
+    const o = frontOutlook(s, side);
+    expect(o.range[0]).toBeLessThan(o.value);
+    expect(o.level).toBe('critical');
+    expect(o.weeksToFall).toBeGreaterThanOrEqual(1);
+    expect(o.atStake?.sites.length).toBeGreaterThan(0);
+    side.perceived.front = 2;
+    side.perceived.frontHistory = [2];
+    expect(frontOutlook(s, side).level).toBe('steady');
   });
 });

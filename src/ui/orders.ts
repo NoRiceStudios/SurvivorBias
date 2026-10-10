@@ -26,7 +26,7 @@ export function ordersOverview(app: App, sideId: SideId): HTMLElement {
   const plan = app.plans[sideId];
   const def = THEATERS[st.theater.index];
   const sq = (id: string) => side.squadrons.find((q) => q.id === id);
-  const n = (q: Squadron | undefined) => (q ? flyable(q).length : 0);
+  const n = (q: Squadron | undefined) => (q ? flyable(q, plan.sorties?.[q.id]).length : 0);
   const role = (q: Squadron): [string, string] => {
     if (plan.raid?.squadronIds.includes(q.id)) {
       const what = plan.raid.target === 'sweep' ? 'Sweep' : q.kind === 'fighter' ? 'Escort' : plan.raid.target === 'support' ? 'Close support' : 'Bomb';

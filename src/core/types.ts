@@ -206,6 +206,8 @@ export interface Perceived {
   photographed: string[];
   /** Army liaison's account of the pressure on the front, + favours this side. */
   front: number;
+  /** The Army liaison's last few figures (oldest first), for the trend on the front report. */
+  frontHistory?: number[];
   /** Share of enemy bombers seen with each turret layout; fighter pilots can see the guns. */
   enemyTurrets?: Record<TurretFit, number>;
   /** Believed enemy armor emphasis per zone, from observation. */
@@ -264,7 +266,7 @@ export interface SideState {
   repaired?: FacilityType[];
   /** The AI's chosen next operation, fixed a week ahead so enemy intelligence can get wind of it. */
   /** An AI wing's next operation, fixed a week ahead. `push`: a counter-offensive with everything it has; `focus`: part of a campaign to cripple one type of works. */
-  intent?: { target: TargetId; siteId?: string; push?: boolean; focus?: boolean };
+  intent?: { target: TargetId; siteId?: string; push?: boolean; focus?: boolean; hold?: boolean };
   /** Letters still in the post: Red Cross cards about prisoners, delivered on their week. */
   post?: { due: number; from: string; subject: string; body: string; returns?: { squadronId: string; leader: Leader }; /** An obituary is written when the letter goes out, so it names whoever leads the squadron then. */ obit?: { leader: Leader; squadronId: string; squadron: string; week: number; lastWords?: string }; serial?: string; fate?: 'prisoner' | 'returned' | 'killed' }[];
   /** Everyone posted missing in this war, and what became of them as far as we know. */
@@ -391,6 +393,8 @@ export interface RaidPlan {
   squadronIds: string[];
   /** Maximum effort: full bomb bays and extra ammunition, at half as many stores again. */
   maxEffort?: boolean;
+  /** Close support only: 'hold' covers our own front line (absorbs enemy pressure) instead of pushing the enemy's. */
+  stance?: 'hold';
 }
 
 export interface TurnPlan {
@@ -405,6 +409,8 @@ export interface TurnPlan {
   feint: { squadronIds: string[]; sector: number } | null;
   /** 0 = honest, 1 = heavily embellished report to High Command. */
   embellish: number;
+  /** Fewer aircraft than are ready: most each squadron puts up this week (absent = all of them). */
+  sorties?: Record<string, number>;
   /** Squadrons stood down this week at their leader's request, and the duties they return to next week. */
   rested?: { id: string; raid: boolean; feint: boolean; defense: boolean; cover?: number }[];
 }

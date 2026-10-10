@@ -119,7 +119,7 @@ export function aiIntent(state: GameState, id: SideId, profile: AiProfile = aiPr
       return { target: site.type, siteId: site.id, focus: true };
     }
   }
-  if (rng.chance(Math.min(0.9, (pressured ? 0.55 : 0.3) * profile.support)) || targets.length === 0) return { target: 'support' };
+  if (rng.chance(Math.min(0.9, (pressured ? 0.55 : 0.3) * profile.support)) || targets.length === 0) return side.perceived.front < -10 && rng.chance(0.6) ? { target: 'support', hold: true } : { target: 'support' };
   const fighters = side.squadrons.filter((s) => s.kind === 'fighter').reduce((x, s) => x + ready(s), 0);
   const reach = escortRange(side);
   const w: Record<string, number> = {};
@@ -248,7 +248,7 @@ export function aiPlan(state: GameState, id: SideId, profile: AiProfile = aiProf
   } else if (readyBombers.length > 0 && (fixed || rng.chance(0.85))) {
     const intent = fixed ?? aiIntent(state, id, profile);
     // A counter-offensive goes in with every escort it can spare.
-    plan.raid = { target: intent.target, ...(intent.siteId ? { siteId: intent.siteId } : {}), squadronIds: [...readyBombers.map((q) => q.id), ...escorts.slice(0, intent.push ? 3 : 1).map((q) => q.id)] };
+    plan.raid = { target: intent.target, ...(intent.siteId ? { siteId: intent.siteId } : {}), ...(intent.target === 'support' && intent.hold ? { stance: 'hold' as const } : {}), squadronIds: [...readyBombers.map((q) => q.id), ...escorts.slice(0, intent.push ? 3 : 1).map((q) => q.id)] };
   } else if (escorts.length > 0) {
     plan.raid = { target: 'sweep', squadronIds: [escorts[0].id] };
   }

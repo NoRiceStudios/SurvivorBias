@@ -14,13 +14,14 @@ import type { App } from './app';
 import { schoolScene, worksScene } from './buildings';
 import { h, meter } from './dom';
 import { aircraftCanvas } from './sprites';
+import { techTree } from './techtree';
 import { tip } from './tip';
 import { seg } from './widgets';
 
 const short = (s: number, have: number) => (have < s ? `short ${s - have}` : '');
 
 export function worksScreen(app: App, side: SideState): HTMLElement {
-  return h('div', { class: 'works' }, factoryCol(app, side), schoolCol(app, side), researchCol(app, side));
+  return h('div', { class: 'works' }, factoryCol(app, side), schoolCol(app, side), techTree(app, side));
 }
 
 function banner(scene: HTMLElement): HTMLElement {
@@ -62,7 +63,7 @@ function factoryCol(app: App, side: SideState): HTMLElement {
         const ok = canBuild(side, k);
         const req = RESEARCH.find((r) => r.id === spec.requires)?.name;
         return h('div', { class: `build ${ok ? '' : 'locked'}`, ...tip({ head: nationAt(side.id).aircraft[k], text: `${spec.role}. Crew of ${spec.crew}. ${spec.build} build points.` }) },
-          aircraftCanvas(k, { side: side.id, seed: 2 }, 1),
+          aircraftCanvas(k, { side: side.id, seed: 2, research: side.research }, 1),
           h('div', { class: 'b-name' }, h('div', { class: 'sq-name' }, nationAt(side.id).aircraft[k]), ok ? null : h('div', { class: 'small muted' }, `Needs ${req}`)),
           ok ? h('button', { class: 'btn small', disabled: sup < spec.cost, onclick: () => app.cmd(side.id, { k: 'build', kind: k }) }, `Order ${spec.cost}`) : null);
       })),
@@ -112,44 +113,5 @@ function schoolCol(app: App, side: SideState): HTMLElement {
       ], t.liveFire ? 1 : 0, (v) => app.cmd(side.id, { k: 'liveFire', on: v === 1 }), 'mini'),
       t.liveFire && t.inTraining > 0 ? h('div', { class: 'small muted' }, t.liveFireClass ? `This class is on live fire (${t.inTraining * LIVE_FIRE_STORES} stores paid).` : 'This class trains on the ground: the depots could not spare the stores.') : null,
     ]),
-  );
-}
-
-function researchCol(app: App, side: SideState): HTMLElement {
-  const current = RESEARCH.find((r) => r.id === side.researching);
-  const sup = side.resources.supplies;
-  const done = RESEARCH.filter((r) => side.research.includes(r.id)).length;
-  return h('section', { class: 'paper panel works-col works-research' },
-    h('h2', null, 'Development'),
-    current
-      ? h('div', { class: 'in-works' }, h('span', { class: 'stamp order' }, 'IN THE WORKS'), ' ', h('b', null, current.name),
-        h('div', { class: 'progress' }, h('i', { style: `width:${(side.researchProgress / researchTurns(researchCost(side, current))) * 100}%` })),
-        h('div', { class: 'small muted' }, `${side.researchProgress}/${researchTurns(researchCost(side, current))} weeks · ${current.desc}`))
-      : h('p', { class: 'small warnc' }, 'Engineers idle: fund one project. One at a time.'),
-    h('div', { class: 'small muted' }, `${done} of ${RESEARCH.length} in service.`),
-    BRANCHES.map((b) => {
-      // A lane per branch on a fixed grid of tiers: a project sits one column right of the one it builds on.
-      const items = RESEARCH.filter((r) => r.branch === b.id);
-      const tier = (r: (typeof items)[number]): number => {
-        const parent = items.find((x) => x.id === r.requires);
-        return parent ? tier(parent) + 1 : 0;
-      };
-      return h('div', { class: 'lane' },
-        h('div', { class: 'lane-name' }, b.name),
-        h('div', { class: 'lane-grid' }, items.map((r) => {
-          const isDone = side.research.includes(r.id);
-          const locked = !!r.requires && !side.research.includes(r.requires);
-          const active = side.researching === r.id;
-          const need = RESEARCH.find((x) => x.id === r.requires)?.name;
-          const can = !isDone && !active && !locked && !side.researching && sup >= researchCost(side, r);
-          return h('button', {
-            class: `r-chip ${isDone ? 'done' : ''} ${locked ? 'locked' : ''} ${active ? 'active' : ''} ${can ? 'can' : ''}`,
-            style: `grid-column:${tier(r) + 1}`,
-            ...tip({ head: r.name, text: r.desc, effect: isDone ? 'in service' : locked ? `-needs ${need}` : `${researchCost(side, r)} supplies, ${researchTurns(researchCost(side, r))} weeks` }),
-            disabled: !can,
-            onclick: () => app.cmd(side.id, { k: 'research', id: r.id }),
-          }, h('span', { class: 'r-name' }, `${tier(r) ? '▸ ' : ''}${r.name}`), h('span', { class: 'r-sub' }, isDone ? '✓ in service' : active ? 'in the works' : locked ? 'locked' : `${researchCost(side, r)} · ${researchTurns(researchCost(side, r))}w`));
-        })));
-    }),
   );
 }
