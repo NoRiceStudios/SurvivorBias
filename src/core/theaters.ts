@@ -326,6 +326,7 @@ export function enterTheater(state: GameState, index: number, rng: Rng, headStar
     // A new front: the Intelligence Section has to work out the line afresh, and the enemy's gunners
     // here have not yet learned our habits.
     delete side.perceived.frontBand;
+    delete side.perceived.frontHistory;
     side.observed = { feints: 0, support: 0 };
     // Redeployment: the ground crews catch up on repairs, crews get a breather.
     if (index > 0) {
