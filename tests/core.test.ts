@@ -24,6 +24,8 @@ import {
   STORES_CAP,
   LIVE_FIRE_STORES,
   planCost,
+  planLedger,
+  flyable,
   tech,
   obituary,
   remember,
@@ -1546,6 +1548,27 @@ describe('Prisoners of war', () => {
     const s = startCampaign({ seed: 'pow-ai', mode: 'single' });
     for (let w = 0; w < 8 && !s.outcome; w++) endTurnSingle(s, playerPlan(s));
     expect(s.sides[1].prisoners ?? []).toEqual([]);
+  });
+
+  it('a squadron kept to fewer aircraft costs fewer stores, flies fewer aircraft and the ledger adds up', () => {
+    const s = startCampaign({ seed: 'smallformation' });
+    const side = s.sides[0];
+    const plan = playerPlan(s);
+    const full = planLedger(side, plan);
+    expect(full.lines.reduce((a, l) => a + l.stores, 0)).toBe(full.total);
+    expect(full.saved).toBe(0);
+    const id = plan.raid!.squadronIds[0];
+    const sq = side.squadrons.find((q) => q.id === id)!;
+    plan.sorties = { [id]: 2 };
+    const cut = planLedger(side, plan);
+    expect(cut.lines.reduce((a, l) => a + l.stores, 0)).toBe(cut.total);
+    expect(cut.total).toBe(full.total - Math.round((flyable(sq).length - 2) * AIRCRAFT[sq.kind].storesCost * (1 - tech(side, 'economy'))));
+    expect(cut.saved).toBe(full.total - cut.total);
+    expect(planCost(side, plan).stores).toBe(cut.total);
+    const day = newDay();
+    Object.assign(day.caps, plan.sorties);
+    expect(gatherFliers(side, [id], () => 'raid', day).length).toBe(2);
+    expect(carryPlan(s, 0, plan).sorties).toEqual({ [id]: 2 });
   });
 });
 

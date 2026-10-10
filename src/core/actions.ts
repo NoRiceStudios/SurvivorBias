@@ -1,7 +1,7 @@
 import { tech } from './tech';
 import { AIRCRAFT, MAX_ARMOR_PER_ZONE, MAX_EFFORT, RESEARCH, TURRET_FITS, TURRET_REFIT_COST } from './data';
 import { researchCost, spec, storesCap } from './factions';
-import { flyable } from './sim';
+import { flyable, sortie } from './sim';
 import { bomberRange, depthFor, frontSector, syncFacilities } from './theaters';
 import type {
   AircraftKind,
@@ -326,18 +326,46 @@ export function researchTurns(cost: number): number {
   return Math.max(1, Math.round(cost / 45));
 }
 
-export function planCost(side: SideState, plan: TurnPlan): { stores: number } {
-  let stores = 0;
-  const ids = new Set([...(plan.raid?.squadronIds ?? []), ...plan.defense, ...(plan.feint?.squadronIds ?? [])]);
+export interface CostLine {
+  key: 'bomb' | 'escort' | 'extra' | 'feint' | 'patrol' | 'recon';
+  label: string;
+  stores: number;
+}
+
+/** What the plan costs, by line, and what flying smaller formations saves. Lines add up to the total. */
+export function planLedger(side: SideState, plan: TurnPlan): { lines: CostLine[]; total: number; saved: number } {
+  const disc = 1 - tech(side, 'economy');
+  const raid = new Set(plan.raid?.squadronIds ?? []);
+  const feint = new Set(plan.feint?.squadronIds ?? []);
+  const raw: Record<CostLine['key'], number> = { bomb: 0, escort: 0, extra: 0, feint: 0, patrol: 0, recon: 0 };
+  let full = 0;
+  const ids = new Set([...raid, ...plan.defense, ...feint]);
   for (const id of ids) {
     const sq = side.squadrons.find((s) => s.id === id);
     if (!sq) continue;
-    const n = flyable(sq).length;
-    const max = plan.raid?.maxEffort && plan.raid.squadronIds.includes(id) ? MAX_EFFORT.stores : 1;
-    stores += n * AIRCRAFT[sq.kind].storesCost * max;
+    const unit = AIRCRAFT[sq.kind].storesCost;
+    const base = sortie(sq, plan).length * unit;
+    full += flyable(sq).length * unit;
+    if (raid.has(id)) {
+      raw[sq.kind === 'fighter' ? 'escort' : 'bomb'] += base;
+      if (plan.raid?.maxEffort) raw.extra += base * (MAX_EFFORT.stores - 1);
+    } else if (feint.has(id)) raw.feint += base;
+    else raw.patrol += base;
   }
-  if (plan.recon) stores += AIRCRAFT.recon.storesCost;
-  return { stores: Math.round(stores * (1 - tech(side, 'economy'))) };
+  if (plan.recon) raw.recon += AIRCRAFT.recon.storesCost;
+  const label: Record<CostLine['key'], string> = { bomb: 'Bombers', escort: plan.raid?.target === 'sweep' ? 'Sweep fighters' : 'Escorts', extra: 'Maximum effort loads', feint: 'Feint', patrol: 'Patrols and reserve', recon: 'Photo flight' };
+  const lines = (Object.keys(raw) as CostLine['key'][]).filter((k) => raw[k] > 0).map((k) => ({ key: k, label: label[k], stores: Math.round(raw[k] * disc) }));
+  const total = Math.round(Object.values(raw).reduce((a, b) => a + b, 0) * disc);
+  // Rounding line by line can drift from the total by a store or two: the biggest line absorbs it.
+  const drift = total - lines.reduce((a, l) => a + l.stores, 0);
+  if (drift && lines.length) lines.reduce((a, l) => (l.stores > a.stores ? l : a)).stores += drift;
+  const planned = Object.values(raw).reduce((a, b) => a + b, 0) - raw.extra - raw.recon;
+  const saved = Math.round(Math.max(0, full - planned) * disc);
+  return { lines, total, saved };
+}
+
+export function planCost(side: SideState, plan: TurnPlan): { stores: number } {
+  return { stores: planLedger(side, plan).total };
 }
 
 /** Check a plan against the rules. Pass the game state to also check ranges and sites. */
@@ -374,7 +402,7 @@ export function validatePlan(side: SideState, plan: TurnPlan, state?: GameState)
       if (main === sector) return fail('A feint over the same sector as the real raid fools nobody');
     }
   }
-  const ready = (ids: string[]) => ids.reduce((a, id) => a + (side.squadrons.find((q) => q.id === id) ? flyable(side.squadrons.find((q) => q.id === id)!).length : 0), 0);
+  const ready = (ids: string[]) => ids.reduce((a, id) => a + (side.squadrons.find((q) => q.id === id) ? sortie(side.squadrons.find((q) => q.id === id)!, plan).length : 0), 0);
   if (plan.raid && raidIds.length && ready(raidIds) === 0) return fail('No aircraft in the raid are ready to fly');
   if (plan.feint && ready(plan.feint.squadronIds) === 0) return fail('No aircraft ready to fly the feint');
   if (plan.recon && ready([plan.recon.squadronId]) === 0) return fail('No recon aircraft ready to fly');

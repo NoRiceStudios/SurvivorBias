@@ -49,6 +49,7 @@ export function carryPlan(state: GameState, side: SideId, prev: TurnPlan): TurnP
     // Feints are planned week by week.
     feint: null,
     embellish: prev.embellish,
+    sorties: prev.sorties ? Object.fromEntries(Object.entries(prev.sorties).filter(([id]) => ids.has(id))) : undefined,
   };
 }
 

@@ -35,9 +35,9 @@ export function missionLabel(app: App, raid: { target: TargetId; siteId?: string
   return app.state!.theater.sites.find((x) => x.id === raid.siteId)?.name ?? TARGETS[raid.target].name;
 }
 
-export function countPlanes(side: SideState, ids: string[]): number {
+export function countPlanes(side: SideState, ids: string[], plan?: { sorties?: Record<string, number> }): number {
   return ids.reduce((a, id) => {
     const sq = side.squadrons.find((s) => s.id === id);
-    return a + (sq ? flyable(sq).length : 0);
+    return a + (sq ? flyable(sq, plan?.sorties?.[sq.id]).length : 0);
   }, 0);
 }
